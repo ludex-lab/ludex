@@ -25,7 +25,7 @@ models:
   # 4.7 ships a new tokenizer that emits up to 35% more tokens for the
   # same input text vs 4.6 — per-token price unchanged but effective
   # per-request cost can rise ~35%. Watch this in cost_report tok_in
-  # trends if a creature's runs spike.
+  # trends if Aria's runs spike.
   # Note 2026-06-15: subscription `-p` / Agent-SDK usage moves to a
   # separate metered Agent SDK credit pool at full API rates. These
   # rates apply to that path as well.
@@ -42,7 +42,7 @@ models:
   # --- Google (gemini_cli) — paid API key from 2026-06-18 ---
   # Source: ai.google.dev/gemini-api/docs/pricing (2026-05-26).
   # 3-pro-preview model ID is treated as alias of 3.1-pro-preview for
-  # pricing purposes (a creature config may still use the older name
+  # pricing purposes (Nova creature config still uses the older name
   # and calls succeed — Google appears to honour both).
   # >200K context tier ($4 / $18) not expected in maintenance use;
   # add a separate entry if a creature regularly exceeds 200K input.

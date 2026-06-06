@@ -688,8 +688,8 @@ class PhysisBlock(Block):
                 hints = extracted
 
         # Tier 3: D-070 Hermes Interpreter (reflective prose, no
-        # if-then surface form). Some brains write rich
-        # reflection that the narrative regex misses. Hermes
+        # if-then surface form). Brains like Hearth/Wick/Quill write
+        # rich reflection that the narrative regex misses. Hermes
         # asks a coordinator brain (Opus / Codex 5.5 / Gemini 3.1 Pro)
         # to translate the prose into canonical YAML.
         if not hints:

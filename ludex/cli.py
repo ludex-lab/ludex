@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from ludex.blocks.provider import ADAPTER_REGISTRY
+from ludex.core.habitat import HabitatConfig
 from ludex.core.organism_config import DEFAULT_ORGANS, PRESETS, OrganismConfig
 from ludex.core.stage import audit_creature
 
@@ -26,14 +27,14 @@ PRESET_NAMES = list(PRESETS.keys())
 NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 
 PROVIDER_MODEL_HINTS = {
-    "claude_cli": "claude-haiku-4-5  |  claude-sonnet-4-6  |  claude-opus-4-7",
-    "claude_sdk": "claude-haiku-4-5  |  claude-sonnet-4-6  |  claude-opus-4-7",
-    "anthropic": "claude-haiku-4-5  |  claude-sonnet-4-6  |  claude-opus-4-7",
+    "claude_cli": "claude-opus-4-8  |  claude-opus-4-7  |  claude-sonnet-4-6  |  claude-haiku-4-5",
+    "claude_sdk": "claude-opus-4-8  |  claude-opus-4-7  |  claude-sonnet-4-6  |  claude-haiku-4-5",
+    "anthropic": "claude-opus-4-8  |  claude-opus-4-7  |  claude-sonnet-4-6  |  claude-haiku-4-5",
     "ollama": "qwen3.5:4b  |  exaone3.5:7.8b  |  llama3.1:8b",
     "gemini_cli": "gemini-3.1-pro-preview",
     "agy_cli": "gemini-3.5-flash",
     "codex_cli": "gpt-5.5",
-    "openai": "gpt-5.4-nano  |  gpt-5.4-mini  |  gpt-5.5",
+    "openai": "gpt-5.5  |  gpt-5.4-mini  |  gpt-5.4-nano",
     "gemini_api": "gemini-3.5-flash  |  gemini-3.1-flash-lite",
 }
 
@@ -168,7 +169,10 @@ def cmd_create(args: argparse.Namespace) -> int:
                 print("  pass --force to write into a non-empty directory")
                 return 1
 
-    cfg.habitat.home_dir = str(out_dir)
+    # A creature written to a real folder is a persistent local habitat — not
+    # the default temporary one (temporary habitats also skip identity-file
+    # scaffolding, which would leave the creature under-equipped for CLI brains).
+    cfg.habitat = HabitatConfig.local(str(out_dir))
 
     # Summary + confirm
     enabled = cfg.get_enabled_organs()
@@ -187,9 +191,25 @@ def cmd_create(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     written = cfg.save(str(out_dir))
     print(f"\nwrote {written}")
-    print("\nnext: this wedge writes ludex.yaml only. Skill scaffolding, AGENTS.md/CLAUDE.md/")
-    print("GEMINI.md identity files, and capability probing happen on first build via")
-    print("OrganismConfig.load() + .build() — not here.")
+
+    # Write the identity files CLI brains auto-discover (Claude Code → CLAUDE.md,
+    # Codex → AGENTS.md, Gemini → GEMINI.md) plus native skills — the same step
+    # the web FORGE path runs. Without it a creature made from the CLI is
+    # under-scaffolded for the very CLI brains it's most likely to use.
+    try:
+        ok = cfg.habitat.write_identity_files(
+            creature_name=name,
+            brain_model=model,
+            brain_provider=provider,
+            organs=enabled,
+        )
+        print("wrote CLAUDE.md, AGENTS.md, GEMINI.md (+ skills)" if ok
+              else "note: identity files skipped (habitat not persistent)")
+    except Exception as e:
+        print(f"note: identity files not written ({e})")
+
+    print(f"\nnext: open {out_dir} and start talking to {name} with your CLI brain.")
+    print("Capability probing runs on first build.")
     return 0
 
 
