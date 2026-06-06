@@ -169,6 +169,11 @@
   </div>
 
   <div class="creatures-panel" id="creaturesPanel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px">
+      <span style="color:#8b94a3;font-size:13px">Click a creature to wake it and chat. Vitals show once it's awake.</span>
+      <button onclick="document.getElementById('connectModal').classList.remove('hidden')"
+        style="flex:none;padding:8px 14px;border:0;border-radius:8px;background:#e879a0;color:#1a0a12;font-weight:700;cursor:pointer">+ Forge new</button>
+    </div>
     <div class="cgrid" id="cgrid"><div class="cempty">Loading…</div></div>
   </div>
 
@@ -647,7 +652,15 @@ async function forgeLoad() {
 // Init
 loadModels();
 loadOrgans();
-if (location.hash === '#creatures' || location.hash === '#observe') switchTab('creatures');
+// Landing: start on the My Creatures viewer (don't force the FORGE wizard).
+// Pop FORGE only on a plain load with no creatures yet (first-time user).
+document.getElementById('connectModal').classList.add('hidden');
+switchTab('creatures');
+if (!(location.hash === '#creatures' || location.hash === '#observe')) {
+  fetch('/api/creatures').then(r => r.json()).then(d => {
+    if (!d.creatures || !d.creatures.length) document.getElementById('connectModal').classList.remove('hidden');
+  }).catch(() => {});
+}
 
 async function sendMessage() {
   const input = document.getElementById('chatInput');
