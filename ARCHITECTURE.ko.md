@@ -1,8 +1,8 @@
-# Ludex 아키텍처 — 오르간 간 통신 시스템
+# Ludex 아키텍처 — 기관 간 통신 시스템
 
 *🌐 [English](ARCHITECTURE.md) · [한국어](ARCHITECTURE.ko.md)*
 
-> "장기를 붙였다 떼었다 할 수 있으려면, 장기 간 혈관/신경 같은 통신 시스템이 먼저 있어야 한다."
+> "기관을 붙였다 떼었다 할 수 있으려면, 기관 간 혈관/신경 같은 통신 시스템이 먼저 있어야 한다."
 
 ---
 
@@ -10,11 +10,11 @@
 
 ### 생물학적 비유
 
-실제 생물에서 장기들이 유기적으로 작동하는 이유:
-- **혈관(Circulatory)**: 모든 장기에 영양분(데이터)을 전달하고 노폐물(에러)을 수거
+실제 생물에서 기관들이 유기적으로 작동하는 이유:
+- **혈관(Circulatory)**: 모든 기관에 영양분(데이터)을 전달하고 노폐물(에러)을 수거
 - **신경(Nervous)**: 이벤트 기반 신호 전달 — "위에서 음식이 왔다" → 소장에 알림
-- **호르몬(Endocrine)**: 전역 설정 — "스트레스 상황이다" → 모든 장기의 행동 변경
-- **결합조직(Connective Tissue)**: 장기들을 물리적으로 고정하되, 제거 가능한 연결
+- **호르몬(Endocrine)**: 전역 설정 — "스트레스 상황이다" → 모든 기관의 행동 변경
+- **결합조직(Connective Tissue)**: 기관들을 물리적으로 고정하되, 제거 가능한 연결
 
 Ludex에서는 이 4가지를 소프트웨어로 구현한다.
 
@@ -51,7 +51,7 @@ bus.publish("llm.response", {
 
 ```python
 class Bus:
-    """장기 간 데이터 흐름을 관리하는 혈관 시스템"""
+    """기관 간 데이터 흐름을 관리하는 혈관 시스템"""
 
     def subscribe(self, topic: str, handler: Callable) -> Subscription:
         """특정 토픽의 데이터를 구독"""
@@ -60,7 +60,7 @@ class Bus:
         """토픽에 데이터를 발행 (모든 구독자에게 전달)"""
 
     def unsubscribe(self, subscription: Subscription) -> None:
-        """구독 해제 (장기 제거 시)"""
+        """구독 해제 (기관 제거 시)"""
 ```
 
 ### 2.2 Signals (신경 = 이벤트 알림)
@@ -86,7 +86,7 @@ signals.emit("turn.started", turn_number=5)
 
 ```python
 class Signals:
-    """장기 간 이벤트 알림을 관리하는 신경 시스템"""
+    """기관 간 이벤트 알림을 관리하는 신경 시스템"""
 
     def emit(self, event: str, **kwargs) -> None:
         """이벤트 발생 알림"""
@@ -152,7 +152,7 @@ config.set("model", "mistral:7b")  # → Signals.emit("config.changed", key="mod
 from ludex.core import Block, Port
 
 class EngineBlock(Block):
-    """세션/컨텍스트 관리 장기"""
+    """세션/컨텍스트 관리 기관"""
 
     # 이 블록이 제공하는 포트 (다른 블록이 연결 가능)
     provides = [
@@ -224,10 +224,10 @@ result = organism.run("당신의 핸드는 A♠ K♥입니다. 베팅하시겠�
    모든 블록이 같은 Config 인스턴스를 참조
 ```
 
-### 블록 추가/제거 (장기 이식)
+### 블록 추가/제거 (기관 이식)
 
 ```python
-# Memory 블록을 나중에 추가 (장기 이식)
+# Memory 블록을 나중에 추가 (기관 이식)
 organism.attach(MemoryBlock(backend="lancedb"))
 # → 자동으로 포트 매칭, Bus/Signals 연결
 
@@ -257,7 +257,7 @@ class Port:
     required: bool = True  # False면 선택적
 
 class Block(ABC):
-    """모든 장기 블록의 기본 클래스"""
+    """모든 기관 블록의 기본 클래스"""
 
     provides: list[Port] = []
     requires: list[Port] = []
