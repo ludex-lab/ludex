@@ -174,6 +174,12 @@ def cmd_create(args: argparse.Namespace) -> int:
     # scaffolding, which would leave the creature under-equipped for CLI brains).
     cfg.habitat = HabitatConfig.local(str(out_dir))
 
+    # Custom instructions (e.g. conversation language) — feed the engine's system
+    # prompt (API brains) AND the identity files (CLI brains read them).
+    system = (args.system or "").strip()
+    if system and "engine" in cfg.organs:
+        cfg.organs["engine"]["system_prompt"] = system
+
     # Summary + confirm
     enabled = cfg.get_enabled_organs()
     print("\n--- summary ---")
@@ -182,6 +188,8 @@ def cmd_create(args: argparse.Namespace) -> int:
     print(f"  preset:   {preset}")
     print(f"  organs:   {', '.join(enabled)}")
     print(f"  out:      {out_dir}")
+    if system:
+        print(f"  system:   {system}")
     print()
 
     if interactive and not _ask_yes_no("write ludex.yaml?", default=True):
@@ -202,6 +210,7 @@ def cmd_create(args: argparse.Namespace) -> int:
             brain_model=model,
             brain_provider=provider,
             organs=enabled,
+            custom_instructions=system,
         )
         print("wrote CLAUDE.md, AGENTS.md, GEMINI.md (+ skills)" if ok
               else "note: identity files skipped (habitat not persistent)")
@@ -436,6 +445,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--model", help="brain model id")
     create.add_argument("--preset", help=f"organ preset: {', '.join(PRESET_NAMES)}, or 'custom'")
     create.add_argument("--out", help="output directory (default: creatures/<name>)")
+    create.add_argument("--system", default="", help="custom instructions / system prompt (e.g. preferred conversation language)")
     create.add_argument("--force", action="store_true", help="write into non-empty directory without asking")
     create.set_defaults(func=cmd_create)
 
