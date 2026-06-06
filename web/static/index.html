@@ -78,10 +78,8 @@
   .bar-fill.pink { background: #e879a0; }
 
   /* FORGE Modal */
-  .connect-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
-  .connect-box { position: relative; background: #1a1a1a; padding: 32px; border-radius: 16px; border: 1px solid #333; max-width: 520px; width: 95%; max-height: 90vh; overflow-y: auto; }
-  .forge-close { position: absolute; top: 12px; right: 16px; background: none; border: 0; color: #888; font-size: 26px; line-height: 1; cursor: pointer; }
-  .forge-close:hover { color: #e0e0e0; }
+  .connect-overlay { flex: 1; overflow-y: auto; background: #0a0a0a; display: flex; align-items: flex-start; justify-content: center; padding: 28px 16px; }
+  .connect-box { background: #1a1a1a; padding: 32px; border-radius: 16px; border: 1px solid #333; max-width: 520px; width: 95%; }
   .connect-box h2 { color: #64aa88; margin-bottom: 4px; font-size: 20px; }
   .connect-box .forge-subtitle { color: #666; font-size: 12px; margin-bottom: 16px; }
   .connect-box label { display: block; color: #888; font-size: 13px; margin: 10px 0 4px; }
@@ -147,6 +145,7 @@
 
 <div class="tab-bar">
   <div class="tab" data-tab="creatures" onclick="switchTab('creatures')" data-i18n="tab_creatures">My Creatures</div>
+  <div class="tab" data-tab="forge" onclick="switchTab('forge')" data-i18n="tab_forge">Forge</div>
   <div class="tab active" data-tab="chat" onclick="switchTab('chat')" data-i18n="tab_chat">Chat</div>
   <div class="tab" data-tab="rag" onclick="switchTab('rag')" data-i18n="tab_rag">RAG</div>
   <div class="tab-spacer"></div>
@@ -177,7 +176,7 @@
   <div class="creatures-panel" id="creaturesPanel">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px">
       <span style="color:#8b94a3;font-size:13px" data-i18n="view_hint">Click a creature to wake it and chat. Vitals show once it's awake.</span>
-      <button onclick="document.getElementById('connectModal').classList.remove('hidden')" data-i18n="view_new"
+      <button onclick="switchTab('forge')" data-i18n="view_new"
         style="flex:none;padding:8px 14px;border:0;border-radius:8px;background:#e879a0;color:#1a0a12;font-weight:700;cursor:pointer">+ Forge new</button>
     </div>
     <div class="cgrid" id="cgrid"><div class="cempty">Loading…</div></div>
@@ -216,10 +215,9 @@
   </div>
 </main>
 
-<!-- FORGE Modal -->
-<div class="connect-overlay" id="connectModal" onclick="if(event.target===this)closeForge()">
+<!-- FORGE tab panel -->
+<div class="connect-overlay hidden" id="connectModal">
   <div class="connect-box">
-    <button class="forge-close" type="button" onclick="closeForge()" aria-label="close" data-i18n-title="forge_close" title="Close">×</button>
     <h2>FORGE</h2>
     <div class="forge-subtitle" data-i18n="forge_sub">Assemble your creature. Pick a brain, choose organs, awaken.</div>
 
@@ -303,7 +301,7 @@
 // ---- Local app i18n (ko/en) ----
 const LI18N = {
   en: {
-    hdr_status:"Not connected", tab_creatures:"My Creatures", tab_chat:"Chat", tab_rag:"RAG", dev_monitor:"Monitor",
+    hdr_status:"Not connected", tab_creatures:"My Creatures", tab_forge:"Forge", tab_chat:"Chat", tab_rag:"RAG", dev_monitor:"Monitor",
     rag_paste:"+ Paste Text", rag_folder:"📁 Load Folder", chat_connect:"Pick a creature in “My Creatures” to start.", chat_send:"Send",
     view_hint:"Click a creature to wake it and chat. Vitals show once it's awake.", view_new:"+ Forge new",
     vt_emotion:"Emotion", vt_dominant:"Dominant", vt_valence:"Valence", vt_arousal:"Arousal", vt_calm:"Calm", vt_desperation:"Desperation",
@@ -342,7 +340,7 @@ const LI18N = {
     mdl_need_gemini:"Needs GEMINI_API_KEY (env / .env)", mdl_gemini_cli:"Gemini CLI — retires 2026-06-18", mdl_agy_cli:"agy CLI — partial support",
   },
   ko: {
-    hdr_status:"연결 안 됨", tab_creatures:"내 크리처", tab_chat:"대화", tab_rag:"RAG", dev_monitor:"모니터",
+    hdr_status:"연결 안 됨", tab_creatures:"내 크리처", tab_forge:"만들기", tab_chat:"대화", tab_rag:"RAG", dev_monitor:"모니터",
     rag_paste:"+ 텍스트 붙여넣기", rag_folder:"📁 폴더 불러오기", chat_connect:"“내 크리처”에서 크리처를 골라 시작하세요.", chat_send:"보내기",
     view_hint:"크리처를 클릭하면 깨어나 대화가 시작됩니다. vitals는 깨어난 뒤 표시돼요.", view_new:"+ 새로 만들기",
     vt_emotion:"감정", vt_dominant:"우세 감정", vt_valence:"정서가", vt_arousal:"각성", vt_calm:"평온", vt_desperation:"절망",
@@ -416,7 +414,12 @@ function selectAgent(type) {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
-  document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+  const tabEl = document.querySelector(`.tab[data-tab="${tab}"]`);
+  if (tabEl) tabEl.classList.add('active');
+  const isForge = tab === 'forge';
+  document.querySelector('main').style.display = isForge ? 'none' : '';
+  document.getElementById('connectModal').classList.toggle('hidden', !isForge);
+  if (isForge) return;
   const isCreatures = tab === 'creatures';
   document.querySelector('.agent-panel').style.display = isCreatures ? 'none' : 'flex';
   document.getElementById('creaturesPanel').classList.toggle('active', isCreatures);
@@ -481,8 +484,6 @@ function toggleMonitor() {
   panel.classList.toggle('collapsed', !on);
 }
 
-function closeForge() { document.getElementById('connectModal').classList.add('hidden'); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeForge(); });
 
 // ---- FORGE: Load organs + presets ----
 
@@ -702,7 +703,6 @@ function enterChat() {
   const data = pendingCreature;
   if (!data) return;
   sessionId = data.session_id;
-  document.getElementById('connectModal').classList.add('hidden');
   document.getElementById('statusDot').classList.add('connected');
   document.getElementById('modelName').textContent = `${data.species} — ${data.organ_count} organs — REIMS ${data.reims.total}/10`;
   document.getElementById('chatInput').disabled = false;
@@ -767,13 +767,12 @@ async function forgeLoad() {
 // Init
 loadModels();
 loadOrgans();
-// Landing: start on the My Creatures viewer (don't force the FORGE wizard).
-// Pop FORGE only on a plain load with no creatures yet (first-time user).
-document.getElementById('connectModal').classList.add('hidden');
-switchTab('creatures');
-if (!(location.hash === '#creatures' || location.hash === '#observe')) {
+// Landing: start on the My Creatures viewer (don't force the Forge tab).
+// Open Forge only on a plain load with no creatures yet (first-time user).
+switchTab(location.hash === '#forge' ? 'forge' : 'creatures');
+if (!(location.hash === '#creatures' || location.hash === '#observe' || location.hash === '#forge')) {
   fetch('/api/creatures').then(r => r.json()).then(d => {
-    if (!d.creatures || !d.creatures.length) document.getElementById('connectModal').classList.remove('hidden');
+    if (!d.creatures || !d.creatures.length) switchTab('forge');
   }).catch(() => {});
 }
 
