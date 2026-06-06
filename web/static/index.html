@@ -133,20 +133,24 @@
 </head>
 <body>
 
+<div style="position:fixed;top:10px;right:14px;z-index:200">
+  <button id="langTog" onclick="toggleLang()" style="background:#161b22;color:#e6edf3;border:1px solid #2a2f3a;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">한국어</button>
+</div>
+
 <header>
   <div class="status-dot" id="statusDot"></div>
   <h1>LUDEX</h1>
-  <span class="subtitle" id="modelName">Not connected</span>
+  <span class="subtitle" id="modelName" data-i18n="hdr_status">Not connected</span>
 </header>
 
 <div class="tab-bar">
-  <div class="tab active" data-tab="chat" onclick="switchTab('chat')">Chat Agent</div>
-  <div class="tab" data-tab="rag" onclick="switchTab('rag')">RAG Agent</div>
-  <div class="tab" data-tab="creatures" onclick="switchTab('creatures')">My Creatures</div>
+  <div class="tab" data-tab="creatures" onclick="switchTab('creatures')" data-i18n="tab_creatures">My Creatures</div>
+  <div class="tab active" data-tab="chat" onclick="switchTab('chat')" data-i18n="tab_chat">Chat</div>
+  <div class="tab" data-tab="rag" onclick="switchTab('rag')" data-i18n="tab_rag">RAG</div>
   <div class="tab-spacer"></div>
   <div class="device-toggle">
     <span class="device-badge">DEVICE</span>
-    <label><input type="checkbox" id="monitorToggle" onchange="toggleMonitor()"> Monitor</label>
+    <label><input type="checkbox" id="monitorToggle" onchange="toggleMonitor()"> <span data-i18n="dev_monitor">Monitor</span></label>
   </div>
 </div>
 
@@ -154,59 +158,59 @@
   <div class="agent-panel">
     <!-- RAG toolbar (hidden by default) -->
     <div class="rag-toolbar hidden" id="ragToolbar">
-      <button onclick="ingestPrompt()">+ Paste Text</button>
-      <button onclick="ingestFolder()">📁 Load Folder</button>
+      <button onclick="ingestPrompt()" data-i18n="rag_paste">+ Paste Text</button>
+      <button onclick="ingestFolder()" data-i18n="rag_folder">📁 Load Folder</button>
       <span class="mem-count" id="memCount">0 documents</span>
     </div>
 
     <div class="messages" id="messages">
-      <div class="msg system">Connect a brain to start.</div>
+      <div class="msg system" data-i18n="chat_connect">Pick a creature in “My Creatures” to start.</div>
     </div>
     <div class="input-bar">
-      <input type="text" id="chatInput" placeholder="Type a message..." disabled />
-      <button id="sendBtn" disabled>Send</button>
+      <input type="text" id="chatInput" data-i18n-ph="chat_ph" placeholder="Type a message..." disabled />
+      <button id="sendBtn" data-i18n="chat_send" disabled>Send</button>
     </div>
   </div>
 
   <div class="creatures-panel" id="creaturesPanel">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px">
-      <span style="color:#8b94a3;font-size:13px">Click a creature to wake it and chat. Vitals show once it's awake.</span>
-      <button onclick="document.getElementById('connectModal').classList.remove('hidden')"
+      <span style="color:#8b94a3;font-size:13px" data-i18n="view_hint">Click a creature to wake it and chat. Vitals show once it's awake.</span>
+      <button onclick="document.getElementById('connectModal').classList.remove('hidden')" data-i18n="view_new"
         style="flex:none;padding:8px 14px;border:0;border-radius:8px;background:#e879a0;color:#1a0a12;font-weight:700;cursor:pointer">+ Forge new</button>
     </div>
     <div class="cgrid" id="cgrid"><div class="cempty">Loading…</div></div>
   </div>
 
   <div class="vitals-panel collapsed" id="vitalsPanel">
-    <h2>Emotion</h2>
-    <div class="vital-row"><span class="vital-label">Dominant</span><span class="vital-value" id="v-emo-dom">-</span></div>
-    <div class="vital-row"><span class="vital-label">Valence</span><span class="vital-value" id="v-emo-val">-</span></div>
+    <h2 data-i18n="vt_emotion">Emotion</h2>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_dominant">Dominant</span><span class="vital-value" id="v-emo-dom">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_valence">Valence</span><span class="vital-value" id="v-emo-val">-</span></div>
     <div class="bar-container"><div class="bar-fill green" id="bar-valence" style="width:50%"></div></div>
-    <div class="vital-row"><span class="vital-label">Arousal</span><span class="vital-value" id="v-emo-aro">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_arousal">Arousal</span><span class="vital-value" id="v-emo-aro">-</span></div>
     <div class="bar-container"><div class="bar-fill yellow" id="bar-arousal" style="width:0%"></div></div>
-    <div class="vital-row"><span class="vital-label">Calm</span><span class="vital-value" id="v-emo-calm">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_calm">Calm</span><span class="vital-value" id="v-emo-calm">-</span></div>
     <div class="bar-container"><div class="bar-fill blue" id="bar-calm" style="width:100%"></div></div>
-    <div class="vital-row"><span class="vital-label">Desperation</span><span class="vital-value" id="v-emo-desp">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_desperation">Desperation</span><span class="vital-value" id="v-emo-desp">-</span></div>
     <div class="bar-container"><div class="bar-fill red" id="bar-desp" style="width:0%"></div></div>
 
-    <h2>Cellular Immune</h2>
-    <div class="vital-row"><span class="vital-label">Threat</span><span class="vital-value" id="v-imm-threat">-</span></div>
+    <h2 data-i18n="vt_cellular">Cellular Immune</h2>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_threat">Threat</span><span class="vital-value" id="v-imm-threat">-</span></div>
     <div class="bar-container"><div class="bar-fill red" id="bar-threat" style="width:0%"></div></div>
-    <div class="vital-row"><span class="vital-label">Sensitivity</span><span class="vital-value" id="v-imm-sens">-</span></div>
-    <div class="vital-row"><span class="vital-label">Interventions</span><span class="vital-value" id="v-imm-int">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_sensitivity">Sensitivity</span><span class="vital-value" id="v-imm-sens">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_interventions">Interventions</span><span class="vital-value" id="v-imm-int">-</span></div>
 
-    <h2>Humoral Immune</h2>
-    <div class="vital-row"><span class="vital-label">Memory Cells</span><span class="vital-value" id="v-hum-mem">-</span></div>
-    <div class="vital-row"><span class="vital-label">Antibodies</span><span class="vital-value" id="v-hum-ab">-</span></div>
-    <div class="vital-row"><span class="vital-label">Threat</span><span class="vital-value" id="v-hum-threat">-</span></div>
+    <h2 data-i18n="vt_humoral">Humoral Immune</h2>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_memcells">Memory Cells</span><span class="vital-value" id="v-hum-mem">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_antibodies">Antibodies</span><span class="vital-value" id="v-hum-ab">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_threat">Threat</span><span class="vital-value" id="v-hum-threat">-</span></div>
     <div class="bar-container"><div class="bar-fill pink" id="bar-humoral" style="width:0%"></div></div>
-    <div class="vital-row"><span class="vital-label">Exploitation</span><span class="vital-value" id="v-hum-exploit">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_exploitation">Exploitation</span><span class="vital-value" id="v-hum-exploit">-</span></div>
 
-    <h2>Vitals</h2>
-    <div class="vital-row"><span class="vital-label">Turns</span><span class="vital-value" id="v-turns">-</span></div>
-    <div class="vital-row"><span class="vital-label">Tokens/turn</span><span class="vital-value" id="v-tokturn">-</span></div>
-    <div class="vital-row"><span class="vital-label">Avg Latency</span><span class="vital-value" id="v-latency">-</span></div>
-    <div class="vital-row"><span class="vital-label">Errors</span><span class="vital-value" id="v-errors">-</span></div>
+    <h2 data-i18n="vt_vitals">Vitals</h2>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_turns">Turns</span><span class="vital-value" id="v-turns">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_tokturn">Tokens/turn</span><span class="vital-value" id="v-tokturn">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_latency">Avg Latency</span><span class="vital-value" id="v-latency">-</span></div>
+    <div class="vital-row"><span class="vital-label" data-i18n="vt_errors">Errors</span><span class="vital-value" id="v-errors">-</span></div>
   </div>
 </main>
 
@@ -214,72 +218,72 @@
 <div class="connect-overlay" id="connectModal">
   <div class="connect-box">
     <h2>FORGE</h2>
-    <div class="forge-subtitle">Assemble your creature. Pick a brain, choose organs, awaken.</div>
+    <div class="forge-subtitle" data-i18n="forge_sub">Assemble your creature. Pick a brain, choose organs, awaken.</div>
 
     <!-- Step 1: BRAIN -->
     <div class="forge-step">
-      <div class="step-header">Step 1: Brain</div>
-      <label>Agent Type</label>
+      <div class="step-header" data-i18n="forge_s1">Step 1: Brain</div>
+      <label data-i18n="forge_agent_type">Agent Type</label>
       <div class="agent-select">
         <div class="agent-option selected" onclick="selectAgent('chat')" id="opt-chat">
-          <span class="icon">💬</span><span class="name">Chat</span><span class="desc">Conversational</span>
+          <span class="icon">💬</span><span class="name" data-i18n="forge_chat">Chat</span><span class="desc" data-i18n="forge_chat_d">Conversational</span>
         </div>
         <div class="agent-option" onclick="selectAgent('rag')" id="opt-rag">
-          <span class="icon">📚</span><span class="name">RAG</span><span class="desc">Document Q&A</span>
+          <span class="icon">📚</span><span class="name">RAG</span><span class="desc" data-i18n="forge_rag_d">Document Q&A</span>
         </div>
       </div>
-      <label>Provider</label>
+      <label data-i18n="forge_provider">Provider</label>
       <select id="providerSelect" onchange="onProviderChange()">
-        <option value="claude_cli">Claude Code (Max sub, recommended)</option>
-        <option value="codex_cli">Codex CLI (ChatGPT Plus/Pro/Team)</option>
-        <option value="ollama">Ollama (Local SLM, free)</option>
-        <option value="anthropic">Anthropic API (BYO key)</option>
-        <option value="openai">OpenAI API (BYO key)</option>
-        <option value="gemini_api">Gemini API (BYO key)</option>
-        <option value="gemini_cli">Gemini CLI (Google auth — retires 2026-06-18)</option>
-        <option value="agy_cli">agy CLI (Google auth — partial support)</option>
-        <option value="claude_sdk">Claude Code SDK (experimental, server timeout)</option>
+        <option value="claude_cli" data-i18n="prov_claude_cli">Claude Code (Max sub, recommended)</option>
+        <option value="codex_cli" data-i18n="prov_codex_cli">Codex CLI (ChatGPT Plus/Pro/Team)</option>
+        <option value="ollama" data-i18n="prov_ollama">Ollama (Local SLM, free)</option>
+        <option value="anthropic" data-i18n="prov_anthropic">Anthropic API (BYO key)</option>
+        <option value="openai" data-i18n="prov_openai">OpenAI API (BYO key)</option>
+        <option value="gemini_api" data-i18n="prov_gemini_api">Gemini API (BYO key)</option>
+        <option value="gemini_cli" data-i18n="prov_gemini_cli">Gemini CLI (Google auth — retires 2026-06-18)</option>
+        <option value="agy_cli" data-i18n="prov_agy_cli">agy CLI (Google auth — partial support)</option>
+        <option value="claude_sdk" data-i18n="prov_claude_sdk">Claude Code SDK (experimental, server timeout)</option>
       </select>
-      <label>Model</label>
-      <select id="modelSelect"><option value="">Loading models...</option></select>
-      <input type="text" id="modelInput" value="" placeholder="Or type model name" style="margin-top:4px" />
+      <label data-i18n="forge_model">Model</label>
+      <select id="modelSelect"><option value="" data-i18n="forge_loading">Loading models...</option></select>
+      <input type="text" id="modelInput" value="" data-i18n-ph="forge_model_ph" placeholder="Or type model name" style="margin-top:4px" />
     </div>
 
     <!-- Step 2: ORGANS -->
     <div class="forge-step">
-      <div class="step-header">Step 2: Organs</div>
+      <div class="step-header" data-i18n="forge_s2">Step 2: Organs</div>
       <div class="preset-bar" id="presetBar"></div>
       <div class="organ-grid" id="organGrid"></div>
     </div>
 
     <!-- Step 3: HOME -->
     <div class="forge-step">
-      <div class="step-header">Step 3: Home</div>
+      <div class="step-header" data-i18n="forge_s3">Step 3: Home</div>
       <select id="habitatSelect" onchange="onHabitatChange()">
-        <option value="temporary">Temporary (this session only)</option>
-        <option value="local">Local folder (persistent)</option>
-        <option value="portable">Portable (USB / external drive)</option>
+        <option value="temporary" data-i18n="hab_temp">Temporary (this session only)</option>
+        <option value="local" data-i18n="hab_local">Local folder (persistent)</option>
+        <option value="portable" data-i18n="hab_portable">Portable (USB / external drive)</option>
       </select>
       <div id="habitatPathRow" class="hidden" style="margin-top:8px">
         <input type="text" id="habitatPath" placeholder="C:\creatures\nimbus  or  ./creatures/nimbus" />
-        <div style="color:#666;font-size:11px;margin-top:4px">Folder will be created if it doesn't exist. Memories, immune state, and logs persist here.</div>
+        <div style="color:#666;font-size:11px;margin-top:4px" data-i18n="hab_note">Folder will be created if it doesn't exist. Memories, immune state, and logs persist here.</div>
       </div>
     </div>
 
     <!-- OR: Load existing creature -->
     <div class="forge-step" style="border-top: 2px solid #64aa88; margin-top: 16px;">
-      <div class="step-header" style="color: #e879a0;">Or: Load Existing Creature</div>
-      <input type="text" id="loadHabitatPath" placeholder="./creatures/Spike" />
-      <button class="primary" style="background:#e879a0; margin-top:8px;" onclick="forgeLoad()">Wake Up</button>
+      <div class="step-header" style="color: #e879a0;" data-i18n="forge_load_h">Or: Load Existing Creature</div>
+      <input type="text" id="loadHabitatPath" placeholder="./creatures/Nimbus" />
+      <button class="primary" style="background:#e879a0; margin-top:8px;" onclick="forgeLoad()" data-i18n="forge_wake">Wake Up</button>
     </div>
 
     <!-- Step 4: AWAKEN -->
     <div class="forge-step">
-      <div class="step-header">Step 4: Awaken</div>
-      <label>Name your creature</label>
-      <input type="text" id="creatureName" placeholder="creature" value="" oninput="onCreatureNameChange()" />
-      <label>System Prompt (optional)</label>
-      <input type="text" id="promptInput" placeholder="Custom personality..." />
+      <div class="step-header" data-i18n="forge_s4">Step 4: Awaken</div>
+      <label data-i18n="forge_name">Name your creature</label>
+      <input type="text" id="creatureName" placeholder="Nimbus" value="" oninput="onCreatureNameChange()" />
+      <label data-i18n="forge_sysprompt">System Prompt (optional)</label>
+      <input type="text" id="promptInput" data-i18n-ph="forge_sysprompt_ph" placeholder="Custom personality..." />
       <div class="reims-display hidden" id="reimsDisplay">
         <div class="reims-total" id="reimsTotal">-</div>
         <div>
@@ -287,10 +291,82 @@
           <div class="species-label" id="speciesLabel"></div>
         </div>
       </div>
-      <button class="primary" onclick="forgeAssemble()" id="assembleBtn">Awaken</button>
+      <button class="primary" onclick="forgeAssemble()" id="assembleBtn" data-i18n="forge_awaken">Awaken</button>
     </div>
   </div>
 </div>
+
+<script>
+// ---- Local app i18n (ko/en) ----
+const LI18N = {
+  en: {
+    hdr_status:"Not connected", tab_creatures:"My Creatures", tab_chat:"Chat", tab_rag:"RAG", dev_monitor:"Monitor",
+    rag_paste:"+ Paste Text", rag_folder:"📁 Load Folder", chat_connect:"Pick a creature in “My Creatures” to start.", chat_send:"Send",
+    view_hint:"Click a creature to wake it and chat. Vitals show once it's awake.", view_new:"+ Forge new",
+    vt_emotion:"Emotion", vt_dominant:"Dominant", vt_valence:"Valence", vt_arousal:"Arousal", vt_calm:"Calm", vt_desperation:"Desperation",
+    vt_cellular:"Cellular Immune", vt_threat:"Threat", vt_sensitivity:"Sensitivity", vt_interventions:"Interventions",
+    vt_humoral:"Humoral Immune", vt_memcells:"Memory Cells", vt_antibodies:"Antibodies", vt_exploitation:"Exploitation",
+    vt_vitals:"Vitals", vt_turns:"Turns", vt_tokturn:"Tokens/turn", vt_latency:"Avg Latency", vt_errors:"Errors",
+    forge_sub:"Assemble your creature. Pick a brain, choose organs, awaken.", forge_s1:"Step 1: Brain",
+    forge_agent_type:"Agent Type", forge_chat:"Chat", forge_chat_d:"Conversational", forge_rag_d:"Document Q&A", forge_provider:"Provider",
+    prov_claude_cli:"Claude Code (Max sub, recommended)", prov_codex_cli:"Codex CLI (ChatGPT Plus/Pro/Team)", prov_ollama:"Ollama (Local SLM, free)",
+    prov_anthropic:"Anthropic API (BYO key)", prov_openai:"OpenAI API (BYO key)", prov_gemini_api:"Gemini API (BYO key)",
+    prov_gemini_cli:"Gemini CLI (Google auth — retires 2026-06-18)", prov_agy_cli:"agy CLI (Google auth — partial support)",
+    prov_claude_sdk:"Claude Code SDK (experimental, server timeout)",
+    forge_model:"Model", forge_loading:"Loading models...", forge_model_ph:"Or type model name",
+    forge_s2:"Step 2: Organs", forge_s3:"Step 3: Home",
+    hab_temp:"Temporary (this session only)", hab_local:"Local folder (persistent)", hab_portable:"Portable (USB / external drive)",
+    hab_note:"Folder will be created if it doesn't exist. Memories, immune state, and logs persist here.",
+    forge_load_h:"Or: Load Existing Creature", forge_wake:"Wake Up", forge_s4:"Step 4: Awaken",
+    forge_name:"Name your creature", forge_sysprompt:"System Prompt (optional)", forge_sysprompt_ph:"Custom personality...", forge_awaken:"Awaken",
+    chat_ph:"Type a message...", chat_ph_rag:"Ask about your documents...",
+    view_loading:"Loading…", view_no:"No creatures yet. Tap “+ Forge new” to make one.",
+    card_organs:"Organs", card_memories:"Memories", card_emotion:"Emotion", card_wake:"Wake up & chat →",
+    msg_awoke:'Creature "{name}" awakened — say hi!',
+  },
+  ko: {
+    hdr_status:"연결 안 됨", tab_creatures:"내 크리처", tab_chat:"대화", tab_rag:"RAG", dev_monitor:"모니터",
+    rag_paste:"+ 텍스트 붙여넣기", rag_folder:"📁 폴더 불러오기", chat_connect:"“내 크리처”에서 크리처를 골라 시작하세요.", chat_send:"보내기",
+    view_hint:"크리처를 클릭하면 깨어나 대화가 시작됩니다. vitals는 깨어난 뒤 표시돼요.", view_new:"+ 새로 만들기",
+    vt_emotion:"감정", vt_dominant:"우세 감정", vt_valence:"정서가", vt_arousal:"각성", vt_calm:"평온", vt_desperation:"절망",
+    vt_cellular:"세포 면역", vt_threat:"위협", vt_sensitivity:"민감도", vt_interventions:"개입",
+    vt_humoral:"체액 면역", vt_memcells:"기억 세포", vt_antibodies:"항체", vt_exploitation:"악용",
+    vt_vitals:"바이탈", vt_turns:"턴", vt_tokturn:"턴당 토큰", vt_latency:"평균 지연", vt_errors:"오류",
+    forge_sub:"크리처를 조립하세요. 뇌를 고르고, 기관을 선택하고, 깨우세요.", forge_s1:"1단계: 뇌",
+    forge_agent_type:"에이전트 유형", forge_chat:"대화", forge_chat_d:"대화형", forge_rag_d:"문서 Q&A", forge_provider:"프로바이더",
+    prov_claude_cli:"Claude Code (Max 구독, 추천)", prov_codex_cli:"Codex CLI (ChatGPT Plus/Pro/Team)", prov_ollama:"Ollama (로컬 SLM, 무료)",
+    prov_anthropic:"Anthropic API (자기 키)", prov_openai:"OpenAI API (자기 키)", prov_gemini_api:"Gemini API (자기 키)",
+    prov_gemini_cli:"Gemini CLI (Google 인증 — 2026-06-18 종료)", prov_agy_cli:"agy CLI (Google 인증 — 부분 지원)",
+    prov_claude_sdk:"Claude Code SDK (실험적, 서버 타임아웃)",
+    forge_model:"모델", forge_loading:"모델 불러오는 중...", forge_model_ph:"또는 모델 이름 입력",
+    forge_s2:"2단계: 기관", forge_s3:"3단계: 서식지",
+    hab_temp:"임시 (이 세션만)", hab_local:"로컬 폴더 (지속)", hab_portable:"휴대용 (USB / 외장 드라이브)",
+    hab_note:"폴더가 없으면 생성됩니다. 기억·면역 상태·로그가 여기 지속됩니다.",
+    forge_load_h:"또는: 기존 크리처 불러오기", forge_wake:"깨우기", forge_s4:"4단계: 깨우기",
+    forge_name:"크리처 이름", forge_sysprompt:"시스템 프롬프트 (선택)", forge_sysprompt_ph:"맞춤 성격...", forge_awaken:"깨우기",
+    chat_ph:"메시지를 입력하세요...", chat_ph_rag:"문서에 대해 물어보세요...",
+    view_loading:"불러오는 중…", view_no:"아직 크리처가 없어요. “+ 새로 만들기”로 하나 만들어 보세요.",
+    card_organs:"기관", card_memories:"기억", card_emotion:"감정", card_wake:"깨워서 대화 →",
+    msg_awoke:'크리처 "{name}"가 깨어났어요 — 인사해 보세요!',
+  },
+};
+let _llang = "en";
+function t(k){ return (LI18N[_llang]||LI18N.en)[k] || (LI18N.en[k] || k); }
+function applyLang(lang){
+  _llang = (lang === "ko") ? "ko" : "en";
+  document.documentElement.lang = _llang;
+  const d = LI18N[_llang] || LI18N.en;
+  document.querySelectorAll("[data-i18n]").forEach(el => { const k = el.getAttribute("data-i18n"); if (k in d) el.textContent = d[k]; });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => { const k = el.getAttribute("data-i18n-ph"); if (k in d) el.placeholder = d[k]; });
+  const tog = document.getElementById("langTog"); if (tog) tog.textContent = _llang === "ko" ? "English" : "한국어";
+  try { localStorage.setItem("ludex_lang", _llang); } catch (e) {}
+  // refresh JS-rendered surfaces
+  if (typeof currentTab !== "undefined" && currentTab === "creatures" && typeof loadCreaturesView === "function") loadCreaturesView();
+  if (typeof currentTab !== "undefined" && typeof setChatPlaceholder === "function") setChatPlaceholder();
+}
+function toggleLang(){ applyLang(_llang === "ko" ? "en" : "ko"); }
+(function(){ let l=null; try{ l=localStorage.getItem("ludex_lang"); }catch(e){} if(!l) l=(navigator.language||"").toLowerCase().startsWith("ko")?"ko":"en"; applyLang(l); })();
+</script>
 
 <script>
 let sessionId = null;
@@ -315,17 +391,21 @@ function switchTab(tab) {
   document.getElementById('creaturesPanel').classList.toggle('active', isCreatures);
   if (isCreatures) { loadCreaturesView(); return; }
   document.getElementById('ragToolbar').classList.toggle('hidden', tab !== 'rag');
-  document.getElementById('chatInput').placeholder = tab === 'rag' ? 'Ask about your documents...' : 'Type a message...';
+  setChatPlaceholder();
+}
+function setChatPlaceholder(){
+  const el = document.getElementById('chatInput');
+  if (el) el.placeholder = currentTab === 'rag' ? t('chat_ph_rag') : t('chat_ph');
 }
 
 async function loadCreaturesView() {
   const grid = document.getElementById('cgrid');
-  grid.innerHTML = '<div class="cempty">Loading…</div>';
+  grid.innerHTML = `<div class="cempty">${t('view_loading')}</div>`;
   try {
     const res = await fetch('/api/creatures');
     const data = await res.json();
     const list = data.creatures || [];
-    if (!list.length) { grid.innerHTML = `<div class="cempty">No creatures found in ${data.dir}. Forge one with the FORGE button.</div>`; return; }
+    if (!list.length) { grid.innerHTML = `<div class="cempty">${t('view_no')}</div>`; return; }
     grid.innerHTML = list.map(c => {
       const dom = (c.emotion && c.emotion.dominant && Object.keys(c.emotion.dominant)[0]) || '—';
       const val = (c.emotion && c.emotion.valence != null) ? c.emotion.valence : '—';
@@ -333,10 +413,10 @@ async function loadCreaturesView() {
       return `<div class="ccard">
         <h3>${c.name}</h3>
         <div class="cbrain">${c.provider || '?'} / ${c.model || '?'}</div>
-        <div class="crow"><span>Organs</span><b>${(c.organs || []).length}</b></div>
-        <div class="crow"><span>Memories</span><b>${c.memories || 0}</b></div>
-        <div class="crow"><span>Emotion</span><b>${dom} · v${val}</b></div>
-        <button onclick="wakeCreature('${safe}')">Wake up &amp; chat →</button>
+        <div class="crow"><span>${t('card_organs')}</span><b>${(c.organs || []).length}</b></div>
+        <div class="crow"><span>${t('card_memories')}</span><b>${c.memories || 0}</b></div>
+        <div class="crow"><span>${t('card_emotion')}</span><b>${dom} · v${val}</b></div>
+        <button onclick="wakeCreature('${safe}')">${t('card_wake')}</button>
       </div>`;
     }).join('');
   } catch (e) { grid.innerHTML = `<div class="cempty">Failed to load: ${e.message}</div>`; }
@@ -357,7 +437,7 @@ async function wakeCreature(path) {
     document.getElementById('chatInput').disabled = false;
     document.getElementById('sendBtn').disabled = false;
     switchTab('chat');
-    addMessage('system', `Creature "${data.name}" awakened — say hi!`);
+    addMessage('system', t('msg_awoke').replace('{name}', data.name));
     document.getElementById('chatInput').focus();
     document.getElementById('monitorToggle').checked = true; toggleMonitor();
     try { const v = await (await fetch('/api/vitals/' + sessionId)).json(); if (!v.error) updateVitals(v); } catch (e) {}
