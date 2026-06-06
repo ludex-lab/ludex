@@ -81,8 +81,11 @@ python -m ludex audit Nimbus           # memory audit: accumulation, recall surf
 
 ## Forge — create a creature from the web
 
-Forge is the browser onboarding flow: pick a brain and organ combo, name your
-creature, and watch it settle into a habitat.
+The local app lets you forge a creature, browse your creatures ("My Creatures"),
+and chat with them while watching their vitals.
+
+**Easiest:** double-click `run.command` (macOS) or `run.bat` (Windows) — your
+browser opens automatically. Or from a terminal:
 
 ```bash
 python web/server.py          # then open http://localhost:7860

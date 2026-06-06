@@ -866,10 +866,15 @@ async def disconnect(session_id: str):
 # ============================================================
 
 if __name__ == "__main__":
-    import uvicorn
+    import uvicorn, threading, webbrowser
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--no-browser", action="store_true", help="don't auto-open the browser")
     args = parser.parse_args()
-    print(f"Ludex Demo: http://localhost:{args.port}")
+    url = f"http://localhost:{args.port}"
+    print(f"Ludex: {url}  (Ctrl+C to stop)")
+    if not args.no_browser:
+        # open the browser shortly after the server comes up (uvicorn.run blocks)
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host=args.host, port=args.port)

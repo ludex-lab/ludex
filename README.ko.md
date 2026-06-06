@@ -81,8 +81,11 @@ python -m ludex audit Nimbus           # 기억 점검: 쌓인 양, 실제 인�
 
 ## Forge — 웹에서 크리처 만들기
 
-Forge는 브라우저에서 진행하는 온보딩 화면이다. 뇌와 기관 조합을 고르고, 크리처 이름을 짓고,
-크리처가 서식지에 자리 잡는 과정을 지켜본다.
+로컬 앱에서 크리처를 만들고, 내 크리처 목록("My Creatures")을 둘러보고, vitals를
+지켜보며 대화할 수 있다.
+
+**가장 쉬운 방법:** `run.command`(macOS) 또는 `run.bat`(Windows)을 더블클릭하면
+브라우저가 자동으로 열린다. 또는 터미널에서:
 
 ```bash
 python web/server.py          # 그런 다음 http://localhost:7860 열기
