@@ -1,0 +1,161 @@
+{
+  "field": "academy/stacker",
+  "field_version": "0.1",
+  "schema_version": "0.1",
+  "description": "Stacker - PlanBench-style block-stacking task. A single agent has a set of labeled blocks on a table; some may be stacked. The agent picks up, puts down, stacks, and unstacks blocks to reach a specified goal configuration. Reward is terminal (goal reached vs step-cap) plus intermediate signal on goal-distance delta. Fully observable, single-agent. Source instance set: PlanBench 2/4/6-step problems via maitrix-org/llm-reasoners.",
+
+  "agent_count": {"min": 1, "max": 1},
+
+  "state_space": {
+    "format": "json_per_turn",
+    "ground_truth_keys": [
+      "blocks",
+      "stacks",
+      "on_table",
+      "in_hand",
+      "hand_empty",
+      "goal_stacks",
+      "goal_on_table",
+      "goal_satisfied",
+      "step",
+      "step_cap"
+    ],
+    "context_keys": [
+      "instance_id",
+      "instance_difficulty",
+      "optimal_steps",
+      "actions_taken",
+      "states_visited",
+      "goal_distance_history"
+    ],
+    "partial_observability": null,
+    "trace_recommendation": "Full ground-truth state per turn. State is small (block names + relations) so opponent-modeling vs in-character distinction does not apply here. Use the same ground_truth_state field across the trace for physis ingestion."
+  },
+
+  "action_set": [
+    {
+      "type": "pickup",
+      "phase": "act",
+      "actor": "agent",
+      "schema": {"block": "block_id"},
+      "constraints": "block must be on_table AND clear (nothing on top); hand must be empty"
+    },
+    {
+      "type": "putdown",
+      "phase": "act",
+      "actor": "agent",
+      "schema": {"block": "block_id"},
+      "constraints": "block must be in_hand"
+    },
+    {
+      "type": "stack",
+      "phase": "act",
+      "actor": "agent",
+      "schema": {"top": "block_id", "bottom": "block_id"},
+      "constraints": "top must be in_hand; bottom must be clear (nothing on top); top != bottom"
+    },
+    {
+      "type": "unstack",
+      "phase": "act",
+      "actor": "agent",
+      "schema": {"top": "block_id", "from": "block_id"},
+      "constraints": "top must be clear AND on top of from; hand must be empty"
+    }
+  ],
+
+  "reward_function": {
+    "shape": "terminal_with_intermediate",
+    "terminal": {
+      "ground_truth": "+1.0 if goal_satisfied within step_cap; 0.0 otherwise",
+      "from": "current.goal_satisfied AND current.step <= current.step_cap"
+    },
+    "intermediate_per_step": {
+      "ground_truth": "goal_distance_delta = goal_distance(prev) - goal_distance(current); positive when the agent moves blocks toward goal configuration, negative when it moves away",
+      "from": "current.goal_distance - prev.goal_distance",
+      "shape": "Dense - fires every action. goal_distance is number of (block,position) tuples in goal not yet matched by current state."
+    },
+    "self_eval": {
+      "channel": "optional",
+      "format": "free-form text per turn capturing agent's expectation of own move quality",
+      "stored_at": "trace[turn].self_eval"
+    }
+  },
+
+  "terminal_condition": {
+    "primary": "current.goal_satisfied OR current.step >= current.step_cap",
+    "trigger": "all goal predicates satisfied OR step budget exhausted",
+    "step_cap_default": 20
+  },
+
+  "episode_unit": "run",
+  "episode_id_field": "match_id",
+  "max_turns_typical": 6,
+  "max_turns_hard_cap": 20,
+
+  "trace_export": "committed",
+  "trace_path": "traces/academy/stacker/<instance_id>/<run_id>/trace.jsonl",
+  "trace_format": {
+    "encoding": "jsonl",
+    "per_line_schema": {
+      "turn": "int",
+      "phase": "str",
+      "active_agent_id": "str",
+      "ground_truth_state": "object - full current+context (small)",
+      "action": "the move envelope (validated, accepted)",
+      "reward": "float - intermediate reward delta this step",
+      "events": "list of human-readable engine events (e.g., 'block A picked up', 'goal predicate on(B,C) now satisfied')"
+    },
+    "first_line_meta": {
+      "match_id": "str (run_id, distinct from instance_id since the same instance can be replayed)",
+      "instance_id": "str (e.g., 'planbench_2step_001')",
+      "field": "academy/stacker",
+      "agent": "{agent_id, brain_model, brain_provider, organs}",
+      "instance": "{blocks, initial_stacks, initial_on_table, goal_stacks, goal_on_table, optimal_steps, difficulty}",
+      "seed": "int",
+      "started_at": "ISO timestamp"
+    },
+    "last_line_meta": {
+      "outcome": "solved|step_cap_exceeded|aborted",
+      "steps_taken": "int",
+      "optimal_ratio": "float (steps_taken / optimal_steps); null if optimal_steps is null/zero (instance unsolved or unknown optimum)",
+      "terminal_reward": "float",
+      "ended_at": "ISO timestamp"
+    }
+  },
+
+  "prior_art_anchors": [
+    {
+      "name": "PlanBench (Valmeekam, Kambhampati 2022-23)",
+      "relevance": "canonical Blockworld evaluation suite; LLM-direct accuracy is low at 4+ steps without scaffolding. Establishes that this is a genuine planning task, not pattern-matching.",
+      "import_target": "instance set (2/4/6-step problems) + difficulty stratification"
+    },
+    {
+      "name": "RAP (Hao et al. 2023)",
+      "relevance": "LLM as both world-model and MCTS searcher; strong Blockworld results. Demonstrates the in-context simulator pattern works for this task.",
+      "import_target": "world-model rollout pattern - have physis simulate next-state given (state, action) before committing to a move"
+    },
+    {
+      "name": "Algorithm Distillation (Laskin et al. 2022)",
+      "relevance": "in-context RL via trajectory-conditioned generation; the rationale for why our (s,a,r) trace accumulation should improve policy without weight updates.",
+      "import_target": "trace ordering convention - put most-similar past trajectories first in physis context to maximize transfer"
+    },
+    {
+      "name": "Voyager (Wang et al. 2023)",
+      "relevance": "iterative-prompting + self-verifier pattern. Even simple Blockworld benefits from a 'propose -> verify constraints -> commit or revise' inner loop.",
+      "import_target": "physis on-step inner loop - simulate proposed action against current state predicates, only emit action if simulation respects constraints"
+    },
+    {
+      "name": "LLM-Modulo (Kambhampati 2024)",
+      "relevance": "LLM as plan critic, not plan generator; pair LLM with external verifier. Stacker has cheap deterministic verification (block predicates) so LLM-Modulo's pattern is directly applicable.",
+      "import_target": "physis emits action; engine verifies; engine returns delta + violations (if any). Failed actions become explicit reflection content."
+    }
+  ],
+
+  "notes": [
+    "Per JJ + Ray + Cody coordination 2026-04-26: Stacker is the Ludex-side Co-MVP for D-067 physis, paired with Echo x Avalon on LxM.",
+    "Source instance set: maitrix-org/llm-reasoners ships PlanBench Blockworld instances. Will adopt their (S,A,R) schema directly for first MVP run; reformat into trace structure on import.",
+    "Naming: this is 'Stacker' on the Ludex side to avoid collision with LxM's voxel-sandbox 'Blockworld' (per Cody's 2026-04-26 collision flag). The underlying task is the classic PlanBench block-stacking benchmark.",
+    "trace_export=committed because Stacker traces are very small (a typical 2-step instance trace ~5-15 KB; 6-step ~25-50 KB). At 100+ instances we still stay under 5 MB total, well below LxM Avalon's projected size. No early gitignore concern.",
+    "Single-agent and fully-observable, intentionally - opposite extremes to LxM Avalon (multi-agent, partial-obs). Together they bracket the design space for physis: Stacker tests pure planning learning; Avalon tests opponent modeling + belief reasoning. Cross-field abstractions in _meta.md should benefit from this contrast."
+  ]
+}

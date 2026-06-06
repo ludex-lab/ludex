@@ -1,0 +1,64 @@
+# Model pricing table — Metabolic Gauge (D-081)
+# See docs/metabolic-gauge-design.md §6.
+#
+# Read-side cost join for tools/cost_report.py. Rates are USD per
+# 1,000,000 tokens (Mtok), split input / output.
+#
+# ┌─────────────────────────────────────────────────────────────────┐
+# │  VERIFIED 2026-05-26 from vendor pricing pages (see source       │
+# │  citations on each block below). Re-verify quarterly or when a   │
+# │  vendor announces a price change.                                │
+# └─────────────────────────────────────────────────────────────────┘
+#
+# Local (Ollama) models are genuinely $0. A model absent from this
+# table is treated by cost_report.py as unpriced (counted in volume,
+# flagged in cost).
+
+currency: USD
+unit: per_mtok
+updated: 2026-05-26
+prices_verified: true
+
+models:
+  # --- Anthropic (claude_cli / claude_sdk) ---
+  # Source: platform.claude.com/docs/en/about-claude/pricing (2026-05-26).
+  # 4.7 ships a new tokenizer that emits up to 35% more tokens for the
+  # same input text vs 4.6 — per-token price unchanged but effective
+  # per-request cost can rise ~35%. Watch this in cost_report tok_in
+  # trends if a creature's runs spike.
+  # Note 2026-06-15: subscription `-p` / Agent-SDK usage moves to a
+  # separate metered Agent SDK credit pool at full API rates. These
+  # rates apply to that path as well.
+  claude-opus-4-7:    { in: 5.00, out: 25.00 }    # 1M context, flat rate
+  claude-sonnet-4-6:  { in: 3.00, out: 15.00 }    # 1M context, flat rate
+  claude-haiku-4-5:   { in: 1.00, out: 5.00 }     # 200K context
+  haiku:              { in: 1.00, out: 5.00 }     # alias of claude-haiku-4-5
+
+  # --- OpenAI (codex_cli) ---
+  # Source: openai.com/api/pricing (2026-05-26). GPT-5.5 was a 2x
+  # output-price increase over 5.4 ($15 → $30); input held at $5.
+  gpt-5.5:            { in: 5.00, out: 30.00 }    # 1.05M context
+
+  # --- Google (gemini_cli) — paid API key from 2026-06-18 ---
+  # Source: ai.google.dev/gemini-api/docs/pricing (2026-05-26).
+  # 3-pro-preview model ID is treated as alias of 3.1-pro-preview for
+  # pricing purposes (a creature config may still use the older name
+  # and calls succeed — Google appears to honour both).
+  # >200K context tier ($4 / $18) not expected in maintenance use;
+  # add a separate entry if a creature regularly exceeds 200K input.
+  gemini-3-pro-preview:    { in: 2.00, out: 12.00 }    # <=200K tier
+  gemini-3.1-pro-preview:  { in: 2.00, out: 12.00 }    # <=200K tier
+  gemini-2.5-flash:        { in: 0.30, out: 2.50 }     # paid-only since 2026-04-01; model retires 2026-10-16
+
+  # --- Google (agy_cli) — Gemini 3.5 Flash, launched 2026-05-19 ---
+  # Source: ai.google.dev pricing + I/O 2026 announcements.
+  # agy CLI is the only `-p`-mode route to this model as of 2026-05-25
+  # (no `--model` flag in agy v1.0.2 — see [[gemini_cli_deprecation]]).
+  gemini-3.5-flash:        { in: 1.50, out: 9.00 }     # native Google Search grounding included
+
+  # --- Local (Ollama) — genuinely free, runs on local host ---
+  # See [[moss_intentional_dormancy]] for Mac-host operational pattern.
+  gemma4:e4b:       { in: 0.0, out: 0.0 }
+  qwen3.5:4b:       { in: 0.0, out: 0.0 }
+  llama3.1:8b:      { in: 0.0, out: 0.0 }
+  exaone3.5:7.8b:   { in: 0.0, out: 0.0 }

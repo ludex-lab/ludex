@@ -1,0 +1,12 @@
+{
+  "game": {
+    "name": "avalon",
+    "current": {
+      "players": {
+        "alpha":   {"role": "good"},
+        "bravo":   {"role": "evil"},
+        "charlie": {"role": "good"}
+      }
+    }
+  }
+}

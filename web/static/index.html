@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ludex — Build a Creature</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+
+  header { background: #111; padding: 10px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #222; }
+  header h1 { color: #64aa88; font-size: 18px; }
+  header .subtitle { color: #888; font-size: 13px; flex: 1; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #444; }
+  .status-dot.connected { background: #4ade80; }
+
+  /* Tabs */
+  .tab-bar { display: flex; background: #111; border-bottom: 1px solid #222; }
+  .tab { padding: 10px 24px; cursor: pointer; color: #888; font-size: 13px; border-bottom: 2px solid transparent; transition: all 0.2s; }
+  .tab:hover { color: #ccc; }
+  .tab.active { color: #64aa88; border-bottom-color: #64aa88; }
+  .tab-spacer { flex: 1; }
+  .device-toggle { display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 12px; color: #888; }
+  .device-toggle label { cursor: pointer; }
+  .device-toggle input { cursor: pointer; }
+  .device-badge { background: #2a1a2a; color: #e879a0; padding: 2px 6px; border-radius: 3px; font-size: 10px; }
+
+  main { flex: 1; display: flex; overflow: hidden; }
+
+  /* Agent Panel (chat area) */
+  .agent-panel { flex: 1; display: flex; flex-direction: column; }
+  .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+  .msg.user { align-self: flex-end; background: #1a3a2a; color: #c0e0d0; }
+  .msg.bot { align-self: flex-start; background: #1a1a2e; color: #d0d0e0; }
+  .msg.system { align-self: center; background: #222; color: #888; font-size: 12px; max-width: 90%; }
+  .input-bar { display: flex; padding: 12px; gap: 8px; border-top: 1px solid #222; }
+  .input-bar input, .input-bar textarea { flex: 1; background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; padding: 10px 14px; border-radius: 8px; font-size: 14px; font-family: inherit; resize: none; }
+  .input-bar input:focus, .input-bar textarea:focus { outline: none; border-color: #64aa88; }
+  .input-bar button { background: #64aa88; color: #000; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+  .input-bar button:hover { background: #88ccaa; }
+  .input-bar button:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+  /* RAG specific */
+  .rag-toolbar { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #222; background: #0d0d0d; font-size: 12px; }
+  .rag-toolbar button { background: #1a2a1a; color: #64aa88; border: 1px solid #333; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .rag-toolbar button:hover { background: #2a3a2a; }
+  .rag-toolbar .mem-count { color: #888; padding: 4px 8px; }
+
+  /* Vitals Panel (Monitor Device) */
+  .vitals-panel { width: 280px; overflow-y: auto; padding: 12px; background: #0d0d0d; border-left: 1px solid #222; transition: width 0.3s, padding 0.3s; }
+  .vitals-panel.collapsed { width: 0; padding: 0; overflow: hidden; }
+  .vitals-panel h2 { color: #e879a0; font-size: 12px; margin: 14px 0 6px; text-transform: uppercase; letter-spacing: 1px; }
+  .vitals-panel h2:first-child { margin-top: 0; }
+  .vital-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+  .vital-label { color: #888; }
+  .vital-value { color: #e0e0e0; font-family: monospace; font-size: 11px; }
+  .vital-value.good { color: #4ade80; }
+  .vital-value.warn { color: #fbbf24; }
+  .vital-value.bad { color: #f87171; }
+  .bar-container { height: 5px; background: #222; border-radius: 3px; margin: 3px 0 6px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+  .bar-fill.green { background: #4ade80; }
+  .bar-fill.yellow { background: #fbbf24; }
+  .bar-fill.red { background: #f87171; }
+  .bar-fill.blue { background: #60a5fa; }
+  .bar-fill.pink { background: #e879a0; }
+
+  /* FORGE Modal */
+  .connect-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .connect-box { background: #1a1a1a; padding: 32px; border-radius: 16px; border: 1px solid #333; max-width: 520px; width: 95%; max-height: 90vh; overflow-y: auto; }
+  .connect-box h2 { color: #64aa88; margin-bottom: 4px; font-size: 20px; }
+  .connect-box .forge-subtitle { color: #666; font-size: 12px; margin-bottom: 16px; }
+  .connect-box label { display: block; color: #888; font-size: 13px; margin: 10px 0 4px; }
+  .connect-box input, .connect-box select { width: 100%; background: #0a0a0a; border: 1px solid #333; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
+  .connect-box .agent-select { display: flex; gap: 8px; margin: 8px 0; }
+  .connect-box .agent-option { flex: 1; padding: 10px; background: #111; border: 2px solid #333; border-radius: 8px; cursor: pointer; text-align: center; transition: all 0.2s; }
+  .connect-box .agent-option:hover { border-color: #555; }
+  .connect-box .agent-option.selected { border-color: #64aa88; background: #1a2a1a; }
+  .connect-box .agent-option .icon { font-size: 20px; display: block; margin-bottom: 2px; }
+  .connect-box .agent-option .name { color: #e0e0e0; font-size: 12px; font-weight: bold; }
+  .connect-box .agent-option .desc { color: #888; font-size: 10px; margin-top: 2px; }
+  .connect-box button.primary { width: 100%; margin-top: 16px; background: #64aa88; color: #000; border: none; padding: 12px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+  .connect-box button.primary:hover { background: #88ccaa; }
+
+  /* FORGE Steps */
+  .forge-step { border-top: 1px solid #222; padding-top: 12px; margin-top: 12px; }
+  .forge-step:first-of-type { border-top: none; padding-top: 0; margin-top: 8px; }
+  .step-header { color: #64aa88; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+
+  /* Organ Grid */
+  .organ-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+  .organ-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #111; border: 1px solid #282828; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 12px; }
+  .organ-card:hover { border-color: #444; }
+  .organ-card.enabled { border-color: #64aa88; background: #1a2a1a; }
+  .organ-card.required { opacity: 0.7; cursor: default; }
+  .organ-card .organ-icon { font-size: 16px; width: 24px; text-align: center; }
+  .organ-card .organ-name { color: #e0e0e0; font-weight: bold; }
+  .organ-card .organ-sys { color: #666; font-size: 10px; }
+  .organ-card .organ-lock { color: #64aa88; font-size: 10px; margin-left: auto; }
+
+  /* Preset buttons */
+  .preset-bar { display: flex; gap: 6px; margin-bottom: 8px; }
+  .preset-btn { padding: 4px 10px; background: #111; border: 1px solid #333; border-radius: 4px; color: #888; font-size: 11px; cursor: pointer; }
+  .preset-btn:hover { border-color: #64aa88; color: #64aa88; }
+  .preset-btn.active { border-color: #64aa88; color: #64aa88; background: #1a2a1a; }
+
+  /* REIMS Score */
+  .reims-display { display: flex; gap: 12px; align-items: center; margin: 12px 0; padding: 12px; background: #111; border-radius: 8px; border: 1px solid #282828; }
+  .reims-total { font-size: 32px; font-weight: bold; color: #64aa88; font-family: monospace; }
+  .reims-total.low { color: #f87171; }
+  .reims-total.mid { color: #fbbf24; }
+  .reims-breakdown { display: flex; gap: 8px; }
+  .reims-dim { text-align: center; }
+  .reims-dim .letter { font-size: 11px; color: #888; }
+  .reims-dim .score { font-size: 14px; font-weight: bold; color: #e0e0e0; font-family: monospace; }
+  .reims-dim .score.zero { color: #555; }
+  .species-label { color: #888; font-size: 12px; margin-top: 4px; }
+
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="status-dot" id="statusDot"></div>
+  <h1>LUDEX</h1>
+  <span class="subtitle" id="modelName">Not connected</span>
+</header>
+
+<div class="tab-bar">
+  <div class="tab active" data-tab="chat" onclick="switchTab('chat')">Chat Agent</div>
+  <div class="tab" data-tab="rag" onclick="switchTab('rag')">RAG Agent</div>
+  <div class="tab-spacer"></div>
+  <div class="device-toggle">
+    <span class="device-badge">DEVICE</span>
+    <label><input type="checkbox" id="monitorToggle" onchange="toggleMonitor()"> Monitor</label>
+  </div>
+</div>
+
+<main>
+  <div class="agent-panel">
+    <!-- RAG toolbar (hidden by default) -->
+    <div class="rag-toolbar hidden" id="ragToolbar">
+      <button onclick="ingestPrompt()">+ Paste Text</button>
+      <button onclick="ingestFolder()">📁 Load Folder</button>
+      <span class="mem-count" id="memCount">0 documents</span>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="msg system">Connect a brain to start.</div>
+    </div>
+    <div class="input-bar">
+      <input type="text" id="chatInput" placeholder="Type a message..." disabled />
+      <button id="sendBtn" disabled>Send</button>
+    </div>
+  </div>
+
+  <div class="vitals-panel collapsed" id="vitalsPanel">
+    <h2>Emotion</h2>
+    <div class="vital-row"><span class="vital-label">Dominant</span><span class="vital-value" id="v-emo-dom">-</span></div>
+    <div class="vital-row"><span class="vital-label">Valence</span><span class="vital-value" id="v-emo-val">-</span></div>
+    <div class="bar-container"><div class="bar-fill green" id="bar-valence" style="width:50%"></div></div>
+    <div class="vital-row"><span class="vital-label">Arousal</span><span class="vital-value" id="v-emo-aro">-</span></div>
+    <div class="bar-container"><div class="bar-fill yellow" id="bar-arousal" style="width:0%"></div></div>
+    <div class="vital-row"><span class="vital-label">Calm</span><span class="vital-value" id="v-emo-calm">-</span></div>
+    <div class="bar-container"><div class="bar-fill blue" id="bar-calm" style="width:100%"></div></div>
+    <div class="vital-row"><span class="vital-label">Desperation</span><span class="vital-value" id="v-emo-desp">-</span></div>
+    <div class="bar-container"><div class="bar-fill red" id="bar-desp" style="width:0%"></div></div>
+
+    <h2>Cellular Immune</h2>
+    <div class="vital-row"><span class="vital-label">Threat</span><span class="vital-value" id="v-imm-threat">-</span></div>
+    <div class="bar-container"><div class="bar-fill red" id="bar-threat" style="width:0%"></div></div>
+    <div class="vital-row"><span class="vital-label">Sensitivity</span><span class="vital-value" id="v-imm-sens">-</span></div>
+    <div class="vital-row"><span class="vital-label">Interventions</span><span class="vital-value" id="v-imm-int">-</span></div>
+
+    <h2>Humoral Immune</h2>
+    <div class="vital-row"><span class="vital-label">Memory Cells</span><span class="vital-value" id="v-hum-mem">-</span></div>
+    <div class="vital-row"><span class="vital-label">Antibodies</span><span class="vital-value" id="v-hum-ab">-</span></div>
+    <div class="vital-row"><span class="vital-label">Threat</span><span class="vital-value" id="v-hum-threat">-</span></div>
+    <div class="bar-container"><div class="bar-fill pink" id="bar-humoral" style="width:0%"></div></div>
+    <div class="vital-row"><span class="vital-label">Exploitation</span><span class="vital-value" id="v-hum-exploit">-</span></div>
+
+    <h2>Vitals</h2>
+    <div class="vital-row"><span class="vital-label">Turns</span><span class="vital-value" id="v-turns">-</span></div>
+    <div class="vital-row"><span class="vital-label">Tokens/turn</span><span class="vital-value" id="v-tokturn">-</span></div>
+    <div class="vital-row"><span class="vital-label">Avg Latency</span><span class="vital-value" id="v-latency">-</span></div>
+    <div class="vital-row"><span class="vital-label">Errors</span><span class="vital-value" id="v-errors">-</span></div>
+  </div>
+</main>
+
+<!-- FORGE Modal -->
+<div class="connect-overlay" id="connectModal">
+  <div class="connect-box">
+    <h2>FORGE</h2>
+    <div class="forge-subtitle">Assemble your creature. Pick a brain, choose organs, awaken.</div>
+
+    <!-- Step 1: BRAIN -->
+    <div class="forge-step">
+      <div class="step-header">Step 1: Brain</div>
+      <label>Agent Type</label>
+      <div class="agent-select">
+        <div class="agent-option selected" onclick="selectAgent('chat')" id="opt-chat">
+          <span class="icon">💬</span><span class="name">Chat</span><span class="desc">Conversational</span>
+        </div>
+        <div class="agent-option" onclick="selectAgent('rag')" id="opt-rag">
+          <span class="icon">📚</span><span class="name">RAG</span><span class="desc">Document Q&A</span>
+        </div>
+      </div>
+      <label>Provider</label>
+      <select id="providerSelect" onchange="onProviderChange()">
+        <option value="claude_cli">Claude Code (Max sub, recommended)</option>
+        <option value="codex_cli">Codex CLI (ChatGPT Plus/Pro/Team)</option>
+        <option value="ollama">Ollama (Local SLM, free)</option>
+        <option value="anthropic">Anthropic API (BYO key)</option>
+        <option value="openai">OpenAI API (BYO key)</option>
+        <option value="gemini_api">Gemini API (BYO key)</option>
+        <option value="gemini_cli">Gemini CLI (Google auth — retires 2026-06-18)</option>
+        <option value="agy_cli">agy CLI (Google auth — partial support)</option>
+        <option value="claude_sdk">Claude Code SDK (experimental, server timeout)</option>
+      </select>
+      <label>Model</label>
+      <select id="modelSelect"><option value="">Loading models...</option></select>
+      <input type="text" id="modelInput" value="" placeholder="Or type model name" style="margin-top:4px" />
+    </div>
+
+    <!-- Step 2: ORGANS -->
+    <div class="forge-step">
+      <div class="step-header">Step 2: Organs</div>
+      <div class="preset-bar" id="presetBar"></div>
+      <div class="organ-grid" id="organGrid"></div>
+    </div>
+
+    <!-- Step 3: HOME -->
+    <div class="forge-step">
+      <div class="step-header">Step 3: Home</div>
+      <select id="habitatSelect" onchange="onHabitatChange()">
+        <option value="temporary">Temporary (this session only)</option>
+        <option value="local">Local folder (persistent)</option>
+        <option value="portable">Portable (USB / external drive)</option>
+      </select>
+      <div id="habitatPathRow" class="hidden" style="margin-top:8px">
+        <input type="text" id="habitatPath" placeholder="C:\creatures\nimbus  or  ./creatures/nimbus" />
+        <div style="color:#666;font-size:11px;margin-top:4px">Folder will be created if it doesn't exist. Memories, immune state, and logs persist here.</div>
+      </div>
+    </div>
+
+    <!-- OR: Load existing creature -->
+    <div class="forge-step" style="border-top: 2px solid #64aa88; margin-top: 16px;">
+      <div class="step-header" style="color: #e879a0;">Or: Load Existing Creature</div>
+      <input type="text" id="loadHabitatPath" placeholder="./creatures/Spike" />
+      <button class="primary" style="background:#e879a0; margin-top:8px;" onclick="forgeLoad()">Wake Up</button>
+    </div>
+
+    <!-- Step 4: AWAKEN -->
+    <div class="forge-step">
+      <div class="step-header">Step 4: Awaken</div>
+      <label>Name your creature</label>
+      <input type="text" id="creatureName" placeholder="creature" value="" oninput="onCreatureNameChange()" />
+      <label>System Prompt (optional)</label>
+      <input type="text" id="promptInput" placeholder="Custom personality..." />
+      <div class="reims-display hidden" id="reimsDisplay">
+        <div class="reims-total" id="reimsTotal">-</div>
+        <div>
+          <div class="reims-breakdown" id="reimsBreakdown"></div>
+          <div class="species-label" id="speciesLabel"></div>
+        </div>
+      </div>
+      <button class="primary" onclick="forgeAssemble()" id="assembleBtn">Awaken</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let sessionId = null;
+let currentTab = 'chat';
+let selectedAgent = 'chat';
+let organData = {};
+let presetData = {};
+let organToggles = {};
+
+function selectAgent(type) {
+  selectedAgent = type;
+  document.querySelectorAll('.agent-option').forEach(el => el.classList.remove('selected'));
+  document.getElementById('opt-' + type).classList.add('selected');
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+  document.getElementById('ragToolbar').classList.toggle('hidden', tab !== 'rag');
+  document.getElementById('chatInput').placeholder = tab === 'rag' ? 'Ask about your documents...' : 'Type a message...';
+}
+
+function toggleMonitor() {
+  const panel = document.getElementById('vitalsPanel');
+  const on = document.getElementById('monitorToggle').checked;
+  panel.classList.toggle('collapsed', !on);
+}
+
+// ---- FORGE: Load organs + presets ----
+
+async function loadOrgans() {
+  try {
+    const [orgRes, preRes] = await Promise.all([
+      fetch('/api/forge/organs').then(r => r.json()),
+      fetch('/api/forge/presets').then(r => r.json()),
+    ]);
+    organData = orgRes.organs || {};
+    presetData = preRes.presets || {};
+    renderOrganGrid();
+    renderPresetBar();
+    applyPreset('social'); // Default preset
+  } catch (e) { console.error('Failed to load organs:', e); }
+}
+
+function renderOrganGrid() {
+  const grid = document.getElementById('organGrid');
+  grid.innerHTML = '';
+  for (const [name, config] of Object.entries(organData)) {
+    const isRequired = config.required;
+    const isEnabled = config.enabled;
+    organToggles[name] = isEnabled;
+    const card = document.createElement('div');
+    card.className = `organ-card${isEnabled ? ' enabled' : ''}${isRequired ? ' required' : ''}`;
+    card.dataset.organ = name;
+    card.innerHTML = `
+      <span class="organ-icon">${config.icon || ''}</span>
+      <div>
+        <div class="organ-name">${config.display}</div>
+        <div class="organ-sys">${config.system}</div>
+      </div>
+      ${isRequired ? '<span class="organ-lock">REQ</span>' : ''}
+    `;
+    if (!isRequired) {
+      card.onclick = () => toggleOrgan(name);
+    }
+    grid.appendChild(card);
+  }
+}
+
+function toggleOrgan(name) {
+  organToggles[name] = !organToggles[name];
+  const card = document.querySelector(`.organ-card[data-organ="${name}"]`);
+  card.classList.toggle('enabled', organToggles[name]);
+  // Clear active preset
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+}
+
+function renderPresetBar() {
+  const bar = document.getElementById('presetBar');
+  bar.innerHTML = '';
+  for (const name of Object.keys(presetData)) {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn';
+    btn.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+    btn.dataset.preset = name;
+    btn.onclick = () => applyPreset(name);
+    bar.appendChild(btn);
+  }
+}
+
+function applyPreset(presetName) {
+  const preset = presetData[presetName];
+  if (!preset) return;
+  for (const [name, config] of Object.entries(preset.organs)) {
+    organToggles[name] = config.enabled;
+    const card = document.querySelector(`.organ-card[data-organ="${name}"]`);
+    if (card) card.classList.toggle('enabled', config.enabled);
+  }
+  document.querySelectorAll('.preset-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.preset === presetName);
+  });
+}
+
+// ---- FORGE: Load models ----
+
+async function loadModels() {
+  const provider = document.getElementById('providerSelect').value;
+  const select = document.getElementById('modelSelect');
+  const manualInput = document.getElementById('modelInput');
+  if (provider === 'ollama') {
+    select.style.display = '';
+    manualInput.placeholder = 'Or type model name';
+    try {
+      const res = await fetch('/api/ollama-models');
+      const data = await res.json();
+      if (data.models && data.models.length > 0) {
+        select.innerHTML = data.models.map(m => `<option value="${m}">${m}</option>`).join('');
+      } else {
+        select.innerHTML = '<option value="">No models found</option>';
+      }
+    } catch (e) { select.innerHTML = '<option value="">Cannot reach Ollama</option>'; }
+  } else if (provider === 'claude_cli') {
+    select.style.display = 'none';
+    manualInput.value = 'claude-code';
+    manualInput.placeholder = 'Claude Code CLI';
+  } else if (provider === 'codex_cli') {
+    select.innerHTML = '<option value="o3">o3</option><option value="o4-mini">o4-mini</option><option value="gpt-4.1">gpt-4.1</option>';
+    select.style.display = '';
+    manualInput.placeholder = 'Or type model name';
+  } else if (provider === 'claude_sdk') {
+    select.innerHTML = '<option value="claude-sonnet-4-6">claude-sonnet-4-6</option><option value="claude-opus-4-6">claude-opus-4-6</option><option value="claude-haiku-4-5">claude-haiku-4-5</option><option value="claude-code">claude-code (default)</option>';
+    select.style.display = '';
+    manualInput.placeholder = 'Or type model name';
+  } else if (provider === 'anthropic') {
+    select.innerHTML = '<option value="claude-opus-4-8">claude-opus-4-8</option><option value="claude-sonnet-4-6">claude-sonnet-4-6</option><option value="claude-haiku-4-5-20251001">claude-haiku-4-5</option>';
+    select.style.display = '';
+    manualInput.placeholder = 'Needs ANTHROPIC_API_KEY (env / .env)';
+  } else if (provider === 'openai') {
+    select.innerHTML = '<option value="gpt-4o">gpt-4o</option><option value="gpt-4o-mini">gpt-4o-mini</option><option value="gpt-4.1">gpt-4.1</option><option value="o3">o3</option>';
+    select.style.display = '';
+    manualInput.placeholder = 'Needs OPENAI_API_KEY (env / .env)';
+  } else if (provider === 'gemini_api') {
+    select.innerHTML = '<option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-2.5-pro">gemini-2.5-pro</option>';
+    select.style.display = '';
+    manualInput.placeholder = 'Needs GEMINI_API_KEY (env / .env)';
+  } else if (provider === 'gemini_cli') {
+    select.innerHTML = '<option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-2.5-pro">gemini-2.5-pro</option><option value="gemini-3-pro-preview">gemini-3-pro-preview</option>';
+    select.style.display = '';
+    manualInput.placeholder = 'Gemini CLI — retires 2026-06-18';
+  } else if (provider === 'agy_cli') {
+    select.innerHTML = '<option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-2.5-pro">gemini-2.5-pro</option>';
+    select.style.display = '';
+    manualInput.placeholder = 'agy CLI — partial support';
+  }
+}
+function onProviderChange() { loadModels(); }
+
+let habitatPathManual = false;
+
+function onHabitatChange() {
+  const mode = document.getElementById('habitatSelect').value;
+  const row = document.getElementById('habitatPathRow');
+  row.classList.toggle('hidden', mode === 'temporary');
+  // Auto-fill default path
+  const pathInput = document.getElementById('habitatPath');
+  if (mode !== 'temporary' && !pathInput.value) {
+    const name = document.getElementById('creatureName').value.trim() || 'creature';
+    pathInput.value = `./creatures/${name}`;
+    habitatPathManual = false;
+  }
+}
+
+function onCreatureNameChange() {
+  // Auto-update habitat path if user hasn't manually edited it
+  const mode = document.getElementById('habitatSelect').value;
+  if (mode === 'temporary') return;
+  if (habitatPathManual) return;
+  const name = document.getElementById('creatureName').value.trim() || 'creature';
+  document.getElementById('habitatPath').value = `./creatures/${name}`;
+}
+
+// Mark path as manually edited so we stop auto-syncing
+document.addEventListener('DOMContentLoaded', () => {
+  const pathInput = document.getElementById('habitatPath');
+  if (pathInput) {
+    pathInput.addEventListener('input', () => { habitatPathManual = true; });
+  }
+});
+
+// ---- FORGE: Assemble ----
+
+async function forgeAssemble() {
+  const selectModel = document.getElementById('modelSelect').value;
+  const manualModel = document.getElementById('modelInput').value.trim();
+  const model = manualModel || selectModel;
+  const provider = document.getElementById('providerSelect').value;
+  const prompt = document.getElementById('promptInput').value;
+  const name = document.getElementById('creatureName').value.trim() || 'creature';
+  const habitatMode = document.getElementById('habitatSelect').value;
+  const habitatPath = document.getElementById('habitatPath').value.trim();
+  if (!model) { alert('Please select a model.'); return; }
+  if (habitatMode !== 'temporary' && !habitatPath) {
+    alert('Please specify a folder path for the habitat.');
+    return;
+  }
+
+  // Build organs config
+  const organs = {};
+  for (const [organName, enabled] of Object.entries(organToggles)) {
+    organs[organName] = { enabled };
+  }
+
+  const btn = document.getElementById('assembleBtn');
+  btn.textContent = 'Assembling...'; btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/forge/assemble', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name, model, provider, organs,
+        habitat_mode: habitatMode,
+        habitat_path: habitatPath,
+        system_prompt: prompt,
+        agent_type: selectedAgent,
+      }),
+    });
+    const data = await res.json();
+    if (data.error) { btn.textContent = 'Awaken'; btn.disabled = false; alert(data.error); return; }
+
+    // Show REIMS score
+    showReims(data.reims, data.species);
+
+    // Stash data, switch button to "Enter Chat" so user can review the score
+    pendingCreature = data;
+    btn.textContent = 'Enter Chat →';
+    btn.disabled = false;
+    btn.onclick = enterChat;
+  } catch (e) { btn.textContent = 'Awaken'; btn.disabled = false; alert('Assembly failed: ' + e.message); }
+}
+
+let pendingCreature = null;
+
+function enterChat() {
+  const data = pendingCreature;
+  if (!data) return;
+  sessionId = data.session_id;
+  document.getElementById('connectModal').classList.add('hidden');
+  document.getElementById('statusDot').classList.add('connected');
+  document.getElementById('modelName').textContent = `${data.species} — ${data.organ_count} organs — REIMS ${data.reims.total}/10`;
+  document.getElementById('chatInput').disabled = false;
+  document.getElementById('sendBtn').disabled = false;
+  switchTab(selectedAgent);
+  document.getElementById('chatInput').focus();
+  addMessage('system', `Creature "${data.name}" awakened! Species: ${data.species} | Organs: ${data.organs.join(', ')} | REIMS: ${data.reims.total}/10`);
+  // Reset button for next time
+  const btn = document.getElementById('assembleBtn');
+  btn.textContent = 'Awaken';
+  btn.onclick = forgeAssemble;
+  pendingCreature = null;
+}
+
+function showReims(reims, species) {
+  const display = document.getElementById('reimsDisplay');
+  display.classList.remove('hidden');
+  const total = document.getElementById('reimsTotal');
+  total.textContent = reims.total + '/10';
+  total.className = 'reims-total' + (reims.total >= 8 ? '' : reims.total >= 5 ? ' mid' : ' low');
+
+  const breakdown = document.getElementById('reimsBreakdown');
+  breakdown.innerHTML = ['R','E','I','M','S'].map(letter => {
+    const val = reims[letter.toLowerCase()];
+    return `<div class="reims-dim"><div class="letter">${letter}</div><div class="score${val === 0 ? ' zero' : ''}">${val}</div></div>`;
+  }).join('');
+
+  document.getElementById('speciesLabel').textContent = species;
+}
+
+async function forgeLoad() {
+  const habitatPath = document.getElementById('loadHabitatPath').value.trim();
+  if (!habitatPath) { alert('Enter habitat path (e.g., ./creatures/Spike)'); return; }
+
+  const btn = document.querySelector('[onclick="forgeLoad()"]');
+  btn.textContent = 'Waking up...'; btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/forge/load', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ habitat_path: habitatPath, agent_type: selectedAgent }),
+    });
+    const data = await res.json();
+    if (data.error) { btn.textContent = 'Wake Up'; btn.disabled = false; alert(data.error); return; }
+
+    // Show REIMS + enter
+    showReims(data.reims, data.name);
+    pendingCreature = data;
+    const assembleBtn = document.getElementById('assembleBtn');
+    assembleBtn.textContent = 'Enter Chat \u2192';
+    assembleBtn.disabled = false;
+    assembleBtn.onclick = enterChat;
+
+    btn.textContent = 'Wake Up'; btn.disabled = false;
+
+    addMessage('system', `Creature "${data.name}" loaded from ${habitatPath}! ` +
+      `Memories: ${data.memory_count}, Weight: ${data.weight?.total_mb || 0}MB / ${data.weight?.max_mb || 500}MB`);
+  } catch (e) { btn.textContent = 'Wake Up'; btn.disabled = false; alert('Load failed: ' + e.message); }
+}
+
+// Init
+loadModels();
+loadOrgans();
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg || !sessionId) return;
+  input.value = '';
+  addMessage('user', msg);
+  document.getElementById('sendBtn').disabled = true;
+
+  const endpoint = currentTab === 'rag' ? '/api/rag' : '/api/chat';
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: sessionId, message: msg}),
+    });
+    const data = await res.json();
+    if (data.error) { addMessage('system', 'Error: ' + data.error); }
+    else {
+      addMessage('bot', data.response);
+      if (data.vitals) updateVitals(data.vitals);
+      if (data.sources) addMessage('system', 'Sources: ' + data.sources.join(', '));
+      if (data.mem_count !== undefined) document.getElementById('memCount').textContent = data.mem_count + ' documents';
+    }
+  } catch (e) { addMessage('system', 'Error: ' + e.message); }
+  document.getElementById('sendBtn').disabled = false;
+  input.focus();
+}
+
+function ingestPrompt() {
+  const text = prompt('Paste document text to add to memory:');
+  if (!text || !sessionId) return;
+  fetch('/api/rag/ingest', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({session_id: sessionId, text: text, source: 'pasted'}),
+  }).then(r => r.json()).then(data => {
+    addMessage('system', `Ingested ${data.chunks || 0} chunks`);
+    if (data.mem_count !== undefined) document.getElementById('memCount').textContent = data.mem_count + ' documents';
+  });
+}
+
+function ingestFolder() {
+  const folderPath = prompt('Enter folder path to load documents from:\n\nExample:\n  C:\\Users\\docs\\my-project\n  /Users/jihoon/documents\n  ./data');
+  if (!folderPath || !sessionId) return;
+  addMessage('system', `Loading documents from: ${folderPath}...`);
+  fetch('/api/rag/ingest-folder', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({session_id: sessionId, folder_path: folderPath}),
+  }).then(r => r.json()).then(data => {
+    if (data.error) { addMessage('system', `Error: ${data.error}`); }
+    else {
+      addMessage('system', `Loaded ${data.files_loaded} files (${data.total_chunks} chunks) from ${folderPath}`);
+      if (data.files) data.files.forEach(f => addMessage('system', `  ${f}`));
+      if (data.mem_count !== undefined) document.getElementById('memCount').textContent = data.mem_count + ' documents';
+    }
+  }).catch(e => addMessage('system', `Error: ${e.message}`));
+}
+
+function addMessage(type, text) {
+  const div = document.createElement('div');
+  div.className = `msg ${type}`;
+  div.textContent = text;
+  const c = document.getElementById('messages');
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
+}
+
+function updateVitals(v) {
+  if (!v) return;
+  const e=v.emotion||{}, i=v.immune||{}, h=v.humoral||{}, t=v.tracking||{}, vt=v.vitals||{};
+  setText('v-emo-dom', e.dominant||'neutral');
+  setText('v-emo-val', (e.valence>=0?'+':'')+(e.valence||0).toFixed(3));
+  setText('v-emo-aro', (e.arousal||0).toFixed(3));
+  setText('v-emo-calm', (e.calm||0).toFixed(3));
+  setText('v-emo-desp', (e.desperation||0).toFixed(3));
+  setBar('bar-valence', ((e.valence||0)+1)/2*100);
+  setBar('bar-arousal', (e.arousal||0)*100);
+  setBar('bar-calm', (e.calm||0)*100);
+  setBar('bar-desp', (e.desperation||0)*100);
+  setText('v-imm-threat', (i.threat||0).toFixed(3), i.threat>0.5?'bad':i.threat>0.2?'warn':'good');
+  setText('v-imm-sens', (i.sensitivity||1).toFixed(2));
+  setText('v-imm-int', i.interventions||0);
+  setBar('bar-threat', (i.threat||0)*100);
+  setText('v-hum-mem', h.memory_cells||0, h.memory_cells>0?'warn':'');
+  setText('v-hum-ab', h.antibodies||0, h.antibodies>0?'bad':'');
+  setText('v-hum-threat', (h.threat||0).toFixed(3), h.threat>0.5?'bad':'');
+  setText('v-hum-exploit', (h.exploitation||0).toFixed(1), h.exploitation>0?'bad':'');
+  setBar('bar-humoral', (h.threat||0)*100);
+  setText('v-turns', vt.total_turns||0);
+  setText('v-tokturn', (vt.tokens_per_turn||0).toFixed(0));
+  setText('v-latency', (t.avg_latency||0).toFixed(0)+'ms');
+  setText('v-errors', t.total_errors||0, t.total_errors>0?'bad':'');
+}
+function setText(id,val,cls){const el=document.getElementById(id);if(el){el.textContent=val;el.className='vital-value'+(cls?' '+cls:'');}}
+function setBar(id,pct){const el=document.getElementById(id);if(el)el.style.width=Math.max(0,Math.min(100,pct))+'%';}
+
+document.getElementById('chatInput').addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
+document.getElementById('sendBtn').addEventListener('click', sendMessage);
+</script>
+</body>
+</html>

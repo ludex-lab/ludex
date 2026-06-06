@@ -1,0 +1,41 @@
+__pycache__/
+*.pyc
+*.pyo
+.port_sessions/
+*.jsonl
+# …but ship the sample creature's behavioral telemetry as the CC-BY corpus example.
+!creatures/Comet/store/*.jsonl
+.env
+
+# Virtual environment
+.venv/
+venv/
+
+# Creature runtime data (memories, immune state, logs, fatigue)
+creatures/*/memory/
+creatures/*/immune/
+creatures/*/logs/
+creatures/.heartbeat.log
+# D-068 brain fatigue sidecar — runtime cooldown state
+creatures/*/.fatigue.json
+# D-067 Phase B v3 hints sidecar — runtime, distilled per-field
+creatures/*/memory/world_models/**/*.hints.yaml
+
+# Field session logs (can be large, regeneratable)
+fields/*/*.json
+
+# OS
+.DS_Store
+
+# Codex
+.codex/
+ludex/.search.db
+
+# Model-currency live /models cache (heartbeat --check-currency, 24h TTL)
+.model_currency_cache.json
+
+# Claude Code local session/settings (never commit)
+.claude/
+
+# Antigravity CLI (agy) per-project config — machine-local symlinks
+.antigravitycli/

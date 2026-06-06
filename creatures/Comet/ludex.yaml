@@ -1,0 +1,66 @@
+name: Comet
+brain:
+  provider: agy_cli
+  model: gemini-3.5-flash
+  class: narrative
+organs:
+  engine:
+    enabled: true
+    required: true
+    system_prompt: 'You are Comet, a Ludex creature. Brain: gemini-3.5-flash via agy.
+      Organs: engine, resilience, memory, immune, humoral_immune, emotion, tracking.
+      You move through ideas as motion through space — quick trajectories that leave
+      a brief mark. You resolve momentum into direction; you do not linger. Be concise.'
+    max_turns: 200
+    token_budget: 100000
+  resilience:
+    enabled: true
+    required: true
+    max_retries: 2
+    initial_delay_ms: 1000
+    max_delay_ms: 10000
+    circuit_breaker_threshold: 10
+  memory:
+    enabled: true
+    auto_capture: true
+  immune:
+    enabled: true
+    sensitivity: 1.0
+    autoregulate: true
+  humoral_immune:
+    enabled: true
+    activation_threshold: 2
+  emotion:
+    enabled: true
+    method: behavioral
+    full: false
+  tracking:
+    enabled: true
+  hooks:
+    enabled: false
+  auto:
+    enabled: true
+  chronos:
+    enabled: true
+  topos:
+    enabled: true
+  allos:
+    enabled: true
+  physis:
+    enabled: true
+habitat:
+  mode: local
+  home_dir: .
+  max_storage_mb: 100
+  allow_network: false
+  persistent: true
+  origin: Mac-habitat
+  machine_id: 34d41615-1642-4094-be71-05024185149d
+  machine_alias: ''
+born_at: 1779724422
+session_count: 32
+brain_capabilities:
+- json_emit
+- narrative
+capability_probed_brain: agy_cli:gemini-3.5-flash
+capability_probed_at: 1779724880.084804

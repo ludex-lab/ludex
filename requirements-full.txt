@@ -1,0 +1,15 @@
+# Ludex — full install: core + optional local models.
+#   pip install -r requirements-full.txt
+-r requirements.txt
+
+# Local emotion classifier (j-hartmann, via HuggingFace). Optional — the
+# emotion organ falls back to a lexicon scorer when these are absent, so install
+# only if you want transformer-based affect classification. These are heavy
+# (torch pulls hundreds of MB).
+transformers>=4.40
+torch>=2.2
+
+# Reserved: a lancedb-backed vector-recall memory backend is referenced in the
+# design notes but NOT yet wired — the memory organ uses JSONL today, so this is
+# not required to run any creature. Uncomment only when that backend lands.
+# lancedb>=0.15

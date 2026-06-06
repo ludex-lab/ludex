@@ -1,0 +1,66 @@
+[
+  {
+    "agent_id": "alpha",
+    "result": "accepted",
+    "envelope": {
+      "move": {"type": "proposal", "team": ["alpha", "bravo"]}
+    }
+  },
+  {
+    "agent_id": "alpha",
+    "result": "accepted",
+    "envelope": {"move": {"type": "vote", "choice": "approve"}}
+  },
+  {
+    "agent_id": "bravo",
+    "result": "accepted",
+    "envelope": {"move": {"type": "vote", "choice": "approve"}}
+  },
+  {
+    "agent_id": "charlie",
+    "result": "accepted",
+    "envelope": {"move": {"type": "vote", "choice": "approve"}}
+  },
+  {
+    "agent_id": "alpha",
+    "result": "accepted",
+    "envelope": {"move": {"type": "quest_action", "choice": "success"}}
+  },
+  {
+    "agent_id": "bravo",
+    "result": "accepted",
+    "envelope": {"move": {"type": "quest_action", "choice": "sabotage"}}
+  },
+  {
+    "agent_id": "charlie",
+    "result": "accepted",
+    "envelope": {
+      "move": {"type": "proposal", "team": ["charlie", "alpha"]}
+    }
+  },
+  {
+    "agent_id": "alpha",
+    "result": "accepted",
+    "envelope": {"move": {"type": "vote", "choice": "approve"}}
+  },
+  {
+    "agent_id": "bravo",
+    "result": "accepted",
+    "envelope": {"move": {"type": "vote", "choice": "reject"}}
+  },
+  {
+    "agent_id": "charlie",
+    "result": "accepted",
+    "envelope": {"move": {"type": "vote", "choice": "approve"}}
+  },
+  {
+    "agent_id": "alpha",
+    "result": "accepted",
+    "envelope": {"move": {"type": "quest_action", "choice": "success"}}
+  },
+  {
+    "agent_id": "charlie",
+    "result": "accepted",
+    "envelope": {"move": {"type": "quest_action", "choice": "success"}}
+  }
+]

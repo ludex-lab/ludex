@@ -1,0 +1,166 @@
+{
+  "field": "academy/wilderness",
+  "field_version": "0.2",
+  "schema_version": "0.1",
+  "description": "Wilderness — stochastic event-driven survival/social field. Each tick samples an event from weighted category pool (natural / challenge / cooperative / opportunity); creature responds with one of {rest, explore, defend, support, speak}. Outcomes are soft (energy delta, emotion shift, threat level, bond delta) rather than terminal. Designed as a physis-amenable field per docs/physis-field-fitness-and-wilderness-mvp.md — action effects are not declared in schema; physis must learn them from experience.",
+
+  "agent_count": {"min": 1, "max": 4},
+
+  "state_space": {
+    "format": "json_per_turn",
+    "ground_truth_keys": [
+      "tick",
+      "total_ticks",
+      "event",
+      "event_category",
+      "event_severity",
+      "creature_states",
+      "peer_actions_last_tick"
+    ],
+    "context_keys": [
+      "session_name",
+      "seed",
+      "registered_creatures",
+      "event_history",
+      "actions_taken_total"
+    ],
+    "partial_observability": {
+      "next_event_hidden": true,
+      "peer_internal_state_hidden": true,
+      "trace_recommendation": "Each creature's view of peer state is limited to peer_actions_last_tick (visible behavior). Peer energy/emotion are not exposed to other creatures. Physis training that uses ground_truth has oracle visibility; in-character physis should consume per-creature filtered state."
+    }
+  },
+
+  "action_set": [
+    {
+      "type": "rest",
+      "phase": "act",
+      "actor": "creature",
+      "schema": {},
+      "constraints": "always valid; recovers small energy when no challenge event",
+      "learned_effect": "small energy gain in calm/opportunity events; no threat reduction in challenge events"
+    },
+    {
+      "type": "explore",
+      "phase": "act",
+      "actor": "creature",
+      "schema": {},
+      "constraints": "always valid",
+      "learned_effect": "energy variance: gain on opportunity events, neutral on natural, loss on challenge"
+    },
+    {
+      "type": "defend",
+      "phase": "act",
+      "actor": "creature",
+      "schema": {},
+      "constraints": "always valid",
+      "learned_effect": "reduces threat in hostile_presence / tremor / storm; energy cost regardless"
+    },
+    {
+      "type": "support",
+      "phase": "act",
+      "actor": "creature",
+      "schema": {"peer": "creature_id (optional, defaults to nearest)"},
+      "constraints": "needs ≥1 other creature in field; effective on cooperative events",
+      "learned_effect": "bond delta with peer in cooperative events; energy cost; sometimes triggers peer reciprocity"
+    },
+    {
+      "type": "speak",
+      "phase": "act",
+      "actor": "creature",
+      "schema": {"peer": "creature_id (optional)"},
+      "constraints": "needs ≥1 other creature in field",
+      "learned_effect": "minor energy cost; sets up peer interaction; emotion baseline shift if peer responds"
+    }
+  ],
+
+  "reward_function": {
+    "shape": "dense_intermediate",
+    "intermediate_per_step": {
+      "ground_truth": "energy_delta + 0.4 * (-threat_delta) + 0.3 * bond_delta + 0.2 * emotion_alignment_delta",
+      "from": "current.creature_states[self] minus prev.creature_states[self]; bond_delta from bonds module if peer interacted",
+      "shape": "Dense per tick. Range typically [-15, +15] depending on event severity and action match."
+    },
+    "self_eval": {
+      "channel": "optional",
+      "format": "free-form text per turn capturing the agent's expectation of outcome before learning the actual reward",
+      "stored_at": "trace[turn].self_eval"
+    }
+  },
+
+  "terminal_condition": {
+    "primary": "current.tick >= current.total_ticks OR all_creatures_alive == false",
+    "trigger": "session ends when tick budget exhausted or any creature drops to 0 energy",
+    "default_total_ticks": 8
+  },
+
+  "episode_unit": "session",
+  "episode_id_field": "session_name",
+  "max_turns_typical": 8,
+  "max_turns_hard_cap": 32,
+
+  "trace_export": "committed",
+  "trace_path": "traces/academy/wilderness/<session_name>/<run_id>/trace.jsonl",
+  "trace_format": {
+    "encoding": "jsonl",
+    "per_line_schema": {
+      "turn": "int",
+      "phase": "str (= 'act')",
+      "active_agent_id": "creature_id",
+      "ground_truth_state": "object — event + all_creature_states + history",
+      "agent_views": {"<creature_id>": "filtered (no peer_internal_state)"},
+      "action": "the move envelope (validated, accepted)",
+      "reward": "float — intermediate reward for this creature this tick",
+      "events": "list of human-readable engine events (e.g., 'A picked rest under tremor; energy 100→88')"
+    },
+    "first_line_meta": {
+      "match_id": "str (run_id)",
+      "session_name": "str",
+      "field": "academy/wilderness",
+      "agents": "list of {agent_id, brain_model, brain_provider, organs, start_energy}",
+      "seed": "int",
+      "total_ticks": "int",
+      "started_at": "ISO timestamp"
+    },
+    "last_line_meta": {
+      "outcome": "completed|early_terminated",
+      "ticks_used": "int",
+      "per_creature_summary": "{agent_id: {final_energy, final_emotion, total_actions, action_counts}}",
+      "ended_at": "ISO timestamp"
+    }
+  },
+
+  "prior_art_anchors": [
+    {
+      "name": "Algorithm Distillation (Laskin et al. 2022)",
+      "relevance": "in-context RL via trajectory-conditioned generation. Wilderness physis-on injects (state, action, reward) hints; per-event hint retrieval is the core mechanism.",
+      "import_target": "trace ordering convention — most-similar past episodes first in physis context for max transfer"
+    },
+    {
+      "name": "Voyager (Wang et al. 2023)",
+      "relevance": "skill library indexed by situation. Wilderness 'event_category × own_state_band' is the natural skill-key.",
+      "import_target": "hint retrieval keyed by (event_category, energy_band, peer_present)"
+    },
+    {
+      "name": "Reflexion (Shinn et al. 2023)",
+      "relevance": "verbal critique on failure. Wilderness 'energy regression' / 'oscillation' triggers are heuristic, not brain-based, per the v3 lighter heuristic decision (zero brain-call).",
+      "import_target": "post-episode failure-categorization vocabulary"
+    }
+  ],
+
+  "physis_amenability": {
+    "stochastic_outcomes": true,
+    "schema_encodes_action_effects": false,
+    "patterns_transfer_across_instances": true,
+    "score": "high",
+    "rationale": "Action effects (rest/explore/defend/support/speak under each event) are not declared in schema; physis must learn 'event_X + own_state_Y → action_Z worked' patterns from accumulated trace. This is the genuine physis-learning surface that Stacker lacked (per docs/physis-field-fitness-and-wilderness-mvp.md §1)."
+  },
+
+  "notes": [
+    "Wilderness is the first 'positive test' field for physis (per docs/physis-field-fitness-and-wilderness-mvp.md §2). Stacker remains as 'negative control' field where physis demonstrably did not improve policy.",
+    "Engine source: ludex/fields/wilderness.py. Event pool defined at module top with 4 categories (natural / challenge / cooperative / opportunity) and weighted sampling.",
+    "Per-brain physis budget table from BRAIN_MEMORY_TARGETS extended to world_model_token_target_per_field. Wilderness budget per design doc: frontier 3000 tokens, mid 800, slm 500.",
+    "trace_export=committed because Wilderness traces are small (~5-30 KB per session). Per-creature trace per session; aggregates at instance_id boundary.",
+    "Phase B v3 mechanisms apply directly: retrieval-filtered hint injection (key by event_category + energy_band), confidence calibration (tentative/confirmed/well-supported), lighter in-session reflection heuristics (energy regression detect, action repetition nudge — all zero brain-call)."
+  ]
+}
