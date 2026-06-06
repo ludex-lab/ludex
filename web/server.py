@@ -369,6 +369,50 @@ async def vitals(session_id: str):
     return get_vitals(org)
 
 
+@app.get("/api/creatures")
+async def list_creatures(dir: str = "creatures"):
+    """List creatures under `dir` for the viewer — cheap disk read, no build.
+    Each entry has identity (name/brain/organs) + lightweight persisted vitals
+    (emotional baseline, memory count). Full live vitals come after waking one."""
+    from ludex.core.organism_config import OrganismConfig
+    base = os.path.abspath(os.path.expanduser(dir))
+    creatures = []
+    if not os.path.isdir(base):
+        return {"dir": base, "creatures": [], "error": "no such directory"}
+    for name in sorted(os.listdir(base)):
+        cdir = os.path.join(base, name)
+        if not os.path.isdir(cdir):
+            continue
+        if not (os.path.exists(os.path.join(cdir, "ludex.yaml")) or
+                os.path.exists(os.path.join(cdir, "ludex.json"))):
+            continue
+        info = {"name": name, "path": cdir}
+        try:
+            cfg = OrganismConfig.load(cdir)
+            info["provider"] = cfg.brain.get("provider", "")
+            info["model"] = cfg.brain.get("model", "")
+            info["organs"] = cfg.get_enabled_organs()
+        except Exception:
+            pass
+        try:
+            bp = os.path.join(cdir, "emotion", "baseline.json")
+            if os.path.exists(bp):
+                b = json.loads(open(bp, encoding="utf-8").read())
+                info["emotion"] = {
+                    "valence": b.get("avg_valence"), "arousal": b.get("avg_arousal"),
+                    "calm": b.get("avg_calm"), "dominant": b.get("dominant_emotions_freq"),
+                }
+        except Exception:
+            pass
+        try:
+            mp = os.path.join(cdir, "memory", "memories.jsonl")
+            info["memories"] = sum(1 for _ in open(mp, encoding="utf-8")) if os.path.exists(mp) else 0
+        except Exception:
+            info["memories"] = 0
+        creatures.append(info)
+    return {"dir": base, "creatures": creatures}
+
+
 # ============================================================
 # RAG Endpoints
 # ============================================================

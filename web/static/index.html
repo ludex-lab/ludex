@@ -50,6 +50,17 @@
   /* Vitals Panel (Monitor Device) */
   .vitals-panel { width: 280px; overflow-y: auto; padding: 12px; background: #0d0d0d; border-left: 1px solid #222; transition: width 0.3s, padding 0.3s; }
   .vitals-panel.collapsed { width: 0; padding: 0; overflow: hidden; }
+  .creatures-panel { flex: 1; overflow-y: auto; padding: 20px; display: none; }
+  .creatures-panel.active { display: block; }
+  .cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  .ccard { background: #161b22; border: 1px solid #2a2f3a; border-radius: 12px; padding: 16px; }
+  .ccard h3 { margin: 0 0 3px; color: #e879a0; font-size: 17px; }
+  .ccard .cbrain { color: #8b94a3; font-size: 12px; margin-bottom: 10px; word-break: break-all; }
+  .ccard .crow { display: flex; justify-content: space-between; font-size: 12.5px; color: #8b94a3; margin: 3px 0; }
+  .ccard .crow b { color: #e6edf3; font-weight: 600; }
+  .ccard button { margin-top: 12px; width: 100%; padding: 9px; border: 0; border-radius: 8px; background: #e879a0; color: #1a0a12; font-weight: 700; cursor: pointer; }
+  .ccard button:hover { filter: brightness(1.08); }
+  .cempty { color: #8b94a3; padding: 20px; }
   .vitals-panel h2 { color: #e879a0; font-size: 12px; margin: 14px 0 6px; text-transform: uppercase; letter-spacing: 1px; }
   .vitals-panel h2:first-child { margin-top: 0; }
   .vital-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
@@ -131,6 +142,7 @@
 <div class="tab-bar">
   <div class="tab active" data-tab="chat" onclick="switchTab('chat')">Chat Agent</div>
   <div class="tab" data-tab="rag" onclick="switchTab('rag')">RAG Agent</div>
+  <div class="tab" data-tab="creatures" onclick="switchTab('creatures')">My Creatures</div>
   <div class="tab-spacer"></div>
   <div class="device-toggle">
     <span class="device-badge">DEVICE</span>
@@ -154,6 +166,10 @@
       <input type="text" id="chatInput" placeholder="Type a message..." disabled />
       <button id="sendBtn" disabled>Send</button>
     </div>
+  </div>
+
+  <div class="creatures-panel" id="creaturesPanel">
+    <div class="cgrid" id="cgrid"><div class="cempty">Loading…</div></div>
   </div>
 
   <div class="vitals-panel collapsed" id="vitalsPanel">
@@ -289,8 +305,58 @@ function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+  const isCreatures = tab === 'creatures';
+  document.querySelector('.agent-panel').style.display = isCreatures ? 'none' : 'flex';
+  document.getElementById('creaturesPanel').classList.toggle('active', isCreatures);
+  if (isCreatures) { loadCreaturesView(); return; }
   document.getElementById('ragToolbar').classList.toggle('hidden', tab !== 'rag');
   document.getElementById('chatInput').placeholder = tab === 'rag' ? 'Ask about your documents...' : 'Type a message...';
+}
+
+async function loadCreaturesView() {
+  const grid = document.getElementById('cgrid');
+  grid.innerHTML = '<div class="cempty">Loading…</div>';
+  try {
+    const res = await fetch('/api/creatures');
+    const data = await res.json();
+    const list = data.creatures || [];
+    if (!list.length) { grid.innerHTML = `<div class="cempty">No creatures found in ${data.dir}. Forge one with the FORGE button.</div>`; return; }
+    grid.innerHTML = list.map(c => {
+      const dom = (c.emotion && c.emotion.dominant && Object.keys(c.emotion.dominant)[0]) || '—';
+      const val = (c.emotion && c.emotion.valence != null) ? c.emotion.valence : '—';
+      const safe = c.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return `<div class="ccard">
+        <h3>${c.name}</h3>
+        <div class="cbrain">${c.provider || '?'} / ${c.model || '?'}</div>
+        <div class="crow"><span>Organs</span><b>${(c.organs || []).length}</b></div>
+        <div class="crow"><span>Memories</span><b>${c.memories || 0}</b></div>
+        <div class="crow"><span>Emotion</span><b>${dom} · v${val}</b></div>
+        <button onclick="wakeCreature('${safe}')">Wake up &amp; chat →</button>
+      </div>`;
+    }).join('');
+  } catch (e) { grid.innerHTML = `<div class="cempty">Failed to load: ${e.message}</div>`; }
+}
+
+async function wakeCreature(path) {
+  try {
+    const res = await fetch('/api/forge/load', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ habitat_path: path, agent_type: 'chat' })
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    sessionId = data.session_id;
+    document.getElementById('statusDot').classList.add('connected');
+    document.getElementById('modelName').textContent =
+      `${data.species || data.name} — ${data.organ_count || (data.organs || []).length} organs — REIMS ${data.reims ? data.reims.total : '-'}/10`;
+    document.getElementById('chatInput').disabled = false;
+    document.getElementById('sendBtn').disabled = false;
+    switchTab('chat');
+    addMessage('system', `Creature "${data.name}" awakened — say hi!`);
+    document.getElementById('chatInput').focus();
+    document.getElementById('monitorToggle').checked = true; toggleMonitor();
+    try { const v = await (await fetch('/api/vitals/' + sessionId)).json(); if (!v.error) updateVitals(v); } catch (e) {}
+  } catch (e) { alert('Wake failed: ' + e.message); }
 }
 
 function toggleMonitor() {
@@ -581,6 +647,7 @@ async function forgeLoad() {
 // Init
 loadModels();
 loadOrgans();
+if (location.hash === '#creatures' || location.hash === '#observe') switchTab('creatures');
 
 async function sendMessage() {
   const input = document.getElementById('chatInput');
