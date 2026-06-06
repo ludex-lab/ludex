@@ -7,11 +7,11 @@
 Ludex는 **AI 동물행동학(AI ethology)** 을 위한 연구 플랫폼이다. AI 에이전트가 시간에 걸쳐
 어떻게 행동하고, 발달하고, 관계 맺는지를 연구한다. 에이전트를 *작성하는* 것이 아니라
 *크리처*를 조립한다. 뇌(아무 LLM이나)를 고르고, 기관을 붙인다 — 어떤 기억을
-유지할지, 감정을 어떻게 처리할지, 면역계가 어떻게 방어할지, 무엇에 동기를 받는지. 살아갈
-서식지를 준다. 그리고 관찰한다 — 세션을 가로질러, 기반(substrate)을 가로질러 — 정체성과
-목소리와 유대가 어떻게 진화하는지를.
+기억을 남길지, 감정을 어떻게 다룰지, 면역계가 어떻게 방어할지, 무엇에 이끌릴지를 정한다.
+살아갈 서식지를 준다. 그리고 지켜본다 — 세션이 바뀌고 기반(substrate)이 바뀌어도 정체성과
+목소리와 유대가 어떻게 자라나는지를.
 
-Ludex에서 정체성은 밑의 모델이 아니라 **서사적 연속성**(기억, 저널, 유대, 자기모델)이다.
+Ludex에서 정체성은 바탕에 깔린 모델이 아니라 **이어지는 이야기**(기억, 저널, 유대, 자기모델)다.
 뇌를 갈아끼워도 크리처는 지속한다.
 
 > 한 문장 비전: *누구나 생물학적 기관 블록을 조립해 맞춤형 AI 크리처를 만들고,
@@ -38,7 +38,7 @@ python -m ludex create
 `requirements.txt`는 최소 코어다 — 서버를 띄우고, 크리처를 조립하고, 모든 기관을
 돌린다(기억은 JSONL 기반, 추가 의존성 없음). 선택적 로컬 감정 분류기가 필요하면
 `pip install -r requirements-full.txt`를 쓴다. 설치하지 않으면 감정 기관은 어휘 기반
-스코어러로 폴백한다.
+채점기로 대신 작동한다.
 
 ## 뇌 연결하기
 
@@ -73,7 +73,7 @@ python -m ludex create                 # 새 크리처 조립 (대화형, 또는
 python -m ludex create --name Nimbus --provider claude_cli --model claude-sonnet-4-6 --preset full
 python -m ludex inspect Nimbus         # 정체성, 단계, 기관, 활동, 서식지
 python -m ludex cohort                 # 전체 크리처 단계 표 (넓게 보기)
-python -m ludex audit Nimbus           # 기억 감사: 누적, 인출 표면, 상위 태그
+python -m ludex audit Nimbus           # 기억 점검: 쌓인 양, 실제 인출 범위, 자주 쓰는 태그
 ```
 
 - **프로바이더:** `ollama`, `openai`, `gemini_api`, `anthropic`, `claude_cli`, `claude_sdk`, `gemini_cli`, `agy_cli`, `codex_cli`
@@ -81,8 +81,8 @@ python -m ludex audit Nimbus           # 기억 감사: 누적, 인출 표면, �
 
 ## Forge — 웹에서 크리처 만들기
 
-Forge는 브라우저 온보딩 흐름이다. 뇌와 기관 조합을 고르고, 크리처 이름을 짓고,
-서식지에 자리잡는 것을 지켜본다.
+Forge는 브라우저에서 진행하는 온보딩 화면이다. 뇌와 기관 조합을 고르고, 크리처 이름을 짓고,
+크리처가 서식지에 자리 잡는 과정을 지켜본다.
 
 ```bash
 python web/server.py          # 그런 다음 http://localhost:7860 열기
