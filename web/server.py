@@ -444,6 +444,24 @@ async def chat(req: ChatRequest):
     if emotion and result.response:
         emotion.handle_analyze_emotion(text=result.response)
 
+    # Capture the exchange as episodic memory. This is lived experience (the content
+    # of a conversation), NOT the turn-boundary telemetry that D-024 removed from
+    # auto-capture — so it belongs in memory. Gives the creature durable, recall-able
+    # conversational continuity across turns AND sessions (the channel the rest of
+    # the system uses), complementing the session-scoped history flatten.
+    memory = org.get_block("memory")
+    if memory and result.response and not result.error:
+        try:
+            memory.handle_remember(
+                content=f'In conversation, the user said: "{req.message}" — I replied: "{result.response}"',
+                memory_type="episodic",
+                tags=["conversation", "web_chat"],
+                importance=0.5,
+                source="web_chat",
+            )
+        except Exception as e:
+            print(f"chat memory capture failed: {e}")
+
     # Collect vitals
     vitals = get_vitals(org)
 
