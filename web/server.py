@@ -585,6 +585,97 @@ async def ecosystem(dir: str = "creatures"):
 
 
 # ============================================================
+# Field sessions — admit creatures into a field, run it, observe (background)
+# ============================================================
+field_sessions = {}  # sid -> {field, status, error, field_kind}
+
+
+def _build_creature_org(habitat_path: str):
+    """Load + build a creature organism from its habitat (for field participation)."""
+    from ludex.core.organism_config import OrganismConfig
+    config = OrganismConfig.load(habitat_path)
+    enabled = config.get_enabled_organs()
+    if not config.organs.get("engine", {}).get("system_prompt"):
+        config.organs["engine"]["system_prompt"] = (
+            f"You are {config.name}, a Ludex creature.\n"
+            f"Your brain is {config.brain.get('model', 'unknown')}.\n"
+            f"Your organs: {', '.join(enabled)}.\n\n"
+            f"You are a creature distinct from your brain. Identify as '{config.name}'.\n\n"
+            + CHAT_PROMPT
+        )
+    return config.build()
+
+
+def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list):
+    """Background worker: build a Council, admit the chosen creatures, run it. The
+    transcript accumulates in the field object, polled via /api/field/session."""
+    sess = field_sessions[sid]
+    try:
+        from ludex.fields.council import Council, Dilemma
+        from ludex.fields.conversation import Participant
+        council = Council(name=f"web-council-{sid}", dilemma=Dilemma(text=dilemma_text), auto_trace=False)
+        sess["field"] = council
+        for path in creature_paths:
+            org = _build_creature_org(path)
+            name = getattr(org, "name", None) or os.path.basename(str(path).rstrip("/\\"))
+            council.add_participant(Participant(name=name, role="discussant",
+                                                organism=org, engine=org.get_block("engine")))
+
+        def response_fn(p, prompt):
+            try:
+                r = p.engine.handle_submit(prompt)
+                return (r.response or "").strip() or "[no response]"
+            except Exception as e:
+                return f"[error: {e}]"
+
+        sess["status"] = "running"
+        council.run(response_fn)
+        sess["status"] = "done"
+    except Exception as e:
+        sess["status"] = "error"
+        sess["error"] = str(e)
+
+
+class FieldStartRequest(BaseModel):
+    field: str = "council"
+    dilemma: str = ""
+    creatures: list = []   # habitat paths
+
+
+@app.post("/api/field/start")
+async def field_start(req: FieldStartRequest):
+    if req.field != "council":
+        return {"error": f"Field '{req.field}' is not supported yet."}
+    if not (req.dilemma or "").strip():
+        return {"error": "A dilemma is required."}
+    if len(req.creatures) < 2:
+        return {"error": "Admit at least 2 creatures."}
+    import threading
+    sid = f"f{int(time.time() * 1000) % 1000000}"
+    field_sessions[sid] = {"field": None, "status": "starting", "error": "", "field_kind": "council"}
+    threading.Thread(target=_run_council_bg, args=(sid, req.dilemma, req.creatures), daemon=True).start()
+    return {"session_id": sid, "status": "starting"}
+
+
+@app.get("/api/field/session/{sid}")
+async def field_session(sid: str):
+    sess = field_sessions.get(sid)
+    if not sess:
+        return {"error": "Session not found"}
+    transcript, participants = [], []
+    field = sess.get("field")
+    if field is not None:
+        participants = [p.name for p in field.participants]
+        for rd in field.rounds:
+            for rec in rd.records:
+                transcript.append({"round": rec.round_index, "phase": rec.phase,
+                                   "participant": rec.participant, "kind": rec.kind,
+                                   "content": rec.content})
+    return {"status": sess.get("status"), "error": sess.get("error", ""),
+            "field": sess.get("field_kind"), "participants": participants, "transcript": transcript}
+
+
+# ============================================================
 # FORGE Endpoints
 # ============================================================
 
