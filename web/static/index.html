@@ -141,9 +141,9 @@
 </header>
 
 <div class="tab-bar">
-  <div class="tab" data-tab="creatures" onclick="switchTab('creatures')" data-i18n="tab_creatures">My Creatures</div>
+  <div class="tab active" data-tab="creatures" onclick="switchTab('creatures')" data-i18n="tab_creatures">My Creatures</div>
+  <div class="tab" data-tab="chat" onclick="switchTab('chat')" data-i18n="tab_chat">Chat</div>
   <div class="tab" data-tab="forge" onclick="switchTab('forge')" data-i18n="tab_forge">Forge</div>
-  <div class="tab active" data-tab="chat" onclick="switchTab('chat')" data-i18n="tab_chat">Chat</div>
   <div class="tab-spacer"></div>
   <div class="device-toggle">
     <span class="device-badge">DEVICE</span>
@@ -392,6 +392,7 @@ function switchTab(tab) {
   const tabEl = document.querySelector(`.tab[data-tab="${tab}"]`);
   if (tabEl) tabEl.classList.add('active');
   const isForge = tab === 'forge';
+  document.querySelector('.device-toggle').style.display = isForge ? 'none' : '';
   document.querySelector('main').style.display = isForge ? 'none' : '';
   document.getElementById('connectModal').classList.toggle('hidden', !isForge);
   if (isForge) return;
