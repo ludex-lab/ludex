@@ -46,10 +46,6 @@
   .input-bar button:disabled { background: #333; color: #666; cursor: not-allowed; }
 
   /* RAG specific */
-  .rag-toolbar { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #222; background: #0d0d0d; font-size: 12px; }
-  .rag-toolbar button { background: #1a2a1a; color: #64aa88; border: 1px solid #333; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-  .rag-toolbar button:hover { background: #2a3a2a; }
-  .rag-toolbar .mem-count { color: #888; padding: 4px 8px; }
 
   /* Vitals Panel (Monitor Device) */
   .vitals-panel { width: 280px; overflow-y: auto; padding: 12px; background: #0d0d0d; border-left: 1px solid #222; transition: width 0.3s, padding 0.3s; }
@@ -82,19 +78,12 @@
   .bar-fill.pink { background: #e879a0; }
 
   /* FORGE Modal */
-  .connect-overlay { flex: 1; overflow-y: auto; background: #0a0a0a; display: flex; align-items: flex-start; justify-content: center; padding: 28px 16px; }
-  .connect-box { background: #1a1a1a; padding: 32px; border-radius: 16px; border: 1px solid #333; max-width: 520px; width: 95%; }
+  .connect-overlay { flex: 1; overflow-y: auto; background: #0a0a0a; padding: 24px 32px; }
+  .connect-box { background: transparent; padding: 0; border: none; max-width: 720px; margin: 0 auto; }
   .connect-box h2 { color: #64aa88; margin-bottom: 4px; font-size: 20px; }
   .connect-box .forge-subtitle { color: #666; font-size: 12px; margin-bottom: 16px; }
   .connect-box label { display: block; color: #888; font-size: 13px; margin: 10px 0 4px; }
   .connect-box input, .connect-box select { width: 100%; background: #0a0a0a; border: 1px solid #333; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
-  .connect-box .agent-select { display: flex; gap: 8px; margin: 8px 0; }
-  .connect-box .agent-option { flex: 1; padding: 10px; background: #111; border: 2px solid #333; border-radius: 8px; cursor: pointer; text-align: center; transition: all 0.2s; }
-  .connect-box .agent-option:hover { border-color: #555; }
-  .connect-box .agent-option.selected { border-color: #64aa88; background: #1a2a1a; }
-  .connect-box .agent-option .icon { font-size: 20px; display: block; margin-bottom: 2px; }
-  .connect-box .agent-option .name { color: #e0e0e0; font-size: 12px; font-weight: bold; }
-  .connect-box .agent-option .desc { color: #888; font-size: 10px; margin-top: 2px; }
   .connect-box button.primary { width: 100%; margin-top: 16px; background: #64aa88; color: #000; border: none; padding: 12px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
   .connect-box button.primary:hover { background: #88ccaa; }
 
@@ -156,7 +145,6 @@
   <div class="tab" data-tab="creatures" onclick="switchTab('creatures')" data-i18n="tab_creatures">My Creatures</div>
   <div class="tab" data-tab="forge" onclick="switchTab('forge')" data-i18n="tab_forge">Forge</div>
   <div class="tab active" data-tab="chat" onclick="switchTab('chat')" data-i18n="tab_chat">Chat</div>
-  <div class="tab" data-tab="rag" onclick="switchTab('rag')" data-i18n="tab_rag">RAG</div>
   <div class="tab-spacer"></div>
   <div class="device-toggle">
     <span class="device-badge">DEVICE</span>
@@ -166,13 +154,6 @@
 
 <main>
   <div class="agent-panel">
-    <!-- RAG toolbar (hidden by default) -->
-    <div class="rag-toolbar hidden" id="ragToolbar">
-      <button onclick="ingestPrompt()" data-i18n="rag_paste">+ Paste Text</button>
-      <button onclick="ingestFolder()" data-i18n="rag_folder">📁 Load Folder</button>
-      <span class="mem-count" id="memCount" data-i18n="rag_docs0">0 documents</span>
-    </div>
-
     <div class="messages" id="messages">
       <div class="msg system" data-i18n="chat_connect">Pick a creature in “My Creatures” to start.</div>
     </div>
@@ -185,8 +166,6 @@
   <div class="creatures-panel" id="creaturesPanel">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px">
       <span style="color:#8b94a3;font-size:13px" data-i18n="view_hint">Click a creature to wake it and chat. Vitals show once it's awake.</span>
-      <button onclick="switchTab('forge')" data-i18n="view_new"
-        style="flex:none;padding:8px 14px;border:0;border-radius:8px;background:#e879a0;color:#1a0a12;font-weight:700;cursor:pointer">+ Forge new</button>
     </div>
     <div class="cgrid" id="cgrid"><div class="cempty">Loading…</div></div>
   </div>
@@ -233,15 +212,6 @@
     <!-- Step 1: BRAIN -->
     <div class="forge-step">
       <div class="step-header" data-i18n="forge_s1">Step 1: Brain</div>
-      <label data-i18n="forge_agent_type">Agent Type</label>
-      <div class="agent-select">
-        <div class="agent-option selected" onclick="selectAgent('chat')" id="opt-chat">
-          <span class="icon">💬</span><span class="name" data-i18n="forge_chat">Chat</span><span class="desc" data-i18n="forge_chat_d">Conversational</span>
-        </div>
-        <div class="agent-option" onclick="selectAgent('rag')" id="opt-rag">
-          <span class="icon">📚</span><span class="name">RAG</span><span class="desc" data-i18n="forge_rag_d">Document Q&A</span>
-        </div>
-      </div>
       <label data-i18n="forge_provider">Provider</label>
       <select id="providerSelect" onchange="onProviderChange()">
         <option value="claude_cli" data-i18n="prov_claude_cli">Claude Code (Max sub, recommended)</option>
@@ -416,11 +386,6 @@ let organData = {};
 let presetData = {};
 let organToggles = {};
 
-function selectAgent(type) {
-  selectedAgent = type;
-  document.querySelectorAll('.agent-option').forEach(el => el.classList.remove('selected'));
-  document.getElementById('opt-' + type).classList.add('selected');
-}
 
 function switchTab(tab) {
   currentTab = tab;
@@ -435,12 +400,11 @@ function switchTab(tab) {
   document.querySelector('.agent-panel').style.display = isCreatures ? 'none' : 'flex';
   document.getElementById('creaturesPanel').classList.toggle('active', isCreatures);
   if (isCreatures) { loadCreaturesView(); return; }
-  document.getElementById('ragToolbar').classList.toggle('hidden', tab !== 'rag');
   setChatPlaceholder();
 }
 function setChatPlaceholder(){
   const el = document.getElementById('chatInput');
-  if (el) el.placeholder = currentTab === 'rag' ? t('chat_ph_rag') : t('chat_ph');
+  if (el) el.placeholder = t('chat_ph');
 }
 
 async function loadCreaturesView() {
@@ -833,9 +797,8 @@ async function sendMessage() {
   addMessage('user', msg);
   document.getElementById('sendBtn').disabled = true;
 
-  const endpoint = currentTab === 'rag' ? '/api/rag' : '/api/chat';
   try {
-    const res = await fetch(endpoint, {
+    const res = await fetch('/api/chat', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({session_id: sessionId, message: msg}),
     });
@@ -844,41 +807,10 @@ async function sendMessage() {
     else {
       addMessage('bot', data.response);
       if (data.vitals) updateVitals(data.vitals);
-      if (data.sources) addMessage('system', t('sources_prefix') + data.sources.join(', '));
-      if (data.mem_count !== undefined) document.getElementById('memCount').textContent = data.mem_count + t('docs_suffix');
     }
   } catch (e) { addMessage('system', t('err_prefix') + e.message); }
   document.getElementById('sendBtn').disabled = false;
   input.focus();
-}
-
-function ingestPrompt() {
-  const text = prompt(t('ingest_paste'));
-  if (!text || !sessionId) return;
-  fetch('/api/rag/ingest', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({session_id: sessionId, text: text, source: 'pasted'}),
-  }).then(r => r.json()).then(data => {
-    addMessage('system', t('ingested').replace('{n}', data.chunks || 0));
-    if (data.mem_count !== undefined) document.getElementById('memCount').textContent = data.mem_count + t('docs_suffix');
-  });
-}
-
-function ingestFolder() {
-  const folderPath = prompt(t('ingest_folder'));
-  if (!folderPath || !sessionId) return;
-  addMessage('system', t('loading_docs').replace('{path}', folderPath));
-  fetch('/api/rag/ingest-folder', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({session_id: sessionId, folder_path: folderPath}),
-  }).then(r => r.json()).then(data => {
-    if (data.error) { addMessage('system', t('err_prefix') + data.error); }
-    else {
-      addMessage('system', t('loaded_files').replace('{files}', data.files_loaded).replace('{chunks}', data.total_chunks).replace('{path}', folderPath));
-      if (data.files) data.files.forEach(f => addMessage('system', `  ${f}`));
-      if (data.mem_count !== undefined) document.getElementById('memCount').textContent = data.mem_count + t('docs_suffix');
-    }
-  }).catch(e => addMessage('system', t('err_prefix') + e.message));
 }
 
 function addMessage(type, text) {
