@@ -611,6 +611,52 @@ class _StopField(Exception):
     next turn boundary (a brain call already in flight still has to return first)."""
 
 
+def _council_transcript_text(council) -> str:
+    lines = []
+    for rd in council.rounds:
+        for rec in rd.records:
+            lines.append(f"[{rec.phase}] {rec.participant}: {rec.content}")
+    return "In a Council you took part in, this was discussed:\n" + "\n".join(lines)
+
+
+def _council_aftermath(sess, council, dilemma_text):
+    """After a council finishes, leave durable traces (JJ): each participant reflects
+    on it (→ SELF.md) and writes a bond toward each other participant (→ bonds/).
+    Like people — doing something together leaves memories and brings you closer;
+    repeated councils deepen the bond (update_bond accumulates)."""
+    from ludex.core import selfhood
+    parts = [p for p in council.participants if getattr(p, "organism", None)]
+    transcript = _council_transcript_text(council)
+    summary = f'a Council debating the dilemma: "{dilemma_text}"'
+    for p in parts:                       # reflection → SELF.md
+        if sess.get("stop"):
+            return
+        sess["aftermath"] = f"reflect:{p.name}"
+        try:
+            selfhood.reflect(p.organism, "council", p.engine, transcript)
+        except Exception as e:
+            print(f"council reflect failed for {p.name}: {e}")
+    for p in parts:                       # bond writeup → bonds/<other>.md (both ways)
+        for q in parts:
+            if p is q:
+                continue
+            if sess.get("stop"):
+                return
+            sess["aftermath"] = f"bond:{p.name}->{q.name}"
+            try:
+                qmodel = ""
+                try:
+                    qmodel = q.organism.config.get("model", "") if q.organism else ""
+                except Exception:
+                    pass
+                selfhood.update_bond(p.organism, q.name,
+                                     shared_experience=f"You took part in {summary}, alongside {q.name}.",
+                                     other_brain=qmodel)
+            except Exception as e:
+                print(f"council bond writeup failed {p.name}->{q.name}: {e}")
+    sess["aftermath"] = ""
+
+
 def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list, mediator: str = ""):
     """Background worker: build a Council, admit the chosen creatures, run it. The
     transcript accumulates in the field object, polled via /api/field/session.
@@ -649,7 +695,9 @@ def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list, mediator:
 
         sess["status"] = "running"
         council.run(response_fn)
-        sess["status"] = "done"
+        sess["status"] = "reflecting"      # post-council: durable memory + bonds (JJ)
+        _council_aftermath(sess, council, dilemma_text)
+        sess["status"] = "stopped" if sess.get("stop") else "done"
     except _StopField:
         sess["status"] = "stopped"
     except Exception as e:
@@ -679,7 +727,7 @@ async def field_start(req: FieldStartRequest):
     sid = f"f{int(time.time() * 1000) % 1000000}"
     field_sessions[sid] = {"field": None, "status": "starting", "error": "", "field_kind": "council",
                            "entered": [], "building": "", "thinking": "", "stop": False,
-                           "started": time.time(), "mediator": req.mediator}
+                           "started": time.time(), "mediator": req.mediator, "aftermath": ""}
     threading.Thread(target=_run_council_bg, args=(sid, req.dilemma, req.creatures, req.mediator), daemon=True).start()
     return {"session_id": sid, "status": "starting"}
 
@@ -703,6 +751,7 @@ async def field_session(sid: str):
             "field": sess.get("field_kind"), "participants": participants, "transcript": transcript,
             "entered": sess.get("entered", []), "building": sess.get("building", ""),
             "thinking": sess.get("thinking", ""), "mediator": sess.get("mediator", ""),
+            "aftermath": sess.get("aftermath", ""),
             "elapsed": int(time.time() - started) if started else 0,
             "turns": sum(1 for r in transcript if r["phase"] != "dilemma_posed")}
 
