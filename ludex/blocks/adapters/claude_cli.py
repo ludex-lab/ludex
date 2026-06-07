@@ -75,6 +75,10 @@ class ClaudeCliAdapter(BaseAdapter):
         super().__init__(base_url=base_url or _CLAUDE_CMD, timeout_ms=timeout_ms, **kwargs)
         self._cmd = base_url or _CLAUDE_CMD
         self._cwd = cwd or None  # None = inherit from parent process
+        # Opt-in conversational multi-turn: when set (e.g. by the web chat), flatten
+        # the full message history into the prompt so claude -p has continuity.
+        # Default off — single-shot callers (research corpus, CLI) are unchanged.
+        self._full_history = False
 
     def call(self, model="", prompt="", system="", messages=None,
              temperature=0.7, max_tokens=4096, tools=None, effort=""):
@@ -94,6 +98,7 @@ class ClaudeCliAdapter(BaseAdapter):
         # Extract system prompt from messages if present, find latest user message
         system_prompt = system or ""
         last_user_msg = ""
+        convo: list[tuple[str, str]] = []
         if messages:
             for msg in messages:
                 role = msg.get("role", "user")
@@ -103,9 +108,23 @@ class ClaudeCliAdapter(BaseAdapter):
                         system_prompt = content
                     else:
                         system_prompt = system_prompt + "\n\n" + content
-                elif role == "user":
+                    continue
+                convo.append((role, content))
+                if role == "user":
                     last_user_msg = content  # Keep overwriting → last one wins
-            full_prompt = last_user_msg
+            if self._full_history and len(convo) > 1:
+                # Opt-in (web chat): flatten the transcript so claude -p has
+                # continuity. The leading instruction + "You:" labels keep Claude
+                # from re-introducing itself or pattern-matching onto earlier turns
+                # — the failure mode that made single-message the default.
+                lines = [f"{'User' if r == 'user' else 'You'}: {c}" for r, c in convo]
+                full_prompt = (
+                    "Continue this ongoing conversation. Respond ONLY to the final "
+                    "User message; use the earlier turns as context — do not repeat "
+                    "earlier answers or re-introduce yourself.\n\n" + "\n\n".join(lines)
+                )
+            else:
+                full_prompt = last_user_msg
         else:
             full_prompt = prompt
 

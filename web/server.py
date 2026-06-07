@@ -68,6 +68,20 @@ RAG_PROMPT = (
 )
 
 
+def _enable_web_multiturn(org):
+    """Give a web creature conversational continuity: tell its provider adapter to
+    send the full message history each turn. claude_cli otherwise sends only the
+    last user message (so the creature re-greets every turn); other adapters
+    already use history, so this is a harmless no-op for them. Web-only — the
+    research corpus / CLI paths never call this, so their behavior is unchanged."""
+    try:
+        pb = org.get_block("provider")
+        if pb is not None and getattr(pb, "_adapter", None) is not None:
+            setattr(pb._adapter, "_full_history", True)
+    except Exception as e:
+        print(f"web multiturn enable failed: {e}")
+
+
 def build_agent(session_id: str, model: str, provider: str = "ollama",
                 system_prompt: str = "", agent_type: str = "chat") -> Organism:
     """Assemble an organism based on agent type."""
@@ -105,6 +119,7 @@ def build_agent(session_id: str, model: str, provider: str = "ollama",
     )
     agents[session_id] = org
     agent_types[session_id] = agent_type
+    _enable_web_multiturn(org)
     return org
 
 
@@ -616,6 +631,7 @@ async def forge_assemble(req: ForgeAssembleRequest):
         org = config.build()
         agents[session_id] = org
         agent_types[session_id] = req.agent_type
+        _enable_web_multiturn(org)
     except Exception as e:
         return {"error": f"Assembly failed: {e}"}
 
@@ -720,6 +736,7 @@ async def forge_load(req: ForgeLoadRequest):
         org = config.build()
         agents[session_id] = org
         agent_types[session_id] = req.agent_type
+        _enable_web_multiturn(org)
     except Exception as e:
         return {"error": f"Failed to rebuild creature: {e}"}
 
