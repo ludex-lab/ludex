@@ -886,6 +886,18 @@ async def forge_presets():
     return {"presets": result}
 
 
+@app.get("/api/model-hints")
+async def model_hints():
+    """Current models per provider — single source of truth shared with the CLI
+    (ludex.cli.PROVIDER_MODEL_HINTS), so the Forge dropdowns never drift stale."""
+    try:
+        from ludex.cli import PROVIDER_MODEL_HINTS
+        return {"hints": {p: [m.strip() for m in h.split("|") if m.strip()]
+                          for p, h in PROVIDER_MODEL_HINTS.items()}}
+    except Exception as e:
+        return {"hints": {}, "error": str(e)}
+
+
 class ForgeAssembleRequest(BaseModel):
     name: str = "creature"
     provider: str = "ollama"

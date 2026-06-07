@@ -886,55 +886,39 @@ function applyPreset(presetName) {
 
 // ---- FORGE: Load models ----
 
+let _mhints = null;
+async function _modelHints() {
+  if (_mhints) return _mhints;
+  try { _mhints = (await (await fetch('/api/model-hints')).json()).hints || {}; }
+  catch (e) { _mhints = {}; }
+  return _mhints;
+}
 async function loadModels() {
   const provider = document.getElementById('providerSelect').value;
   const select = document.getElementById('modelSelect');
   const manualInput = document.getElementById('modelInput');
-  if (provider === 'ollama') {
-    select.style.display = '';
-    manualInput.placeholder = t('forge_model_ph');
+  manualInput.value = '';                          // clear leftover (was persisting "claude-code")
+  manualInput.placeholder = t('forge_model_ph');
+  select.style.display = '';
+  if (provider === 'ollama') {                      // live from the local Ollama daemon
     try {
-      const res = await fetch('/api/ollama-models');
-      const data = await res.json();
-      if (data.models && data.models.length > 0) {
-        select.innerHTML = data.models.map(m => `<option value="${m}">${m}</option>`).join('');
-      } else {
-        select.innerHTML = `<option value="">${t('mdl_none')}</option>`;
-      }
+      const data = await (await fetch('/api/ollama-models')).json();
+      select.innerHTML = (data.models && data.models.length)
+        ? data.models.map(m => `<option value="${m}">${m}</option>`).join('')
+        : `<option value="">${t('mdl_none')}</option>`;
     } catch (e) { select.innerHTML = `<option value="">${t('mdl_no_ollama')}</option>`; }
-  } else if (provider === 'claude_cli') {
-    select.style.display = 'none';
-    manualInput.value = 'claude-code';
-    manualInput.placeholder = t('mdl_claude_cli');
-  } else if (provider === 'codex_cli') {
-    select.innerHTML = '<option value="o3">o3</option><option value="o4-mini">o4-mini</option><option value="gpt-4.1">gpt-4.1</option>';
-    select.style.display = '';
-    manualInput.placeholder = t('forge_model_ph');
-  } else if (provider === 'claude_sdk') {
-    select.innerHTML = '<option value="claude-sonnet-4-6">claude-sonnet-4-6</option><option value="claude-opus-4-6">claude-opus-4-6</option><option value="claude-haiku-4-5">claude-haiku-4-5</option><option value="claude-code">claude-code (default)</option>';
-    select.style.display = '';
-    manualInput.placeholder = t('forge_model_ph');
-  } else if (provider === 'anthropic') {
-    select.innerHTML = '<option value="claude-opus-4-8">claude-opus-4-8</option><option value="claude-sonnet-4-6">claude-sonnet-4-6</option><option value="claude-haiku-4-5-20251001">claude-haiku-4-5</option>';
-    select.style.display = '';
-    manualInput.placeholder = t('mdl_need_anthropic');
-  } else if (provider === 'openai') {
-    select.innerHTML = '<option value="gpt-4o">gpt-4o</option><option value="gpt-4o-mini">gpt-4o-mini</option><option value="gpt-4.1">gpt-4.1</option><option value="o3">o3</option>';
-    select.style.display = '';
-    manualInput.placeholder = t('mdl_need_openai');
-  } else if (provider === 'gemini_api') {
-    select.innerHTML = '<option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-2.5-pro">gemini-2.5-pro</option>';
-    select.style.display = '';
-    manualInput.placeholder = t('mdl_need_gemini');
-  } else if (provider === 'gemini_cli') {
-    select.innerHTML = '<option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-2.5-pro">gemini-2.5-pro</option><option value="gemini-3-pro-preview">gemini-3-pro-preview</option>';
-    select.style.display = '';
-    manualInput.placeholder = t('mdl_gemini_cli');
-  } else if (provider === 'agy_cli') {
-    select.innerHTML = '<option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-2.5-pro">gemini-2.5-pro</option>';
-    select.style.display = '';
-    manualInput.placeholder = t('mdl_agy_cli');
+    return;
   }
+  // everything else from the shared hint list (in sync with the CLI — no drift)
+  const hints = await _modelHints();
+  const models = (hints[provider] || []).slice();
+  if (provider === 'claude_cli' || provider === 'claude_sdk') models.unshift('claude-code');
+  select.innerHTML = models.length
+    ? models.map(m => `<option value="${m}">${m === 'claude-code' ? 'claude-code (default)' : m}</option>`).join('')
+    : `<option value="">${t('forge_model_ph')}</option>`;
+  const phKey = { anthropic:'mdl_need_anthropic', openai:'mdl_need_openai', gemini_api:'mdl_need_gemini',
+                  claude_cli:'mdl_claude_cli', gemini_cli:'mdl_gemini_cli', agy_cli:'mdl_agy_cli' }[provider];
+  if (phKey) manualInput.placeholder = t(phKey);
 }
 function onProviderChange() { loadModels(); }
 
