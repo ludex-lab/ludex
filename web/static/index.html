@@ -83,7 +83,7 @@
 
   /* FORGE tab panel — left-aligned, card-based to match My Creatures */
   .connect-overlay { flex: 1; overflow-y: auto; background: #0a0a0a; padding: 20px; }
-  .connect-box { background: transparent; padding: 0; border: none; max-width: 760px; }
+  .connect-box { background: transparent; padding: 0; border: none; max-width: 880px; margin: 0; }
   .connect-box h2 { color: #64aa88; margin: 0 0 4px; font-size: 22px; }
   .connect-box .forge-subtitle { color: #8b94a3; font-size: 13px; margin-bottom: 18px; }
   .connect-box label { display: block; color: #8b94a3; font-size: 13px; margin: 12px 0 5px; }
@@ -105,6 +105,7 @@
   .organ-card .organ-name { color: #e6edf3; font-weight: 600; }
   .organ-card .organ-sys { color: #8b94a3; font-size: 11px; }
   .organ-card .organ-lock { color: #64aa88; font-size: 11px; margin-left: auto; }
+  .organ-card.ainative .organ-sys { color: #64aa88; }
 
   /* Preset buttons */
   .preset-bar { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -115,7 +116,7 @@
   /* Ecosystem panel */
   .eco-panel { flex: 1; overflow-y: auto; background: #0a0a0a; padding: 20px; }
   .eco-panel.hidden { display: none; }
-  .eco-inner { max-width: 880px; margin: 0 auto; }
+  .eco-inner { max-width: 880px; margin: 0; }
   .eco-inner h2 { color: #64aa88; margin: 0 0 4px; font-size: 22px; }
   .eco-stats { color: #8b94a3; font-size: 14px; margin: 0 0 16px; }
   .eco-graph-wrap { background: #161b22; border: 1px solid #2a2f3a; border-radius: 14px; padding: 10px; }
@@ -131,7 +132,7 @@
   /* Field panel */
   .field-panel { flex: 1; overflow-y: auto; background: #0a0a0a; padding: 20px; }
   .field-panel.hidden { display: none; }
-  .field-inner { max-width: 760px; margin: 0 auto; }
+  .field-inner { max-width: 880px; margin: 0; }
   .field-inner h2 { color: #64aa88; margin: 0 0 4px; font-size: 22px; }
   .field-sub { color: #8b94a3; font-size: 14px; margin: 0 0 18px; }
   .field-inner label { display: block; color: #8b94a3; font-size: 13px; margin: 14px 0 6px; }
@@ -468,6 +469,7 @@ function applyLang(lang){
   // refresh JS-rendered surfaces
   if (typeof currentTab !== "undefined" && currentTab === "creatures" && typeof loadCreaturesView === "function") loadCreaturesView();
   if (typeof currentTab !== "undefined" && typeof setChatPlaceholder === "function") setChatPlaceholder();
+  if (typeof relocalizeOrganGrid === "function") relocalizeOrganGrid();
 }
 function toggleLang(){ applyLang(_llang === "ko" ? "en" : "ko"); }
 (function(){ let l=null; try{ l=localStorage.getItem("ludex_lang"); }catch(e){} if(!l) l=(navigator.language||"").toLowerCase().startsWith("ko")?"ko":"en"; applyLang(l); })();
@@ -759,21 +761,43 @@ async function loadOrgans() {
   } catch (e) { console.error('Failed to load organs:', e); }
 }
 
+// Organ display — single source of truth, matches the homepage carousel (ko/en + icon).
+const ORGAN_META = {
+  engine:{icon:"🧠", en:{name:"Engine",sys:"Nervous"}, ko:{name:"엔진",sys:"신경계"}},
+  resilience:{icon:"🦴", en:{name:"Resilience",sys:"Skeletal"}, ko:{name:"회복력",sys:"골격계"}},
+  memory:{icon:"🐘", en:{name:"Memory",sys:"Mnemonic"}, ko:{name:"기억",sys:"기억계"}},
+  immune:{icon:"🦔", en:{name:"Immune · cellular",sys:"Immune"}, ko:{name:"면역 · 세포",sys:"면역계"}},
+  humoral_immune:{icon:"🛡️", en:{name:"Immune · humoral",sys:"Immune"}, ko:{name:"면역 · 체액",sys:"면역계"}},
+  emotion:{icon:"💚", en:{name:"Emotion",sys:"Endocrine"}, ko:{name:"감정",sys:"내분비계"}},
+  tracking:{icon:"📊", en:{name:"Tracking",sys:"Circulatory"}, ko:{name:"추적",sys:"순환계"}},
+  hooks:{icon:"🔌", en:{name:"Hooks",sys:"Gene transfer"}, ko:{name:"후크",sys:"유전자 전달"}},
+  auto:{icon:"🫀", ai:true, en:{name:"Interoception",sys:"AI-native"}, ko:{name:"내부감각",sys:"AI 고유"}},
+  chronos:{icon:"⏳", ai:true, en:{name:"Time sense",sys:"AI-native"}, ko:{name:"시간감각",sys:"AI 고유"}},
+  topos:{icon:"🧭", ai:true, en:{name:"Place sense",sys:"AI-native"}, ko:{name:"공간감각",sys:"AI 고유"}},
+  allos:{icon:"👥", ai:true, en:{name:"Social sense",sys:"AI-native"}, ko:{name:"사회감각",sys:"AI 고유"}},
+  physis:{icon:"🌐", ai:true, en:{name:"World model",sys:"AI-native"}, ko:{name:"세계모델",sys:"AI 고유"}},
+};
 function renderOrganGrid() {
   const grid = document.getElementById('organGrid');
   grid.innerHTML = '';
+  const L = (_llang === 'ko') ? 'ko' : 'en';
   for (const [name, config] of Object.entries(organData)) {
     const isRequired = config.required;
     const isEnabled = config.enabled;
     organToggles[name] = isEnabled;
+    const meta = ORGAN_META[name];
+    const m = meta ? (meta[L] || meta.en) : null;
+    const icon = (meta && meta.icon) || config.icon || '🧩';
+    const disp = m ? m.name : (config.display || name);
+    const sys = m ? m.sys : (config.system || '');
     const card = document.createElement('div');
-    card.className = `organ-card${isEnabled ? ' enabled' : ''}${isRequired ? ' required' : ''}`;
+    card.className = `organ-card${isEnabled ? ' enabled' : ''}${isRequired ? ' required' : ''}${meta && meta.ai ? ' ainative' : ''}`;
     card.dataset.organ = name;
     card.innerHTML = `
-      <span class="organ-icon">${config.icon || ''}</span>
+      <span class="organ-icon">${icon}</span>
       <div>
-        <div class="organ-name">${config.display}</div>
-        <div class="organ-sys">${config.system}</div>
+        <div class="organ-name">${disp}</div>
+        <div class="organ-sys">${sys}</div>
       </div>
       ${isRequired ? '<span class="organ-lock">REQ</span>' : ''}
     `;
@@ -782,6 +806,16 @@ function renderOrganGrid() {
     }
     grid.appendChild(card);
   }
+}
+function relocalizeOrganGrid() {
+  const L = (_llang === 'ko') ? 'ko' : 'en';
+  document.querySelectorAll('.organ-card').forEach(card => {
+    const meta = ORGAN_META[card.dataset.organ]; if (!meta) return;
+    const m = meta[L] || meta.en;
+    const ic = card.querySelector('.organ-icon'); if (ic) ic.textContent = meta.icon || '';
+    const nm = card.querySelector('.organ-name'); if (nm) nm.textContent = m.name;
+    const sy = card.querySelector('.organ-sys'); if (sy) sy.textContent = m.sys;
+  });
 }
 
 function toggleOrgan(name) {

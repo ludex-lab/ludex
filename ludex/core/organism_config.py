@@ -131,6 +131,9 @@ PRESETS = {
     "minimal": {k: {**v, "enabled": v.get("required", False)} for k, v in DEFAULT_ORGANS.items()},
     "secure": {
         **{k: {**v, "enabled": v.get("required", False)} for k, v in DEFAULT_ORGANS.items()},
+        # memory: humoral immunity *learns* threat patterns across interactions,
+        # which needs persistence — a secure creature should remember (JJ 2026-06-07).
+        "memory": {**DEFAULT_ORGANS["memory"], "enabled": True},
         "immune": {**DEFAULT_ORGANS["immune"], "enabled": True},
         "humoral_immune": {**DEFAULT_ORGANS["humoral_immune"], "enabled": True},
     },
