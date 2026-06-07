@@ -201,7 +201,11 @@ app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__
 
 @app.get("/")
 async def index():
-    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"))
+    # no-cache: the app updates via git pull + restart, so the browser must
+    # revalidate index.html each load — otherwise a cached old client shows stale
+    # state after an update (looked like sessions were "stuck"; they weren't).
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"),
+                        headers={"Cache-Control": "no-cache"})
 
 
 # ---- self-update (git-based) --------------------------------------------------
