@@ -644,31 +644,32 @@ class _StopField(Exception):
     next turn boundary (a brain call already in flight still has to return first)."""
 
 
-def _council_transcript_text(council) -> str:
+def _field_transcript_text(field) -> str:
     lines = []
-    for rd in council.rounds:
+    for rd in field.rounds:
         for rec in rd.records:
             lines.append(f"[{rec.phase}] {rec.participant}: {rec.content}")
-    return "In a Council you took part in, this was discussed:\n" + "\n".join(lines)
+    return "In a field session you took part in, this was discussed:\n" + "\n".join(lines)
 
 
-def _council_aftermath(sess, council, dilemma_text):
-    """After a council finishes, leave durable traces (JJ): each participant reflects
-    on it (→ SELF.md) and writes a bond toward each other participant (→ bonds/).
-    Like people — doing something together leaves memories and brings you closer;
-    repeated councils deepen the bond (update_bond accumulates)."""
+def _field_aftermath(sess, field, field_kind, text):
+    """After a field session finishes, leave durable traces (JJ): each participant
+    reflects on it (→ SELF.md) and writes a bond toward each other participant
+    (→ bonds/). Like people — doing something together leaves memories and brings you
+    closer; repeated sessions deepen the bond (update_bond accumulates)."""
     from ludex.core import selfhood
-    parts = [p for p in council.participants if getattr(p, "organism", None)]
-    transcript = _council_transcript_text(council)
-    summary = f'a Council debating the dilemma: "{dilemma_text}"'
+    parts = [p for p in field.participants if getattr(p, "organism", None)]
+    transcript = _field_transcript_text(field)
+    label = "a Forum on the claim" if field_kind == "forum" else "a Council on the dilemma"
+    summary = f'{label}: "{text}"'
     for p in parts:                       # reflection → SELF.md
         if sess.get("stop"):
             return
         sess["aftermath"] = f"reflect:{p.name}"
         try:
-            selfhood.reflect(p.organism, "council", p.engine, transcript)
+            selfhood.reflect(p.organism, field_kind, p.engine, transcript)
         except Exception as e:
-            print(f"council reflect failed for {p.name}: {e}")
+            print(f"field reflect failed for {p.name}: {e}")
     for p in parts:                       # bond writeup → bonds/<other>.md (both ways)
         for q in parts:
             if p is q:
@@ -686,29 +687,34 @@ def _council_aftermath(sess, council, dilemma_text):
                                      shared_experience=f"You took part in {summary}, alongside {q.name}.",
                                      other_brain=qmodel)
             except Exception as e:
-                print(f"council bond writeup failed {p.name}->{q.name}: {e}")
+                print(f"field bond writeup failed {p.name}->{q.name}: {e}")
     sess["aftermath"] = ""
 
 
-def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list, mediator: str = ""):
-    """Background worker: build a Council, admit the chosen creatures, run it. The
-    transcript accumulates in the field object, polled via /api/field/session.
-    Progress (waking / entered / thinking) is surfaced so the UI isn't a black box —
-    brain calls (incl. the D-072 capability probe at first build) are slow."""
+def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, mediator: str = ""):
+    """Background worker: build the chosen field, admit creatures, run it. Transcript
+    accumulates in the field object (polled). Progress (waking/entered/thinking) is
+    surfaced so the UI isn't a black box — brain calls (incl. the D-072 probe at first
+    build) are slow. Council = dilemma debate; Forum = claim verification (we run the
+    debate rounds in observation mode, skipping the ground-truth verdict)."""
     sess = field_sessions[sid]
     try:
-        from ludex.fields.council import Council, Dilemma
         from ludex.fields.conversation import Participant
-        council = Council(name=f"web-council-{sid}", dilemma=Dilemma(text=dilemma_text), auto_trace=False)
-        sess["field"] = council
+        if field_kind == "forum":
+            from ludex.fields.forum import Forum, ForumClaim
+            field = Forum(name=f"web-forum-{sid}", claim=ForumClaim(text=text), verdict=None, auto_trace=False)
+        else:
+            from ludex.fields.council import Council, Dilemma
+            field = Council(name=f"web-council-{sid}", dilemma=Dilemma(text=text), auto_trace=False)
+        sess["field"] = field
         for path in creature_paths:
             name0 = os.path.basename(str(path).rstrip("/\\"))
             sess["building"] = name0          # "waking <name>…" (build may probe the brain)
             org = _build_creature_org(path)
             name = getattr(org, "name", None) or name0
-            role = "mediator" if mediator and mediator in (name, name0) else "discussant"
-            council.add_participant(Participant(name=name, role=role,
-                                                organism=org, engine=org.get_block("engine")))
+            role = "mediator" if (field_kind == "council" and mediator and mediator in (name, name0)) else "discussant"
+            field.add_participant(Participant(name=name, role=role,
+                                              organism=org, engine=org.get_block("engine")))
             sess["entered"].append(name)
             sess["building"] = ""
 
@@ -727,9 +733,16 @@ def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list, mediator:
                 sess["thinking"] = ""
 
         sess["status"] = "running"
-        council.run(response_fn)
-        sess["status"] = "reflecting"      # post-council: durable memory + bonds (JJ)
-        _council_aftermath(sess, council, dilemma_text)
+        if field_kind == "forum":
+            field.post_claim()
+            field.confidence_round(response_fn)
+            field.evidence_round(response_fn)
+            field.challenge_round(response_fn)
+            field.update_round(response_fn)
+        else:
+            field.run(response_fn)
+        sess["status"] = "reflecting"      # post-session: durable memory + bonds (JJ)
+        _field_aftermath(sess, field, field_kind, text)
         sess["status"] = "stopped" if sess.get("stop") else "done"
     except _StopField:
         sess["status"] = "stopped"
@@ -752,18 +765,18 @@ class FieldStartRequest(BaseModel):
 
 @app.post("/api/field/start")
 async def field_start(req: FieldStartRequest):
-    if req.field != "council":
+    if req.field not in ("council", "forum"):
         return {"error": f"Field '{req.field}' is not supported yet."}
     if not (req.dilemma or "").strip():
-        return {"error": "A dilemma is required."}
+        return {"error": "A dilemma/claim is required."}
     if len(req.creatures) < 2:
         return {"error": "Admit at least 2 creatures."}
     import threading
     sid = f"f{int(time.time() * 1000) % 1000000}"
-    field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "", "field_kind": "council",
+    field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "", "field_kind": req.field,
                            "dilemma": req.dilemma, "entered": [], "building": "", "thinking": "", "stop": False,
                            "started": time.time(), "mediator": req.mediator, "aftermath": ""}
-    threading.Thread(target=_run_council_bg, args=(sid, req.dilemma, req.creatures, req.mediator), daemon=True).start()
+    threading.Thread(target=_run_field_bg, args=(sid, req.field, req.dilemma, req.creatures, req.mediator), daemon=True).start()
     return {"session_id": sid, "status": "starting"}
 
 
