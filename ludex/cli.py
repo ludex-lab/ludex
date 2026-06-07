@@ -26,14 +26,18 @@ PROVIDERS = list(ADAPTER_REGISTRY.keys())
 PRESET_NAMES = list(PRESETS.keys())
 NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 
+# Maintenance: keep a RANGE per provider — flagship → mid → small/fast — and refresh
+# as model lines move. CLI providers are NOT single-model (Codex/Gemini CLIs take a
+# model via -m; our Echo went 5.4→5.5 that way). Shared with the web Forge via
+# /api/model-hints, so this is the one place to update.
 PROVIDER_MODEL_HINTS = {
     "claude_cli": "claude-opus-4-8  |  claude-opus-4-7  |  claude-sonnet-4-6  |  claude-haiku-4-5",
     "claude_sdk": "claude-opus-4-8  |  claude-opus-4-7  |  claude-sonnet-4-6  |  claude-haiku-4-5",
     "anthropic": "claude-opus-4-8  |  claude-opus-4-7  |  claude-sonnet-4-6  |  claude-haiku-4-5",
     "ollama": "qwen3.5:4b  |  exaone3.5:7.8b  |  llama3.1:8b",
-    "gemini_cli": "gemini-3.1-pro-preview",
-    "agy_cli": "gemini-3.5-flash",
-    "codex_cli": "gpt-5.5",
+    "gemini_cli": "gemini-3.1-pro-preview  |  gemini-3.5-flash",
+    "agy_cli": "gemini-3.5-flash",   # agy is partial-support / agy-only flash (see gemini_cli_deprecation)
+    "codex_cli": "gpt-5.5  |  gpt-5.4-mini  |  gpt-5.4-nano",
     "openai": "gpt-5.5  |  gpt-5.4-mini  |  gpt-5.4-nano",
     "gemini_api": "gemini-3.5-flash  |  gemini-3.1-flash-lite",
 }
