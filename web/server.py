@@ -495,16 +495,13 @@ async def vitals(session_id: str):
     return get_vitals(org)
 
 
-@app.get("/api/creatures")
-async def list_creatures(dir: str = "creatures"):
-    """List creatures under `dir` for the viewer — cheap disk read, no build.
-    Each entry has identity (name/brain/organs) + lightweight persisted vitals
-    (emotional baseline, memory count). Full live vitals come after waking one."""
+def _scan_creatures(base: str) -> list:
+    """Cheap disk scan of creatures under `base` — identity + lightweight persisted
+    vitals (emotional baseline, memory count) + bond targets. No organism build."""
     from ludex.core.organism_config import OrganismConfig
-    base = os.path.abspath(os.path.expanduser(dir))
     creatures = []
     if not os.path.isdir(base):
-        return {"dir": base, "creatures": [], "error": "no such directory"}
+        return creatures
     for name in sorted(os.listdir(base)):
         cdir = os.path.join(base, name)
         if not os.path.isdir(cdir):
@@ -535,8 +532,56 @@ async def list_creatures(dir: str = "creatures"):
             info["memories"] = sum(1 for _ in open(mp, encoding="utf-8")) if os.path.exists(mp) else 0
         except Exception:
             info["memories"] = 0
+        try:
+            bdir = os.path.join(cdir, "bonds")
+            info["bonds"] = sorted(os.path.splitext(f)[0] for f in os.listdir(bdir)
+                                   if f.endswith(".md")) if os.path.isdir(bdir) else []
+        except Exception:
+            info["bonds"] = []
         creatures.append(info)
-    return {"dir": base, "creatures": creatures}
+    return creatures
+
+
+@app.get("/api/creatures")
+async def list_creatures(dir: str = "creatures"):
+    """List creatures under `dir` for the viewer — cheap disk read, no build."""
+    base = os.path.abspath(os.path.expanduser(dir))
+    if not os.path.isdir(base):
+        return {"dir": base, "creatures": [], "error": "no such directory"}
+    return {"dir": base, "creatures": _scan_creatures(base)}
+
+
+@app.get("/api/ecosystem")
+async def ecosystem(dir: str = "creatures"):
+    """Ecosystem overview: every creature + the bond graph between them. Bonds are
+    directional (a creature has a bonds/<other>.md for each peer it models); a pair
+    modeled both ways is 'mutual'."""
+    base = os.path.abspath(os.path.expanduser(dir))
+    creatures = _scan_creatures(base)
+    by_lower = {c["name"].lower(): c["name"] for c in creatures}
+    directed = set()
+    for c in creatures:
+        for b in c.get("bonds", []):
+            to = by_lower.get(str(b).lower())
+            if to and to != c["name"]:
+                directed.add((c["name"], to))
+    edges, emitted = [], set()
+    for (a, b) in sorted(directed):
+        if (b, a) in directed:               # mutual → one undirected edge
+            key = tuple(sorted((a, b)))
+            if key in emitted:
+                continue
+            emitted.add(key)
+            edges.append({"from": a, "to": b, "mutual": True})
+        else:                                 # one-way → directed edge
+            edges.append({"from": a, "to": b, "mutual": False})
+    stats = {
+        "creatures": len(creatures),
+        "edges": len(edges),
+        "mutual": sum(1 for e in edges if e["mutual"]),
+        "brains": sorted({c.get("provider", "") for c in creatures if c.get("provider")}),
+    }
+    return {"dir": base, "creatures": creatures, "edges": edges, "stats": stats}
 
 
 # ============================================================
