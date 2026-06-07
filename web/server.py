@@ -608,7 +608,9 @@ def _build_creature_org(habitat_path: str):
 
 def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list):
     """Background worker: build a Council, admit the chosen creatures, run it. The
-    transcript accumulates in the field object, polled via /api/field/session."""
+    transcript accumulates in the field object, polled via /api/field/session.
+    Progress (waking / entered / thinking) is surfaced so the UI isn't a black box —
+    brain calls (incl. the D-072 capability probe at first build) are slow."""
     sess = field_sessions[sid]
     try:
         from ludex.fields.council import Council, Dilemma
@@ -616,17 +618,24 @@ def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list):
         council = Council(name=f"web-council-{sid}", dilemma=Dilemma(text=dilemma_text), auto_trace=False)
         sess["field"] = council
         for path in creature_paths:
+            name0 = os.path.basename(str(path).rstrip("/\\"))
+            sess["building"] = name0          # "waking <name>…" (build may probe the brain)
             org = _build_creature_org(path)
-            name = getattr(org, "name", None) or os.path.basename(str(path).rstrip("/\\"))
+            name = getattr(org, "name", None) or name0
             council.add_participant(Participant(name=name, role="discussant",
                                                 organism=org, engine=org.get_block("engine")))
+            sess["entered"].append(name)
+            sess["building"] = ""
 
         def response_fn(p, prompt):
+            sess["thinking"] = p.name          # "<name> is thinking…"
             try:
                 r = p.engine.handle_submit(prompt)
                 return (r.response or "").strip() or "[no response]"
             except Exception as e:
                 return f"[error: {e}]"
+            finally:
+                sess["thinking"] = ""
 
         sess["status"] = "running"
         council.run(response_fn)
@@ -634,6 +643,9 @@ def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list):
     except Exception as e:
         sess["status"] = "error"
         sess["error"] = str(e)
+    finally:
+        sess["building"] = ""
+        sess["thinking"] = ""
 
 
 class FieldStartRequest(BaseModel):
@@ -652,7 +664,8 @@ async def field_start(req: FieldStartRequest):
         return {"error": "Admit at least 2 creatures."}
     import threading
     sid = f"f{int(time.time() * 1000) % 1000000}"
-    field_sessions[sid] = {"field": None, "status": "starting", "error": "", "field_kind": "council"}
+    field_sessions[sid] = {"field": None, "status": "starting", "error": "", "field_kind": "council",
+                           "entered": [], "building": "", "thinking": ""}
     threading.Thread(target=_run_council_bg, args=(sid, req.dilemma, req.creatures), daemon=True).start()
     return {"session_id": sid, "status": "starting"}
 
@@ -672,7 +685,9 @@ async def field_session(sid: str):
                                    "participant": rec.participant, "kind": rec.kind,
                                    "content": rec.content})
     return {"status": sess.get("status"), "error": sess.get("error", ""),
-            "field": sess.get("field_kind"), "participants": participants, "transcript": transcript}
+            "field": sess.get("field_kind"), "participants": participants, "transcript": transcript,
+            "entered": sess.get("entered", []), "building": sess.get("building", ""),
+            "thinking": sess.get("thinking", "")}
 
 
 # ============================================================
