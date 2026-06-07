@@ -175,6 +175,85 @@ async def index():
     return FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"))
 
 
+# ---- self-update (git-based) --------------------------------------------------
+# The local app is a git clone of ludex-lab/ludex; users would otherwise sit on
+# stale code forever. These let the client detect "you're behind" and apply it
+# with one click (git pull, then reload or self-restart).
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+GH_REPO = "ludex-lab/ludex"
+_START_TS = time.time()          # changes on every (re)start — lets the client know a restart finished
+_UPDATE_TTL = 3600               # cache the GitHub check (unauthenticated rate limit is 60/hr)
+_update_cache = {"ts": 0.0, "data": None}
+
+
+def _git(*args, timeout=60):
+    import subprocess
+    return subprocess.run(["git", "-C", REPO_ROOT, *args], capture_output=True, text=True, timeout=timeout)
+
+
+def _local_head():
+    r = _git("rev-parse", "HEAD")
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+@app.get("/api/version")
+async def version():
+    sha = _local_head()
+    return {"sha": (sha or "")[:7], "started": _START_TS}
+
+
+@app.get("/api/update-check")
+async def update_check(force: bool = False):
+    """Is this clone behind main? Compares local HEAD to ludex-lab/ludex via the
+    GitHub compare API (one call gives how many commits we're behind). Cached."""
+    now = time.time()
+    if not force and _update_cache["data"] and now - _update_cache["ts"] < _UPDATE_TTL:
+        return _update_cache["data"]
+    local = _local_head()
+    if not local:
+        return {"behind": False, "error": "not a git checkout"}
+    result = {"current": local[:7], "behind": False, "count": 0}
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.get(f"https://api.github.com/repos/{GH_REPO}/compare/{local}...main",
+                                    headers={"Accept": "application/vnd.github+json"})
+        if resp.status_code == 200:
+            d = resp.json()
+            if d.get("status") == "ahead":          # main has commits we don't
+                result["behind"] = True
+                result["count"] = d.get("ahead_by", 0)
+                result["latest"] = (d.get("commits") or [{}])[-1].get("sha", "")[:7]
+        else:
+            result["error"] = f"GitHub {resp.status_code}"
+    except Exception as e:
+        result["error"] = str(e)
+    _update_cache.update(ts=now, data=result)
+    return result
+
+
+@app.post("/api/update")
+async def update():
+    """git pull --ff-only, then report whether a restart is needed. Python changes
+    self-restart (os.execv); client-only changes just need a browser reload."""
+    old = _local_head()
+    pull = _git("pull", "--ff-only")
+    if pull.returncode != 0:
+        return {"ok": False, "output": (pull.stderr or pull.stdout).strip()}
+    new = _local_head()
+    changed = []
+    if old and new and old != new:
+        changed = [p for p in _git("diff", "--name-only", old, new).stdout.splitlines() if p]
+    restart = any(p.endswith(".py") for p in changed)
+    _update_cache.update(ts=0.0, data=None)
+    if restart:
+        import threading
+        argv = sys.argv + ([] if "--no-browser" in sys.argv else ["--no-browser"])
+        threading.Timer(0.8, lambda: os.execv(sys.executable, [sys.executable, *argv])).start()
+    return {"ok": True, "updated": old != new, "restart": restart,
+            "changed": len(changed), "from": (old or "")[:7], "to": (new or "")[:7]}
+
+
 @app.get("/api/ollama-models")
 async def ollama_models():
     """Fetch installed Ollama models."""
