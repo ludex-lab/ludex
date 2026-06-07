@@ -39,3 +39,4 @@ ludex/.search.db
 
 # Antigravity CLI (agy) per-project config — machine-local symlinks
 .antigravitycli/
+field_log/

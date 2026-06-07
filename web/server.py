@@ -587,7 +587,36 @@ async def ecosystem(dir: str = "creatures"):
 # ============================================================
 # Field sessions — admit creatures into a field, run it, observe (background)
 # ============================================================
-field_sessions = {}  # sid -> {field, status, error, field_kind}
+field_sessions = {}  # sid -> {field, status, error, field_kind}  (in-memory, live)
+FIELD_LOG = os.path.join(REPO_ROOT, "field_log")  # finished sessions persisted here (survive restarts)
+
+
+def _session_transcript_records(field):
+    out = []
+    if field is not None:
+        for rd in field.rounds:
+            for rec in rd.records:
+                out.append({"round": rec.round_index, "phase": rec.phase,
+                            "participant": rec.participant, "kind": rec.kind, "content": rec.content})
+    return out
+
+
+def _save_field_session(sess):
+    """Persist a finished session to disk so it survives server restarts (history)."""
+    try:
+        os.makedirs(FIELD_LOG, exist_ok=True)
+        field = sess.get("field")
+        data = {
+            "sid": sess.get("sid"), "field_kind": sess.get("field_kind"), "status": sess.get("status"),
+            "dilemma": sess.get("dilemma", ""), "mediator": sess.get("mediator", ""),
+            "participants": [p.name for p in field.participants] if field else sess.get("entered", []),
+            "started": sess.get("started", 0), "ended": time.time(),
+            "transcript": _session_transcript_records(field),
+        }
+        with open(os.path.join(FIELD_LOG, f"{sess.get('sid')}.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"field session save failed: {e}")
 
 
 def _build_creature_org(habitat_path: str):
@@ -706,6 +735,8 @@ def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list, mediator:
     finally:
         sess["building"] = ""
         sess["thinking"] = ""
+        sess["aftermath"] = ""
+        _save_field_session(sess)   # persist for history (survives restart)
 
 
 class FieldStartRequest(BaseModel):
@@ -725,18 +756,57 @@ async def field_start(req: FieldStartRequest):
         return {"error": "Admit at least 2 creatures."}
     import threading
     sid = f"f{int(time.time() * 1000) % 1000000}"
-    field_sessions[sid] = {"field": None, "status": "starting", "error": "", "field_kind": "council",
-                           "entered": [], "building": "", "thinking": "", "stop": False,
+    field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "", "field_kind": "council",
+                           "dilemma": req.dilemma, "entered": [], "building": "", "thinking": "", "stop": False,
                            "started": time.time(), "mediator": req.mediator, "aftermath": ""}
     threading.Thread(target=_run_council_bg, args=(sid, req.dilemma, req.creatures, req.mediator), daemon=True).start()
     return {"session_id": sid, "status": "starting"}
 
 
+@app.get("/api/field/sessions")
+async def field_sessions_list():
+    """All sessions — live (in-memory) + finished (on disk), newest first."""
+    out = {}
+    try:
+        for fn in sorted(os.listdir(FIELD_LOG)):
+            if not fn.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(FIELD_LOG, fn), encoding="utf-8") as f:
+                    d = json.load(f)
+                out[d.get("sid", fn[:-5])] = {
+                    "sid": d.get("sid", fn[:-5]), "status": d.get("status"), "dilemma": d.get("dilemma", ""),
+                    "participants": d.get("participants", []), "started": d.get("started", 0), "live": False,
+                    "turns": sum(1 for r in d.get("transcript", []) if r.get("phase") != "dilemma_posed")}
+            except Exception:
+                pass
+    except FileNotFoundError:
+        pass
+    for sid, sess in field_sessions.items():    # live overrides disk
+        field = sess.get("field")
+        out[sid] = {"sid": sid, "status": sess.get("status"), "dilemma": sess.get("dilemma", ""),
+                    "participants": [p.name for p in field.participants] if field else sess.get("entered", []),
+                    "started": sess.get("started", 0), "live": True,
+                    "turns": sum(1 for rd in (field.rounds if field else []) for rec in rd.records
+                                 if rec.phase != "dilemma_posed")}
+    return {"sessions": sorted(out.values(), key=lambda s: s.get("started", 0), reverse=True)}
+
+
 @app.get("/api/field/session/{sid}")
 async def field_session(sid: str):
     sess = field_sessions.get(sid)
-    if not sess:
-        return {"error": "Session not found"}
+    if not sess:                                 # finished — load from disk
+        try:
+            with open(os.path.join(FIELD_LOG, f"{sid}.json"), encoding="utf-8") as f:
+                d = json.load(f)
+            return {"status": d.get("status"), "error": "", "field": d.get("field_kind"),
+                    "participants": d.get("participants", []), "transcript": d.get("transcript", []),
+                    "entered": d.get("participants", []), "building": "", "thinking": "",
+                    "mediator": d.get("mediator", ""), "aftermath": "",
+                    "elapsed": int(d.get("ended", 0) - d.get("started", 0)) if d.get("started") else 0,
+                    "turns": sum(1 for r in d.get("transcript", []) if r.get("phase") != "dilemma_posed")}
+        except Exception:
+            return {"error": "Session not found"}
     transcript, participants = [], []
     field = sess.get("field")
     if field is not None:
