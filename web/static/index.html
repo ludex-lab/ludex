@@ -77,37 +77,36 @@
   .bar-fill.blue { background: #60a5fa; }
   .bar-fill.pink { background: #e879a0; }
 
-  /* FORGE Modal */
-  .connect-overlay { flex: 1; overflow-y: auto; background: #0a0a0a; padding: 24px 32px; }
-  .connect-box { background: transparent; padding: 0; border: none; max-width: 720px; margin: 0 auto; }
-  .connect-box h2 { color: #64aa88; margin-bottom: 4px; font-size: 20px; }
-  .connect-box .forge-subtitle { color: #666; font-size: 12px; margin-bottom: 16px; }
-  .connect-box label { display: block; color: #888; font-size: 13px; margin: 10px 0 4px; }
-  .connect-box input, .connect-box select { width: 100%; background: #0a0a0a; border: 1px solid #333; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
-  .connect-box button.primary { width: 100%; margin-top: 16px; background: #64aa88; color: #000; border: none; padding: 12px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
-  .connect-box button.primary:hover { background: #88ccaa; }
+  /* FORGE tab panel — left-aligned, card-based to match My Creatures */
+  .connect-overlay { flex: 1; overflow-y: auto; background: #0a0a0a; padding: 20px; }
+  .connect-box { background: transparent; padding: 0; border: none; max-width: 760px; }
+  .connect-box h2 { color: #64aa88; margin: 0 0 4px; font-size: 22px; }
+  .connect-box .forge-subtitle { color: #8b94a3; font-size: 13px; margin-bottom: 18px; }
+  .connect-box label { display: block; color: #8b94a3; font-size: 13px; margin: 12px 0 5px; }
+  .connect-box input, .connect-box select { width: 100%; background: #0d1117; border: 1px solid #2a2f3a; color: #e6edf3; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+  .connect-box button.primary { width: 100%; margin-top: 16px; background: #64aa88; color: #08130d; border: none; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .connect-box button.primary:hover { filter: brightness(1.08); }
 
-  /* FORGE Steps */
-  .forge-step { border-top: 1px solid #222; padding-top: 12px; margin-top: 12px; }
-  .forge-step:first-of-type { border-top: none; padding-top: 0; margin-top: 8px; }
-  .step-header { color: #64aa88; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  /* FORGE steps as cards (same chrome as .ccard) */
+  .forge-step { background: #161b22; border: 1px solid #2a2f3a; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .step-header { color: #64aa88; font-size: 15px; font-weight: 700; margin-bottom: 10px; }
 
   /* Organ Grid */
-  .organ-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
-  .organ-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #111; border: 1px solid #282828; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 12px; }
-  .organ-card:hover { border-color: #444; }
-  .organ-card.enabled { border-color: #64aa88; background: #1a2a1a; }
+  .organ-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+  .organ-card { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: #0d1117; border: 1px solid #2a2f3a; border-radius: 8px; cursor: pointer; transition: all 0.2s; font-size: 13px; }
+  .organ-card:hover { border-color: #475061; }
+  .organ-card.enabled { border-color: #64aa88; background: #16261b; }
   .organ-card.required { opacity: 0.7; cursor: default; }
-  .organ-card .organ-icon { font-size: 16px; width: 24px; text-align: center; }
-  .organ-card .organ-name { color: #e0e0e0; font-weight: bold; }
-  .organ-card .organ-sys { color: #666; font-size: 10px; }
-  .organ-card .organ-lock { color: #64aa88; font-size: 10px; margin-left: auto; }
+  .organ-card .organ-icon { font-size: 17px; width: 24px; text-align: center; }
+  .organ-card .organ-name { color: #e6edf3; font-weight: 600; }
+  .organ-card .organ-sys { color: #8b94a3; font-size: 11px; }
+  .organ-card .organ-lock { color: #64aa88; font-size: 11px; margin-left: auto; }
 
   /* Preset buttons */
-  .preset-bar { display: flex; gap: 6px; margin-bottom: 8px; }
-  .preset-btn { padding: 4px 10px; background: #111; border: 1px solid #333; border-radius: 4px; color: #888; font-size: 11px; cursor: pointer; }
+  .preset-bar { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .preset-btn { padding: 6px 14px; background: #0d1117; border: 1px solid #2a2f3a; border-radius: 6px; color: #8b94a3; font-size: 12px; cursor: pointer; }
   .preset-btn:hover { border-color: #64aa88; color: #64aa88; }
-  .preset-btn.active { border-color: #64aa88; color: #64aa88; background: #1a2a1a; }
+  .preset-btn.active { border-color: #64aa88; color: #64aa88; background: #16261b; }
 
   /* REIMS Score */
   .reims-display { display: flex; gap: 12px; align-items: center; margin: 12px 0; padding: 12px; background: #111; border-radius: 8px; border: 1px solid #282828; }
@@ -251,7 +250,7 @@
     </div>
 
     <!-- OR: Load existing creature -->
-    <div class="forge-step" style="border-top: 2px solid #64aa88; margin-top: 16px;">
+    <div class="forge-step">
       <div class="step-header" style="color: #e879a0;" data-i18n="forge_load_h">Or: Load Existing Creature</div>
       <input type="text" id="loadHabitatPath" placeholder="./creatures/Nimbus" />
       <button class="primary" style="background:#e879a0; margin-top:8px;" onclick="forgeLoad()" data-i18n="forge_wake">Wake Up</button>
