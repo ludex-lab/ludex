@@ -606,6 +606,11 @@ def _build_creature_org(habitat_path: str):
     return config.build()
 
 
+class _StopField(Exception):
+    """Raised inside response_fn when the user asks to stop — aborts the run at the
+    next turn boundary (a brain call already in flight still has to return first)."""
+
+
 def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list):
     """Background worker: build a Council, admit the chosen creatures, run it. The
     transcript accumulates in the field object, polled via /api/field/session.
@@ -628,10 +633,14 @@ def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list):
             sess["building"] = ""
 
         def response_fn(p, prompt):
+            if sess.get("stop"):
+                raise _StopField()
             sess["thinking"] = p.name          # "<name> is thinking…"
             try:
                 r = p.engine.handle_submit(prompt)
                 return (r.response or "").strip() or "[no response]"
+            except _StopField:
+                raise
             except Exception as e:
                 return f"[error: {e}]"
             finally:
@@ -640,6 +649,8 @@ def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list):
         sess["status"] = "running"
         council.run(response_fn)
         sess["status"] = "done"
+    except _StopField:
+        sess["status"] = "stopped"
     except Exception as e:
         sess["status"] = "error"
         sess["error"] = str(e)
@@ -665,7 +676,7 @@ async def field_start(req: FieldStartRequest):
     import threading
     sid = f"f{int(time.time() * 1000) % 1000000}"
     field_sessions[sid] = {"field": None, "status": "starting", "error": "", "field_kind": "council",
-                           "entered": [], "building": "", "thinking": ""}
+                           "entered": [], "building": "", "thinking": "", "stop": False}
     threading.Thread(target=_run_council_bg, args=(sid, req.dilemma, req.creatures), daemon=True).start()
     return {"session_id": sid, "status": "starting"}
 
@@ -688,6 +699,20 @@ async def field_session(sid: str):
             "field": sess.get("field_kind"), "participants": participants, "transcript": transcript,
             "entered": sess.get("entered", []), "building": sess.get("building", ""),
             "thinking": sess.get("thinking", "")}
+
+
+@app.post("/api/field/stop/{sid}")
+async def field_stop(sid: str):
+    """Ask a running session to stop. It aborts at the next turn boundary; a brain
+    call already in flight must return/time out first (to truly kill a hung call,
+    restart the server — the daemon thread dies with it)."""
+    sess = field_sessions.get(sid)
+    if not sess:
+        return {"error": "Session not found"}
+    sess["stop"] = True
+    if sess.get("status") in ("starting", "running"):
+        sess["status"] = "stopping"
+    return {"status": sess.get("status")}
 
 
 # ============================================================
