@@ -9,7 +9,8 @@
   body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
 
   header { background: #111; padding: 10px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #222; }
-  .sleep-btn { margin-left: auto; background: #1a1216; color: #e879a0; border: 1px solid #3a2630; border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .sleep-btn { background: #1a1216; color: #e879a0; border: 1px solid #3a2630; border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
   .sleep-btn:hover { filter: brightness(1.2); }
   .sleep-btn.hidden { display: none; }
   header h1 { color: #64aa88; font-size: 18px; }
@@ -133,15 +134,14 @@
   <button id="updateBtn" type="button" onclick="doUpdate()">Update now</button>
 </div>
 
-<div style="position:fixed;top:10px;right:14px;z-index:200">
-  <button id="langTog" onclick="toggleLang()" style="background:#161b22;color:#e6edf3;border:1px solid #2a2f3a;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">한국어</button>
-</div>
-
 <header>
   <div class="status-dot" id="statusDot"></div>
   <h1>LUDEX</h1>
   <span class="subtitle" id="modelName" data-i18n="hdr_status">Not connected</span>
-  <button id="sleepBtn" class="sleep-btn hidden" type="button" onclick="sleepCreature()" data-i18n="hdr_sleep">💤 Sleep</button>
+  <div class="header-right">
+    <button id="sleepBtn" class="sleep-btn hidden" type="button" onclick="sleepCreature()" data-i18n="hdr_sleep">💤 Sleep</button>
+    <button id="langTog" onclick="toggleLang()" style="background:#161b22;color:#e6edf3;border:1px solid #2a2f3a;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">한국어</button>
+  </div>
 </header>
 
 <div class="tab-bar">
@@ -869,7 +869,11 @@ function updateVitals(v) {
 function setText(id,val,cls){const el=document.getElementById(id);if(el){el.textContent=val;el.className='vital-value'+(cls?' '+cls:'');}}
 function setBar(id,pct){const el=document.getElementById(id);if(el)el.style.width=Math.max(0,Math.min(100,pct))+'%';}
 
-document.getElementById('chatInput').addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  // Skip while an IME (Korean/Japanese/…) is still composing — otherwise the Enter
+  // that confirms composition also fires send, leaking the last char as a stray message.
+  if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) sendMessage();
+});
 document.getElementById('sendBtn').addEventListener('click', sendMessage);
 </script>
 </body>
