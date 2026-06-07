@@ -82,6 +82,20 @@ def _enable_web_multiturn(org):
         print(f"web multiturn enable failed: {e}")
 
 
+def _session_transcript(engine, max_turns: int = 12) -> str:
+    """Compact transcript of the current session from the engine's message log —
+    ground-truth material handed to the sleep reflection so SELF.md is shaped by
+    what actually happened this session (not just fuzzy memory recall)."""
+    msgs = [m for m in getattr(engine, "_messages", []) if getattr(m, "role", "") in ("user", "assistant")]
+    if not msgs:
+        return ""
+    lines = []
+    for m in msgs[-max_turns * 2:]:
+        who = "User" if m.role == "user" else "You"
+        lines.append(f"{who}: {m.content}")
+    return "This session's conversation just now:\n" + "\n".join(lines)
+
+
 def build_agent(session_id: str, model: str, provider: str = "ollama",
                 system_prompt: str = "", agent_type: str = "chat") -> Organism:
     """Assemble an organism based on agent type."""
@@ -797,11 +811,27 @@ async def forge_load(req: ForgeLoadRequest):
 
 @app.post("/api/disconnect/{session_id}")
 async def disconnect(session_id: str):
+    # Sleep = reflect once. The creature looks back on the session and authors
+    # SELF.md — the designed durable cross-session continuity (D-021/D-044), which
+    # raw memory + keyword recall don't provide. Best-effort, and only when
+    # something was actually said this session.
+    org = agents.get(session_id)
+    reflected = False
+    if org is not None:
+        try:
+            engine = org.get_block("engine")
+            if engine and getattr(engine, "_turn_count", 0) >= 1:
+                convo = _session_transcript(engine)
+                from ludex.core import selfhood
+                text = await asyncio.to_thread(selfhood.reflect, org, "sleep", engine, convo)
+                reflected = bool(text)
+        except Exception as e:
+            print(f"sleep reflection failed: {e}")
     if session_id in agents:
         del agents[session_id]
     if session_id in agent_types:
         del agent_types[session_id]
-    return {"status": "disconnected"}
+    return {"status": "disconnected", "reflected": reflected}
 
 
 # ============================================================
