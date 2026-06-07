@@ -589,7 +589,24 @@ const FT_PHASES = {
 };
 const _esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 async function loadField() {
-  if (_fieldSid) return;  // a session is being observed — leave it
+  if (_fieldSid) return;  // already observing in this page session
+  // Re-attach to a session still running server-side from before a page refresh
+  let saved = null; try { saved = localStorage.getItem('ludex_field_sid'); } catch (e) {}
+  if (saved) {
+    try {
+      const d = await (await fetch('/api/field/session/' + saved)).json();
+      if (!d.error) {
+        _fieldSid = saved; _fieldLastTurns = -1;
+        document.getElementById('fieldSetup').classList.add('hidden');
+        document.getElementById('fieldObserve').classList.remove('hidden');
+        const sb = document.getElementById('fieldStopBtn'); sb.disabled = false; sb.textContent = t('fld_stop');
+        fieldPoll();
+        if (!['done', 'error', 'stopped'].includes(d.status)) _fieldTimer = setInterval(fieldPoll, 3000);
+        return;
+      }
+      try { localStorage.removeItem('ludex_field_sid'); } catch (e) {}  // session gone (server restarted)
+    } catch (e) {}
+  }
   document.getElementById('fieldSetup').classList.remove('hidden');
   document.getElementById('fieldObserve').classList.add('hidden');
   const roster = document.getElementById('fieldRoster');
@@ -616,6 +633,7 @@ async function fieldStart() {
       body: JSON.stringify({ field:'council', dilemma, creatures: paths, mediator }) })).json();
     if (r.error) { alert(r.error); btn.disabled = false; btn.textContent = t('fld_start'); return; }
     _fieldSid = r.session_id; _fieldLastTurns = -1;
+    try { localStorage.setItem('ludex_field_sid', _fieldSid); } catch (e) {}  // survive page refresh
     document.getElementById('fieldSetup').classList.add('hidden');
     document.getElementById('fieldObserve').classList.remove('hidden');
     document.getElementById('fieldTranscript').innerHTML = '';
@@ -690,6 +708,7 @@ async function fieldStop() {
 function fieldReset() {
   if (_fieldTimer) { clearInterval(_fieldTimer); _fieldTimer = null; }
   _fieldSid = null;
+  try { localStorage.removeItem('ludex_field_sid'); } catch (e) {}
   const btn = document.getElementById('fieldStartBtn'); btn.disabled = false; btn.textContent = t('fld_start');
   loadField();
 }
