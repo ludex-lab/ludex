@@ -680,7 +680,7 @@ async function fieldPoll() {
   try {
     const d = await (await fetch('/api/field/session/' + _fieldSid)).json();
     if (d.error) { document.getElementById('fieldStatus').textContent = d.error; return; }
-    const ph = FT_PHASES[_lang()] || FT_PHASES.en;
+    const ph = FT_PHASES[_llang] || FT_PHASES.en;
     const st = d.status;
     const tx = d.transcript || [];
     const lastPhase = tx.length ? tx[tx.length - 1].phase : null;
@@ -730,7 +730,7 @@ async function fieldPoll() {
     const sb = document.getElementById('fieldStopBtn');
     if (sb) sb.style.display = ['done', 'error', 'stopped'].includes(st) ? 'none' : '';
     if (st === 'done' || st === 'error' || st === 'stopped') { clearInterval(_fieldTimer); _fieldTimer = null; }
-  } catch (e) {}
+  } catch (e) { console.error('fieldPoll error:', e); }
 }
 async function fieldStop() {
   if (!_fieldSid) return;
