@@ -611,7 +611,7 @@ class _StopField(Exception):
     next turn boundary (a brain call already in flight still has to return first)."""
 
 
-def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list):
+def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list, mediator: str = ""):
     """Background worker: build a Council, admit the chosen creatures, run it. The
     transcript accumulates in the field object, polled via /api/field/session.
     Progress (waking / entered / thinking) is surfaced so the UI isn't a black box —
@@ -627,7 +627,8 @@ def _run_council_bg(sid: str, dilemma_text: str, creature_paths: list):
             sess["building"] = name0          # "waking <name>…" (build may probe the brain)
             org = _build_creature_org(path)
             name = getattr(org, "name", None) or name0
-            council.add_participant(Participant(name=name, role="discussant",
+            role = "mediator" if mediator and mediator in (name, name0) else "discussant"
+            council.add_participant(Participant(name=name, role=role,
                                                 organism=org, engine=org.get_block("engine")))
             sess["entered"].append(name)
             sess["building"] = ""
@@ -663,6 +664,7 @@ class FieldStartRequest(BaseModel):
     field: str = "council"
     dilemma: str = ""
     creatures: list = []   # habitat paths
+    mediator: str = ""     # optional: name of the creature to seat as mediator
 
 
 @app.post("/api/field/start")
@@ -676,8 +678,9 @@ async def field_start(req: FieldStartRequest):
     import threading
     sid = f"f{int(time.time() * 1000) % 1000000}"
     field_sessions[sid] = {"field": None, "status": "starting", "error": "", "field_kind": "council",
-                           "entered": [], "building": "", "thinking": "", "stop": False}
-    threading.Thread(target=_run_council_bg, args=(sid, req.dilemma, req.creatures), daemon=True).start()
+                           "entered": [], "building": "", "thinking": "", "stop": False,
+                           "started": time.time(), "mediator": req.mediator}
+    threading.Thread(target=_run_council_bg, args=(sid, req.dilemma, req.creatures, req.mediator), daemon=True).start()
     return {"session_id": sid, "status": "starting"}
 
 
@@ -695,10 +698,13 @@ async def field_session(sid: str):
                 transcript.append({"round": rec.round_index, "phase": rec.phase,
                                    "participant": rec.participant, "kind": rec.kind,
                                    "content": rec.content})
+    started = sess.get("started", 0)
     return {"status": sess.get("status"), "error": sess.get("error", ""),
             "field": sess.get("field_kind"), "participants": participants, "transcript": transcript,
             "entered": sess.get("entered", []), "building": sess.get("building", ""),
-            "thinking": sess.get("thinking", "")}
+            "thinking": sess.get("thinking", ""), "mediator": sess.get("mediator", ""),
+            "elapsed": int(time.time() - started) if started else 0,
+            "turns": sum(1 for r in transcript if r["phase"] != "dilemma_posed")}
 
 
 @app.post("/api/field/stop/{sid}")
