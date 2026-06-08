@@ -694,7 +694,8 @@ async function _loadFieldSetup() {
   } catch (e) { roster.innerHTML = `<span class="field-status">${t('eco_fail')}</span>`; }
   // Past sessions (live + finished, from disk)
   try {
-    const ss = (await (await fetch('/api/field/sessions')).json()).sessions || [];
+    const ss = ((await (await fetch('/api/field/sessions')).json()).sessions || [])
+      .filter(s => (s.field || 'council') === _fieldKind);   // only this field's sessions
     const h = document.getElementById('fieldHistory');
     h.innerHTML = `<label>${t('fld_history')}</label>` + (ss.length ? ss.map(s => {
       const term = ['done', 'error', 'stopped'].includes(s.status);
