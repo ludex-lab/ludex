@@ -43,6 +43,25 @@ def load_self(habitat_dir: str) -> str:
     return ""
 
 
+# D-085 param 3 — the identity block is the one region of SELF.md that
+# reflect()'s full-rewrite must NOT clobber: it holds [PROVISIONAL] and
+# [SETTLED] identity observations managed by the consolidation promotion
+# gate, not by individual reflections.
+IDENTITY_BLOCK_START = "<!-- ludex:identity:start -->"
+IDENTITY_BLOCK_END = "<!-- ludex:identity:end -->"
+
+
+def extract_identity_block(text: str) -> str:
+    """Return the marker-delimited identity block (markers included), or ""."""
+    start = text.find(IDENTITY_BLOCK_START)
+    if start == -1:
+        return ""
+    end = text.find(IDENTITY_BLOCK_END, start)
+    if end == -1:
+        return ""
+    return text[start:end + len(IDENTITY_BLOCK_END)]
+
+
 def load_self_compressed(habitat_dir: str) -> str:
     """Load SELF.md compressed for SLM prompt injection.
 
@@ -175,6 +194,22 @@ def reflect(organism, trigger: str = "manual", engine=None,
         header += f"This session (authoritative):\n{session_context}\n\n"
     if memory_text:
         header += f"Your recent memories:\n{memory_text}\n\n"
+    # D-085 param 4 — dual-thread invariant: when consolidation
+    # retrospectives exist, the reflection prompt carries the consolidated
+    # hindsight ALONGSIDE the raw recent memories, so the creature faces
+    # the contrast between in-the-moment record and synthesized hindsight.
+    # Degrades silently for creatures that have never consolidated.
+    if memory and hasattr(memory, "recall_consolidated"):
+        try:
+            cons = memory.recall_consolidated("identity pattern learned held shifted", limit=2)
+            if cons:
+                cons_text = "\n\n".join(
+                    f"({c['file']} — {c['section']})\n{c['text'][:800]}"
+                    for c in cons)
+                header += ("Your consolidated retrospectives "
+                           f"(hindsight, distinct from the raw record):\n{cons_text}\n\n")
+        except Exception as e:
+            logger.debug(f"Reflection: consolidated recall failed: {e}")
     if bonds_summary:
         header += f"Your relationships:\n{bonds_summary}\n\n"
     if current_self and "empty at birth" not in current_self:
@@ -247,6 +282,13 @@ def reflect(organism, trigger: str = "manual", engine=None,
         f"Last reflection: {now} (trigger: {trigger})\n\n"
         f"{reflection_text}\n"
     )
+
+    # D-085 param 3: the rewrite preserves the promotion-gate identity
+    # block (settled/provisional observations) verbatim — reflections may
+    # not erase what the two-window gate settled.
+    identity_block = extract_identity_block(current_self)
+    if identity_block:
+        self_content += f"\n{identity_block}\n"
 
     self_path = Path(habitat_dir) / "SELF.md"
     try:

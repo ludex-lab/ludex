@@ -36,6 +36,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import time
 import json
 import logging
@@ -996,6 +997,205 @@ def consolidate(creature_dir: Path, force: bool = False, dry_run: bool = False,
 
 # ---------- CLI — manual /consolidate override ----------
 
+# ============================================================
+# D-085 param 3 — [PROVISIONAL] → [SETTLED] SELF.md promotion gate
+# ============================================================
+# The retrospective's `Identity Shifts` section NOMINATES identity
+# observations; writing them into SELF.md goes through this gate:
+#   - first appearance        → [PROVISIONAL] entry in the identity block
+#   - survives a SECOND consecutive window (a similar observation is
+#     re-nominated)           → [SETTLED]
+# No single-window identity drift. Mechanical survival = re-nomination
+# (the conservative reading of "uncontradicted" — prose contradiction
+# detection is deferred to a brain-assisted pass). The identity block in
+# SELF.md is marker-delimited and preserved verbatim by selfhood.reflect's
+# rewrite. Heartbeat does NOT run this — promotion is caretaker-triggered
+# (`--promote`), with `--yes` for non-interactive use.
+
+_IDENTITY_SECTION_TITLE = "identity shifts"
+
+_ENTRY_RE = re.compile(
+    r"^- \[(PROVISIONAL|SETTLED)\]\s+(.*?)(?:\s+\((?:window|settled)[^)]*\))?$")
+
+
+def parse_identity_shifts(md_text: str) -> list[str]:
+    """Extract candidate observations from a retrospective's Identity
+    Shifts section. Bullets if present, else non-empty prose lines."""
+    for section in md_text.split("\n## "):
+        lines = section.strip().splitlines()
+        if not lines or _IDENTITY_SECTION_TITLE not in lines[0].lower():
+            continue
+        body = [l.strip() for l in lines[1:] if l.strip()]
+        bullets = [l.lstrip("-* ").strip() for l in body
+                   if l.startswith(("-", "*"))]
+        candidates = bullets or body
+        # Drop explicit "nothing settled" placeholders.
+        return [c for c in candidates
+                if len(c) > 12 and not c.lower().startswith(("none", "(none"))]
+    return []
+
+
+_IDENTITY_STOPWORDS = {
+    "and", "that", "this", "the", "was", "are", "has", "have", "had",
+    "for", "with", "into", "its", "it's", "but", "not", "out", "own",
+}
+
+
+def _identity_stem(w: str) -> str:
+    """Crude suffix-strip so paraphrases match (rest/resting, held/holds)."""
+    for suffix in ("ing", "ed", "es", "s"):
+        if len(w) > len(suffix) + 3 and w.endswith(suffix):
+            return w[:-len(suffix)]
+    return w
+
+
+def _identity_tokens(s: str) -> set:
+    words = re.sub(r"[^\w\s]", " ", s.lower()).split()
+    return {_identity_stem(w) for w in words
+            if len(w) > 2 and w not in _IDENTITY_STOPWORDS}
+
+
+def _identity_similar(a: str, b: str, threshold: float = 0.5) -> bool:
+    ta, tb = _identity_tokens(a), _identity_tokens(b)
+    if not ta or not tb:
+        return False
+    return len(ta & tb) / len(ta | tb) >= threshold
+
+
+def _reflections_by_ts(creature_dir: Path) -> list[Path]:
+    """reflections/*.md sorted oldest→newest by consolidated_on_ts
+    (frontmatter), falling back to filename order."""
+    rdir = creature_dir / REFLECTIONS_DIRNAME
+    if not rdir.is_dir():
+        return []
+    def ts_of(f: Path) -> float:
+        try:
+            for line in f.read_text(encoding="utf-8")[:600].splitlines():
+                if line.strip().startswith("consolidated_on_ts:"):
+                    return float(line.split(":", 1)[1].strip())
+        except Exception:
+            pass
+        return 0.0
+    return sorted(rdir.glob("*.md"), key=lambda f: (ts_of(f), f.name))
+
+
+def parse_identity_entries(block: str) -> list[dict]:
+    """Parse `- [STATUS] text (meta)` lines from the SELF.md identity block."""
+    entries = []
+    for line in block.splitlines():
+        m = _ENTRY_RE.match(line.strip())
+        if m:
+            entries.append({"status": m.group(1), "text": m.group(2).strip(),
+                            "line": line.strip()})
+    return entries
+
+
+def propose_promotions(creature_dir: Path) -> dict:
+    """Compute the promotion proposal from the two most recent windows.
+
+    Returns {window, nominations, promotions, unchanged} where
+    nominations are new [PROVISIONAL] texts (first appearance this window)
+    and promotions are existing [PROVISIONAL] entries re-nominated this
+    window (or candidates present in BOTH of the last two windows) that
+    are eligible for [SETTLED].
+    """
+    from ludex.core.selfhood import load_self, extract_identity_block
+
+    refs = _reflections_by_ts(creature_dir)
+    if not refs:
+        return {"window": None, "nominations": [], "promotions": [],
+                "unchanged": [], "reason": "no consolidations yet"}
+    latest = refs[-1]
+    window = latest.stem
+    latest_cands = parse_identity_shifts(latest.read_text(encoding="utf-8"))
+    prev_cands = (parse_identity_shifts(refs[-2].read_text(encoding="utf-8"))
+                  if len(refs) >= 2 else [])
+
+    block = extract_identity_block(load_self(str(creature_dir)))
+    entries = parse_identity_entries(block)
+    settled = [e for e in entries if e["status"] == "SETTLED"]
+    provisional = [e for e in entries if e["status"] == "PROVISIONAL"]
+
+    nominations, promotions = [], []
+    matched_provisionals = set()
+    for cand in latest_cands:
+        if any(_identity_similar(cand, e["text"]) for e in settled):
+            continue  # already settled — nothing to do
+        prov_hit = next((e for e in provisional
+                         if _identity_similar(cand, e["text"])), None)
+        if prov_hit is not None:
+            # Re-nominated across windows → eligible for SETTLED, unless
+            # it was nominated from THIS same window (idempotent re-run).
+            if f"(window: {window})" not in prov_hit["line"]:
+                promotions.append({"text": prov_hit["text"], "evidence": cand})
+                matched_provisionals.add(prov_hit["text"])
+            continue
+        if any(_identity_similar(cand, p) for p in prev_cands):
+            # Present in both of the last two windows → two-window survival
+            # even without a prior provisional entry.
+            promotions.append({"text": cand, "evidence": cand})
+        else:
+            nominations.append(cand)
+
+    unchanged = (settled
+                 + [e for e in provisional if e["text"] not in matched_provisionals])
+    return {"window": window, "nominations": nominations,
+            "promotions": promotions, "unchanged": unchanged, "reason": ""}
+
+
+def apply_promotions(creature_dir: Path, proposal: dict) -> str:
+    """Rebuild the SELF.md identity block from a proposal and write it.
+
+    Settled entries are never removed here; provisional entries are kept
+    unless promoted. Returns the new block text ("" if nothing to write).
+    """
+    from ludex.core.selfhood import (load_self, extract_identity_block,
+                                     IDENTITY_BLOCK_START, IDENTITY_BLOCK_END)
+
+    if not proposal["nominations"] and not proposal["promotions"]:
+        return ""
+    window = proposal["window"]
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    lines = [IDENTITY_BLOCK_START,
+             "## Identity (promotion gate, D-085)",
+             "<!-- managed by the consolidation promotion gate; reflections preserve this block -->"]
+    for e in proposal["unchanged"]:
+        lines.append(e["line"])
+    for p in proposal["promotions"]:
+        lines.append(f"- [SETTLED] {p['text']} (settled: {today}; window: {window})")
+    for n in proposal["nominations"]:
+        lines.append(f"- [PROVISIONAL] {n} (window: {window})")
+    lines.append(IDENTITY_BLOCK_END)
+    new_block = "\n".join(lines)
+
+    self_path = creature_dir / "SELF.md"
+    text = load_self(str(creature_dir))
+    old_block = extract_identity_block(text)
+    if old_block:
+        text = text.replace(old_block, new_block)
+    else:
+        text = (text.rstrip() + "\n\n" if text else "") + new_block + "\n"
+    self_path.write_text(text, encoding="utf-8")
+
+    # Provenance span — the promotion is a first-class identity event.
+    try:
+        store = _conso_store(creature_dir)
+        from ludex.core.store import Span
+        store.append(Span(
+            kind="identity_promotion",
+            creature=creature_dir.name,
+            attributes={
+                "window": window,
+                "promoted": [p["text"][:120] for p in proposal["promotions"]],
+                "nominated": [n[:120] for n in proposal["nominations"]],
+            },
+        ))
+    except Exception as e:
+        logger.warning(f"identity_promotion span failed: {e}")
+    return new_block
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Periodic consolidation reflection (D-085) — manual override.",
@@ -1006,6 +1206,13 @@ def main():
                     help="bypass the dual-threshold trigger and consolidate now")
     ap.add_argument("--dry-run", action="store_true",
                     help="report the trigger decision + Stage-1 digest; no brain call, no write")
+    ap.add_argument("--promote", action="store_true",
+                    help="run the [PROVISIONAL]→[SETTLED] identity promotion "
+                         "gate instead of consolidating (D-085 param 3). "
+                         "Prints the proposal; writes SELF.md only on "
+                         "interactive confirm or --yes.")
+    ap.add_argument("--yes", action="store_true",
+                    help="apply the promotion proposal without prompting")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -1014,6 +1221,32 @@ def main():
     creature_dir = root / args.creature
     if not creature_dir.is_dir():
         raise SystemExit(f"no such creature dir: {creature_dir}")
+
+    if args.promote:
+        import sys as _sys
+        proposal = propose_promotions(creature_dir)
+        print(f"\n[promotion gate] {args.creature} — window: {proposal['window']}")
+        if proposal["reason"]:
+            print(f"  {proposal['reason']}")
+            return
+        for p in proposal["promotions"]:
+            print(f"  [PROMOTION → SETTLED] {p['text']}")
+        for n in proposal["nominations"]:
+            print(f"  [NOMINATE → PROVISIONAL] {n}")
+        if not proposal["promotions"] and not proposal["nominations"]:
+            print("  nothing to promote or nominate this window")
+            return
+        if not args.yes:
+            if not _sys.stdin.isatty():
+                print("  (non-interactive: pass --yes to apply)")
+                return
+            answer = input("  Confirm write to SELF.md? (Y/n) ").strip().lower()
+            if answer not in ("", "y", "yes"):
+                print("  aborted — SELF.md untouched")
+                return
+        block = apply_promotions(creature_dir, proposal)
+        print(f"  wrote identity block ({len(block)} chars) to SELF.md\n")
+        return
 
     r = consolidate(creature_dir, force=args.force, dry_run=args.dry_run)
 

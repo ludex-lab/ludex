@@ -486,6 +486,101 @@ class MemoryBlock(Block):
         """
         return self._last_recall
 
+    # --- Provides: recall_dual (D-085 param 4) ---
+
+    def handle_recall_dual(self, query: str, limit: int = 5,
+                           token_cap: int = 2000,
+                           show_forgotten: bool = False) -> dict:
+        """Dual-thread recall — D-085 param 4 invariant.
+
+        When consolidation retrospectives exist (reflections/YYYY-MM.md),
+        recall returns BOTH threads: the raw episodic memories AND the
+        consolidated hindsight narrative. The contrast between in-the-
+        moment record and consolidated retrospect is itself a driver of
+        self-knowledge, so neither branch may be wholly starved by the
+        token cap (agy size-bound refinement, 2026-05-30).
+
+        Returns {"raw": [RecallResult...], "consolidated": [dict...]}
+        where each consolidated hit is {"file", "section", "text", "score"}.
+        With no reflections on disk this degrades to ordinary recall
+        (consolidated == []) — ordinary recall is never bloated.
+        """
+        raw = self.handle_recall(query, limit=limit,
+                                 show_forgotten=show_forgotten)
+        consolidated = self.recall_consolidated(query, limit=limit)
+
+        if not consolidated:
+            return {"raw": raw, "consolidated": []}
+
+        # Token-cap merge (≈4 chars/token). Each non-empty branch is
+        # guaranteed at least its first hit, then remaining budget fills
+        # by per-branch rank.
+        budget = max(token_cap, 200) * 4
+        raw_kept: list = []
+        cons_kept: list = []
+        if raw:
+            raw_kept.append(raw[0])
+            budget -= len(raw[0].memory.content)
+        cons_kept.append(consolidated[0])
+        budget -= len(consolidated[0]["text"])
+        for branch, kept, size in (
+            (raw[1:], raw_kept, lambda r: len(r.memory.content)),
+            (consolidated[1:], cons_kept, lambda c: len(c["text"])),
+        ):
+            for item in branch:
+                cost = size(item)
+                if budget - cost < 0:
+                    break
+                kept.append(item)
+                budget -= cost
+        return {"raw": raw_kept, "consolidated": cons_kept}
+
+    def recall_consolidated(self, query: str, limit: int = 5) -> list[dict]:
+        """Rank sections of consolidation retrospectives against a query.
+
+        Reads creatures/<name>/reflections/*.md via the habitat dir,
+        splits each into `## ` sections, and scores by query-term overlap
+        plus a small recency bonus (so the latest retrospective always
+        participates even on zero term overlap — the invariant needs the
+        consolidated thread present whenever one exists).
+        """
+        habitat_dir = self._config.get("habitat_dir", "") if self._config else ""
+        if not habitat_dir:
+            return []
+        refl_dir = Path(habitat_dir) / "reflections"
+        if not refl_dir.is_dir():
+            return []
+
+        query_words = set(query.lower().split())
+        files = sorted(refl_dir.glob("*.md"))
+        hits: list[dict] = []
+        for rank_from_end, path in enumerate(reversed(files)):
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            # Strip frontmatter.
+            if text.startswith("---"):
+                end = text.find("---", 3)
+                if end != -1:
+                    text = text[end + 3:]
+            recency_bonus = 0.1 / (1 + rank_from_end)
+            for section in text.split("\n## "):
+                body = section.strip()
+                if not body:
+                    continue
+                words = set(body.lower().split())
+                overlap = len(query_words & words) / max(len(query_words), 1)
+                title = body.splitlines()[0].lstrip("# ").strip()
+                hits.append({
+                    "file": path.name,
+                    "section": title,
+                    "text": body,
+                    "score": overlap + recency_bonus,
+                })
+        hits.sort(key=lambda h: h["score"], reverse=True)
+        return hits[:limit]
+
     # --- Provides: forget ---
 
     def handle_forget(self, memory_id: str, hard_delete: bool = False) -> bool:

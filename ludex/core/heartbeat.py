@@ -417,6 +417,7 @@ def pulse_all(
     creature_name: Optional[str] = None,
     habitat: str = "",
     check_currency: bool = False,
+    consolidate: bool = True,
 ) -> list[dict]:
     """Pulse all (or one) creature(s). Returns list of result dicts.
 
@@ -432,6 +433,9 @@ def pulse_all(
     creature's brain model is classified against its provider's current
     offerings and a model_currency span is recorded on new drift. Off by
     default to keep the pulse quota-free unless the caretaker asks.
+
+    If `consolidate` is set (default), at most ONE due creature per run
+    gets a D-085 consolidation reflection — see _consolidation_rotation.
     """
     available_models = None
     if check_currency:
@@ -439,6 +443,7 @@ def pulse_all(
         available_models = available_for_sources()
 
     results = []
+    pulsed_dirs: list[tuple[Path, dict]] = []
     for d in sorted(creatures_dir.iterdir()):
         if not d.is_dir() or d.name in SKIP_DIRS:
             continue
@@ -449,7 +454,64 @@ def pulse_all(
                 continue
         r = pulse_creature(d, dry_run=dry_run, available_models=available_models)
         results.append(r)
+        pulsed_dirs.append((d, r))
+
+    if consolidate:
+        _consolidation_rotation(pulsed_dirs, dry_run=dry_run)
     return results
+
+
+def _consolidation_rotation(
+    pulsed: list[tuple[Path, dict]],
+    dry_run: bool = False,
+) -> Optional[dict]:
+    """D-085 heartbeat wiring: consolidate AT MOST ONE due creature per run.
+
+    Consolidation is a heavyweight brain call (a full retrospective), so the
+    design forbids firing the whole cohort in one pulse — instead each run
+    picks the single due creature that has gone longest without one (never-
+    consolidated first). At the 6h launchd cadence a fully-due cohort of 8
+    drains in ~2 days without a quota spike.
+
+    Skipped: creatures whose pulse short-circuited (resting / in_hiatus) and
+    creatures labelled substrate_status: dormant (e.g. an intentionally-off
+    local-ollama brain — consolidating one would force a model load the
+    caretaker is deliberately avoiding).
+
+    On a fire, the chosen creature's pulse result dict gains a
+    "consolidation" key with the consolidate() outcome.
+    """
+    from ludex.core.consolidation import should_consolidate, consolidate as _consolidate
+
+    candidates = []
+    for d, r in pulsed:
+        if r.get("skip") or r.get("outcome") in ("resting", "in_hiatus"):
+            continue
+        if r.get("substrate_status") == "dormant":
+            continue
+        try:
+            decision = should_consolidate(d)
+        except Exception as e:
+            logger.warning(f"consolidation check failed for {d.name}: {e}")
+            continue
+        if decision.fire:
+            candidates.append((d, r, decision))
+
+    if not candidates:
+        return None
+
+    # Longest-starved first: never-consolidated (None) sorts ahead, then
+    # oldest last_consolidated_on.
+    candidates.sort(key=lambda c: (c[2].last_consolidated_on is not None,
+                                   c[2].last_consolidated_on or 0.0))
+    d, r, decision = candidates[0]
+    logger.info(f"consolidation rotation: {d.name} "
+                f"({decision.new_events} events / {decision.days_elapsed:.1f}d; "
+                f"{len(candidates)} due)")
+    outcome = _consolidate(d, dry_run=dry_run)
+    r["consolidation"] = outcome
+    r["consolidation_queue"] = len(candidates)
+    return outcome
 
 
 def main():
@@ -477,6 +539,10 @@ def main():
                              "provider's live /models (cached 24h) and record a "
                              "model_currency span on new drift. Off by default "
                              "to keep the pulse quota-free.")
+    parser.add_argument("--no-consolidate", action="store_true",
+                        help="Skip the D-085 consolidation rotation (at most "
+                             "one due creature per run gets a periodic "
+                             "consolidation reflection).")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO,
@@ -494,6 +560,7 @@ def main():
         creature_name=args.creature or None,
         habitat=args.habitat,
         check_currency=args.check_currency,
+        consolidate=not args.no_consolidate,
     )
 
     print(f"\n{'name':<10} {'brain':<20} {'health':>6} {'outcome':<20} notes")
@@ -504,6 +571,17 @@ def main():
         notes_parts = []
         if r.get("substrate_status") and r["substrate_status"] != "live":
             notes_parts.append(f"substrate:{r['substrate_status']}")
+        # D-085 periodic consolidation (rotation: at most one per run).
+        if r.get("consolidation"):
+            c = r["consolidation"]
+            if c.get("outcome") == "consolidated":
+                notes_parts.append(
+                    f"retrospective({c.get('reflection_file', '?')}, "
+                    f"{c.get('new_events', '?')}ev; queue:{r.get('consolidation_queue', '?')})")
+            else:
+                notes_parts.append(
+                    f"retrospective:{c.get('outcome', '?')}"
+                    f"(queue:{r.get('consolidation_queue', '?')})")
         if r.get("consolidated"):
             c = r["consolidated"]
             notes_parts.append(f"consolidated(+{c['promoted']}/-{c['archived']})")

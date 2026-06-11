@@ -129,6 +129,30 @@
   .eco-card .ec-brain { color: #8b94a3; font-size: 11px; margin: 2px 0 8px; word-break: break-all; }
   .eco-card .ec-row { color: #8b94a3; font-size: 12px; }
 
+  /* Timeline panel (longitudinal observatory) */
+  .tl-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
+  .tl-bar select { background: #0d1117; border: 1px solid #2a2f3a; color: #e6edf3; padding: 7px 10px; border-radius: 8px; font-size: 13px; }
+  .tl-btn { background: #161b22; border: 1px solid #2a2f3a; color: #e6edf3; padding: 7px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .tl-btn:hover { border-color: #64aa88; color: #64aa88; }
+  .tl-events { display: flex; flex-direction: column; gap: 0; border-left: 2px solid #2a2f3a; margin-left: 6px; }
+  .tl-ev { position: relative; padding: 7px 0 7px 18px; }
+  .tl-ev::before { content: ""; position: absolute; left: -6px; top: 13px; width: 10px; height: 10px; border-radius: 50%; background: #2a2f3a; }
+  .tl-ev.t-retrospective::before { background: #64aa88; }
+  .tl-ev.t-substrate_transition::before, .tl-ev.t-brain_substrate_upgrade::before { background: #fbbf24; }
+  .tl-ev.t-identity_promotion::before { background: #e879a0; }
+  .tl-ev.t-journal::before { background: #6ea8fe; }
+  .tl-ev .tl-date { color: #5b6472; font-size: 11px; font-family: monospace; }
+  .tl-ev .tl-title { color: #e6edf3; font-size: 13px; }
+  .tl-ev .tl-type { color: #8b94a3; font-size: 11px; border: 1px solid #2a2f3a; border-radius: 999px; padding: 1px 8px; margin-right: 6px; }
+  .tl-ev .tl-detail { color: #8b94a3; font-size: 12px; margin-top: 2px; }
+  .tl-doc { background: #161b22; border: 1px solid #2a2f3a; border-radius: 10px; padding: 14px; color: #d4dae3; font-size: 13px; line-height: 1.55; white-space: pre-wrap; margin-top: 10px; max-height: 420px; overflow-y: auto; }
+  .tl-diff { background: #0d1117; border: 1px solid #2a2f3a; border-radius: 10px; padding: 12px; font-family: monospace; font-size: 12px; line-height: 1.5; margin-top: 10px; max-height: 420px; overflow-y: auto; white-space: pre-wrap; }
+  .tl-diff .dl-add { background: #12261a; color: #7ee2a8; display: block; }
+  .tl-diff .dl-del { background: #2a1416; color: #e8a0b0; display: block; text-decoration: line-through; }
+  .tl-diff .dl-ctx { color: #8b94a3; display: block; }
+  .tl-retro-card { cursor: pointer; }
+  .tl-retro-card:hover { border-color: #64aa88; }
+
   /* Field panel */
   .field-panel { flex: 1; overflow-y: auto; background: #0a0a0a; padding: 20px; }
   .field-panel.hidden { display: none; }
@@ -213,6 +237,7 @@
   <div class="tab active" data-tab="creatures" onclick="switchTab('creatures')" data-i18n="tab_creatures">My Creatures</div>
   <div class="tab" data-tab="chat" onclick="switchTab('chat')" data-i18n="tab_chat">Chat</div>
   <div class="tab" data-tab="ecosystem" onclick="switchTab('ecosystem')" data-i18n="tab_eco">Ecosystem</div>
+  <div class="tab" data-tab="timeline" onclick="switchTab('timeline')" data-i18n="tab_tl">Timeline</div>
   <div class="tab" data-tab="field" onclick="switchTab('field')" data-i18n="tab_field">Field</div>
   <div class="tab" data-tab="forge" onclick="switchTab('forge')" data-i18n="tab_forge">Forge</div>
   <div class="tab-spacer"></div>
@@ -357,6 +382,33 @@
   </div>
 </div>
 
+<!-- Timeline tab panel (longitudinal observatory) -->
+<div class="eco-panel hidden" id="tlPanel">
+  <div class="eco-inner">
+    <h2 data-i18n="tl_h">Timeline — a creature's life in time</h2>
+    <div class="tl-bar">
+      <span style="color:#8b94a3;font-size:13px" data-i18n="tl_pick">Creature:</span>
+      <select id="tlSelect" onchange="tlLoadCreature(this.value)"></select>
+    </div>
+    <div id="tlBody" class="hidden">
+      <h3 class="eco-subh" data-i18n="tl_self">Self-understanding history (SELF.md)</h3>
+      <div class="tl-bar">
+        <select id="tlVerA"></select>
+        <span style="color:#5b6472">→</span>
+        <select id="tlVerB"></select>
+        <button class="tl-btn" onclick="tlCompare()" data-i18n="tl_diff">Compare</button>
+      </div>
+      <div id="tlDiff" class="tl-diff hidden"></div>
+      <h3 class="eco-subh" data-i18n="tl_retro">Retrospectives (consolidated windows)</h3>
+      <div id="tlRetros" class="eco-cards"></div>
+      <div id="tlRetroDoc" class="tl-doc hidden"></div>
+      <h3 class="eco-subh" data-i18n="tl_events">Life events</h3>
+      <div id="tlEvents" class="tl-events"></div>
+    </div>
+    <div id="tlEmpty" class="eco-empty hidden" data-i18n="tl_empty">No history yet.</div>
+  </div>
+</div>
+
 <!-- Field tab panel -->
 <div class="field-panel hidden" id="fieldPanel">
   <div class="field-inner">
@@ -415,6 +467,7 @@
 const LI18N = {
   en: {
     hdr_status:"Not connected", hdr_sleep:"💤 Sleep", hdr_sleeping:"💤 Reflecting…", tab_creatures:"My Creatures", tab_forge:"Forge", tab_chat:"Chat", tab_eco:"Ecosystem", tab_field:"Field", tab_rag:"RAG", dev_monitor:"Monitor",
+    tab_tl:"Timeline", tl_h:"Timeline — a creature's life in time", tl_pick:"Creature:", tl_events:"Life events", tl_self:"Self-understanding history (SELF.md)", tl_self_hint:"compare two versions →", tl_diff:"Compare", tl_retro:"Retrospectives (consolidated windows)", tl_loading:"Loading…", tl_empty:"No history yet — this creature is still accumulating a life.", tl_close:"close",
     eco_h:"Ecosystem", eco_creatures:"Creatures", eco_stats:"{c} creatures · {b} bonds ({m} mutual)", eco_loading:"Loading…", eco_none:"No creatures yet — Forge one to begin.", eco_fail:"Couldn't load the ecosystem.",
     fld_h:"Field", fld_sub:"Admit creatures into a Council — pose a dilemma and watch them debate it.", fld_dilemma:"Dilemma", fld_dilemma_ph:"e.g. Is a white lie that saves a life justified?", fld_admit:"Admit creatures (2 or more)", fld_start:"Start session", fld_starting:"Starting…", fld_new:"New session", fld_running:"🟢 Running…", fld_done:"✓ Session complete", fld_error:"Error:", fld_need_dilemma:"Please enter a dilemma.", fld_need_two:"Admit at least 2 creatures.", fld_waking:"waking…", fld_entered:"Entered:", fld_thinking:"is thinking…", fld_stop:"⏹ Stop", fld_stopping:"⏹ Stopping… (finishing current turn)", fld_stopped:"⏹ Stopped", fld_mediator:"Mediator (optional — seeks a resolution)", fld_none:"None", fld_turns:"turns", fld_reflecting:"✍️ Forming memories & bonds…", fld_a_reflect:"is reflecting", fld_a_bond:"forming a bond", fld_history:"Past sessions", fld_pick_sub:"Choose a field to run your creatures through.", fld_council:"Council", fld_council_d:"Pose a dilemma; creatures take positions, debate, and (with a mediator) seek a resolution.", fld_soon:"More soon", fld_soon_d:"Forum, Academy and other fields are on the way.", fld_back:"← Fields", fld_to_list:"← Session list", fld_no_sessions:"No sessions yet.", fld_forum:"Forum", fld_forum_d:"State a claim; creatures rate their confidence, bring evidence, challenge, and revise.", fld_forum_sub:"Admit creatures into a Forum — post a claim and watch them weigh the evidence.", fld_claim:"Claim", fld_claim_ph:"e.g. Semiconductors will lead the next market rally.",
     upd_avail:"🔄 New version available ({n} commits behind)", upd_btn:"Update now", upd_running:"Updating…", upd_restarting:"Updated — restarting the server…", upd_reloading:"Updated — reloading…", upd_failed:"Update failed — run it manually: git pull + restart", upd_manual:"Please restart the server manually",
@@ -457,6 +510,7 @@ const LI18N = {
   },
   ko: {
     hdr_status:"연결 안 됨", hdr_sleep:"💤 재우기", hdr_sleeping:"💤 돌아보는 중…", tab_creatures:"내 크리처", tab_forge:"만들기", tab_chat:"대화", tab_eco:"생태계", tab_field:"필드", tab_rag:"RAG", dev_monitor:"모니터",
+    tab_tl:"타임라인", tl_h:"타임라인 — 시간 속의 크리처", tl_pick:"크리처:", tl_events:"생애 이벤트", tl_self:"자기이해의 역사 (SELF.md)", tl_self_hint:"두 버전을 비교 →", tl_diff:"비교", tl_retro:"회고 (통합된 시기들)", tl_loading:"불러오는 중…", tl_empty:"아직 역사가 없어요 — 이 크리처는 삶을 쌓는 중입니다.", tl_close:"닫기",
     eco_h:"생태계", eco_creatures:"크리처", eco_stats:"{c} 크리처 · {b} 유대 ({m} 상호)", eco_loading:"불러오는 중…", eco_none:"아직 크리처가 없어요 — 만들기에서 시작하세요.", eco_fail:"생태계를 불러오지 못했어요.",
     fld_h:"필드", fld_sub:"크리처들을 Council(평의회)에 입장시키고 — 딜레마를 던져 토론을 관찰하세요.", fld_dilemma:"딜레마", fld_dilemma_ph:"예: 생명을 구하는 선의의 거짓말은 정당한가?", fld_admit:"크리처 입장 (2명 이상)", fld_start:"세션 시작", fld_starting:"시작 중…", fld_new:"새 세션", fld_running:"🟢 진행 중…", fld_done:"✓ 세션 완료", fld_error:"오류:", fld_need_dilemma:"딜레마를 입력하세요.", fld_need_two:"최소 2명의 크리처를 입장시키세요.", fld_waking:"깨우는 중…", fld_entered:"입장:", fld_thinking:"생각 중…", fld_stop:"⏹ 중단", fld_stopping:"⏹ 중단 중… (현재 턴 마무리)", fld_stopped:"⏹ 중단됨", fld_mediator:"중재자 (선택 — 결론 도출 시도)", fld_none:"없음", fld_turns:"턴", fld_reflecting:"✍️ 기억과 유대 맺는 중…", fld_a_reflect:"돌아보는 중", fld_a_bond:"유대 맺는 중", fld_history:"지난 세션", fld_pick_sub:"크리처들을 어떤 필드에 넣을지 고르세요.", fld_council:"평의회", fld_council_d:"딜레마를 던지면 크리처들이 입장을 정하고 토론하며 (중재자가 있으면) 결론을 모색합니다.", fld_soon:"곧 추가", fld_soon_d:"Forum, Academy 등 다른 필드가 준비 중이에요.", fld_back:"← 필드", fld_to_list:"← 세션 목록", fld_no_sessions:"아직 세션이 없어요.", fld_forum:"포럼", fld_forum_d:"주장을 두면 크리처들이 확신도를 매기고, 근거를 대고, 반박하고, 수정합니다.", fld_forum_sub:"크리처들을 포럼에 입장시키고 — 주장을 던져 근거를 저울질하는 걸 관찰하세요.", fld_claim:"주장", fld_claim_ph:"예: 반도체가 다음 시장 반등을 이끌 것이다.",
     upd_avail:"🔄 새 버전 있어요 ({n}개 뒤처짐)", upd_btn:"지금 업데이트", upd_running:"업데이트 중…", upd_restarting:"업데이트됨 — 서버 재시작 중…", upd_reloading:"업데이트됨 — 새로고침 중…", upd_failed:"업데이트 실패 — 수동으로: git pull + 재시작", upd_manual:"서버를 수동으로 다시 시작해 주세요",
@@ -532,16 +586,18 @@ function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   const tabEl = document.querySelector(`.tab[data-tab="${tab}"]`);
   if (tabEl) tabEl.classList.add('active');
-  const isForge = tab === 'forge', isEco = tab === 'ecosystem', isField = tab === 'field';
-  const fullPanel = isForge || isEco || isField;
+  const isForge = tab === 'forge', isEco = tab === 'ecosystem', isField = tab === 'field', isTl = tab === 'timeline';
+  const fullPanel = isForge || isEco || isField || isTl;
   document.querySelector('.device-toggle').style.display = fullPanel ? 'none' : '';
   document.querySelector('main').style.display = fullPanel ? 'none' : '';
   document.getElementById('connectModal').classList.toggle('hidden', !isForge);
   document.getElementById('ecoPanel').classList.toggle('hidden', !isEco);
   document.getElementById('fieldPanel').classList.toggle('hidden', !isField);
+  document.getElementById('tlPanel').classList.toggle('hidden', !isTl);
   if (isForge) return;
   if (isEco) { loadEcosystem(); return; }
   if (isField) { loadField(); return; }
+  if (isTl) { loadTimeline(); return; }
   const isCreatures = tab === 'creatures';
   document.querySelector('.agent-panel').style.display = isCreatures ? 'none' : 'flex';
   document.getElementById('creaturesPanel').classList.toggle('active', isCreatures);
@@ -648,6 +704,111 @@ function _fieldShow(view) {
   document.getElementById('fieldSetup').classList.toggle('hidden', view !== 'setup');
   document.getElementById('fieldObserve').classList.toggle('hidden', view !== 'observe');
 }
+// ============ Timeline (longitudinal observatory) ============
+let tlCurrent = '';
+
+async function loadTimeline() {
+  const sel = document.getElementById('tlSelect');
+  try {
+    const d = await (await fetch('/api/creatures')).json();
+    const names = (d.creatures || []).map(c => c.name);
+    sel.innerHTML = `<option value="">—</option>` +
+      names.map(n => `<option value="${n}" ${n === tlCurrent ? 'selected' : ''}>${n}</option>`).join('');
+    if (tlCurrent) tlLoadCreature(tlCurrent);
+  } catch (e) { sel.innerHTML = `<option>${t('err_prefix')}${e.message}</option>`; }
+}
+
+async function tlLoadCreature(name) {
+  tlCurrent = name;
+  const body = document.getElementById('tlBody'), empty = document.getElementById('tlEmpty');
+  document.getElementById('tlDiff').classList.add('hidden');
+  document.getElementById('tlRetroDoc').classList.add('hidden');
+  if (!name) { body.classList.add('hidden'); empty.classList.add('hidden'); return; }
+  const ev = document.getElementById('tlEvents');
+  ev.innerHTML = `<div class="tl-ev"><span class="tl-title">${t('tl_loading')}</span></div>`;
+  body.classList.remove('hidden'); empty.classList.add('hidden');
+  try {
+    const [tl, sh] = await Promise.all([
+      (await fetch(`/api/creature/${encodeURIComponent(name)}/timeline`)).json(),
+      (await fetch(`/api/creature/${encodeURIComponent(name)}/self-history`)).json(),
+    ]);
+    const events = tl.events || [];
+    if (!events.length) { body.classList.add('hidden'); empty.classList.remove('hidden'); return; }
+
+    ev.innerHTML = events.map(e => `<div class="tl-ev t-${e.type}">
+      <span class="tl-date">${e.date}</span>
+      <div><span class="tl-type">${e.type}</span><span class="tl-title">${esc(e.title)}</span></div>
+      ${e.detail ? `<div class="tl-detail">${esc(e.detail)}</div>` : ''}
+    </div>`).join('');
+
+    const vers = sh.versions || [];
+    const opts = vers.map(v => `<option value="${v.id}">${v.date} (${v.id})</option>`).join('');
+    const a = document.getElementById('tlVerA'), b = document.getElementById('tlVerB');
+    a.innerHTML = opts; b.innerHTML = opts;
+    if (vers.length > 1) { a.selectedIndex = 0; b.selectedIndex = vers.length - 1; }
+
+    const retros = events.filter(e => e.type === 'retrospective');
+    document.getElementById('tlRetros').innerHTML = retros.length
+      ? retros.map(r => `<div class="eco-card tl-retro-card" onclick="tlShowRetro('${esc(r.ref)}')">
+          <div class="ec-name">${esc(r.ref)}</div><div class="ec-brain">${esc(r.title)}</div>
+          <div class="ec-row">${esc(r.detail)}</div></div>`).join('')
+      : `<div class="eco-empty" style="padding:10px">—</div>`;
+  } catch (e) {
+    ev.innerHTML = `<div class="tl-ev"><span class="tl-title">${t('err_prefix')}${e.message}</span></div>`;
+  }
+}
+
+async function tlShowRetro(stem) {
+  const doc = document.getElementById('tlRetroDoc');
+  doc.classList.remove('hidden');
+  doc.textContent = t('tl_loading');
+  try {
+    const d = await (await fetch(`/api/creature/${encodeURIComponent(tlCurrent)}/reflection/${encodeURIComponent(stem)}`)).json();
+    doc.textContent = d.text || d.error || '';
+  } catch (e) { doc.textContent = t('err_prefix') + e.message; }
+}
+
+async function tlCompare() {
+  const va = document.getElementById('tlVerA').value, vb = document.getElementById('tlVerB').value;
+  const out = document.getElementById('tlDiff');
+  if (!va || !vb || !tlCurrent) return;
+  out.classList.remove('hidden');
+  out.textContent = t('tl_loading');
+  try {
+    const [a, b] = await Promise.all([
+      (await fetch(`/api/creature/${encodeURIComponent(tlCurrent)}/self/${encodeURIComponent(va)}`)).json(),
+      (await fetch(`/api/creature/${encodeURIComponent(tlCurrent)}/self/${encodeURIComponent(vb)}`)).json(),
+    ]);
+    out.innerHTML = lineDiff(a.text || '', b.text || '');
+  } catch (e) { out.textContent = t('err_prefix') + e.message; }
+}
+
+// Simple LCS line diff: removed (A-only) struck red, added (B-only) green,
+// shared lines dim. SELF.md files are short, so O(n*m) is fine.
+function lineDiff(aText, bText) {
+  const A = aText.split('\n'), B = bText.split('\n');
+  const n = A.length, m = B.length;
+  const L = Array.from({length: n + 1}, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      L[i][j] = A[i] === B[j] ? L[i+1][j+1] + 1 : Math.max(L[i+1][j], L[i][j+1]);
+  const rows = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { rows.push(`<span class="dl-ctx">  ${esc(A[i])}</span>`); i++; j++; }
+    else if (L[i+1][j] >= L[i][j+1]) { rows.push(`<span class="dl-del">- ${esc(A[i])}</span>`); i++; }
+    else { rows.push(`<span class="dl-add">+ ${esc(B[j])}</span>`); j++; }
+  }
+  while (i < n) { rows.push(`<span class="dl-del">- ${esc(A[i++])}</span>`); }
+  while (j < m) { rows.push(`<span class="dl-add">+ ${esc(B[j++])}</span>`); }
+  return rows.join('');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 async function loadField() {
   if (_fieldSid) return;  // already observing in this page session
   // Resume ONLY a still-LIVE session (e.g. a refresh mid-council). Finished sessions

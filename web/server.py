@@ -589,6 +589,190 @@ async def ecosystem(dir: str = "creatures"):
 
 
 # ============================================================
+# Timeline — longitudinal observatory (M4): snapshots, retrospectives,
+# milestone spans, journal — generic over any creature's habitat data.
+# Cheap disk reads only; no organism build.
+# ============================================================
+
+# Span kinds that count as life milestones on the timeline. Routine kinds
+# (tick, reward, brain_call, ...) stay out — the timeline shows the shape
+# of a life, not the telemetry.
+_TIMELINE_SPAN_KINDS = {
+    "substrate_transition", "identity_promotion", "consolidation",
+    "model_currency", "brain_substrate_upgrade",
+}
+
+
+def _safe_creature_dir(name: str, dir: str = "creatures") -> str | None:
+    """Resolve a creature habitat dir, rejecting path traversal."""
+    if not name or any(s in name for s in ("/", "\\", "..")):
+        return None
+    base = os.path.abspath(os.path.expanduser(dir))
+    cdir = os.path.join(base, name)
+    return cdir if os.path.isdir(cdir) else None
+
+
+def _read_frontmatter(path: str, max_bytes: int = 800) -> dict:
+    """Parse the simple `--- key: value ---` frontmatter block of a .md file."""
+    out: dict = {}
+    try:
+        head = open(path, encoding="utf-8").read(max_bytes)
+    except OSError:
+        return out
+    if not head.startswith("---"):
+        return out
+    for line in head[3:].split("---", 1)[0].splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            out[k.strip()] = v.strip()
+    return out
+
+
+@app.get("/api/creature/{name}/timeline")
+async def creature_timeline(name: str, dir: str = "creatures"):
+    """Chronological life events for one creature (newest first)."""
+    cdir = _safe_creature_dir(name, dir)
+    if cdir is None:
+        return {"error": "no such creature"}
+    events = []
+
+    sdir = os.path.join(cdir, "snapshots")
+    if os.path.isdir(sdir):
+        for snap in sorted(os.listdir(sdir)):
+            meta_p = os.path.join(sdir, snap, "snapshot.json")
+            if not os.path.isfile(meta_p):
+                continue
+            try:
+                meta = json.loads(open(meta_p, encoding="utf-8").read())
+            except Exception:
+                continue
+            events.append({
+                "ts": meta.get("timestamp", 0), "type": "snapshot",
+                "title": meta.get("reason", snap), "detail": meta.get("note", ""),
+                "ref": snap,
+            })
+
+    rdir = os.path.join(cdir, "reflections")
+    if os.path.isdir(rdir):
+        for f in sorted(os.listdir(rdir)):
+            if not f.endswith(".md"):
+                continue
+            fm = _read_frontmatter(os.path.join(rdir, f))
+            try:
+                ts = float(fm.get("consolidated_on_ts", 0))
+            except ValueError:
+                ts = 0
+            events.append({
+                "ts": ts, "type": "retrospective",
+                "title": f"{fm.get('window_from', '?')} → {fm.get('window_to', '?')}",
+                "detail": f"{fm.get('events', '?')} events · {fm.get('synthesizer', '')}",
+                "ref": os.path.splitext(f)[0],
+            })
+
+    spans_p = os.path.join(cdir, "store", "spans.jsonl")
+    if os.path.isfile(spans_p):
+        try:
+            for line in open(spans_p, encoding="utf-8"):
+                try:
+                    s = json.loads(line)
+                except Exception:
+                    continue
+                if s.get("kind") not in _TIMELINE_SPAN_KINDS:
+                    continue
+                a = s.get("attributes", {})
+                if s["kind"] == "substrate_transition":
+                    title = f"[{a.get('axis', '?')}] {a.get('from', '?')} → {a.get('to', '?')}"
+                    detail = f"{a.get('op', '')} ({a.get('magnitude', '')})"
+                elif s["kind"] == "identity_promotion":
+                    title = f"identity: +{len(a.get('promoted', []))} settled, +{len(a.get('nominated', []))} provisional"
+                    detail = "; ".join(a.get("promoted", [])[:2])
+                else:
+                    title = a.get("model") or a.get("reflection_file") or s["kind"]
+                    detail = a.get("status", "") or a.get("note", "") or ""
+                events.append({"ts": s.get("timestamp", 0), "type": s["kind"],
+                               "title": str(title), "detail": str(detail)[:200],
+                               "ref": ""})
+        except OSError:
+            pass
+
+    jdir = os.path.join(cdir, "journal")
+    if os.path.isdir(jdir):
+        for f in sorted(os.listdir(jdir)):
+            if not f.endswith(".md"):
+                continue
+            p = os.path.join(jdir, f)
+            events.append({"ts": os.path.getmtime(p), "type": "journal",
+                           "title": os.path.splitext(f)[0], "detail": "", "ref": f})
+
+    events.sort(key=lambda e: e["ts"], reverse=True)
+    for e in events:
+        e["date"] = time.strftime("%Y-%m-%d", time.localtime(e["ts"])) if e["ts"] else "?"
+    return {"name": name, "events": events}
+
+
+@app.get("/api/creature/{name}/self-history")
+async def creature_self_history(name: str, dir: str = "creatures"):
+    """SELF.md version metadata: every snapshot that froze a SELF.md, plus
+    current. Content fetched per-version via /self/{version} (some creatures
+    carry 100+ snapshots — shipping all texts at once would be megabytes)."""
+    cdir = _safe_creature_dir(name, dir)
+    if cdir is None:
+        return {"error": "no such creature"}
+    versions = []
+    sdir = os.path.join(cdir, "snapshots")
+    if os.path.isdir(sdir):
+        for snap in sorted(os.listdir(sdir)):
+            self_p = os.path.join(sdir, snap, "SELF.md")
+            meta_p = os.path.join(sdir, snap, "snapshot.json")
+            if not os.path.isfile(self_p):
+                continue
+            ts = 0
+            try:
+                ts = json.loads(open(meta_p, encoding="utf-8").read()).get("timestamp", 0)
+            except Exception:
+                ts = os.path.getmtime(self_p)
+            versions.append({"id": snap, "ts": ts,
+                             "date": time.strftime("%Y-%m-%d", time.localtime(ts)),
+                             "chars": os.path.getsize(self_p)})
+    versions.sort(key=lambda v: v["ts"])
+    if os.path.isfile(os.path.join(cdir, "SELF.md")):
+        versions.append({"id": "current", "ts": time.time(),
+                         "date": "now",
+                         "chars": os.path.getsize(os.path.join(cdir, "SELF.md"))})
+    return {"name": name, "versions": versions}
+
+
+@app.get("/api/creature/{name}/self/{version}")
+async def creature_self_version(name: str, version: str, dir: str = "creatures"):
+    """One SELF.md version's text — `current` or a snapshot dir name."""
+    cdir = _safe_creature_dir(name, dir)
+    if cdir is None:
+        return {"error": "no such creature"}
+    if any(s in version for s in ("/", "\\", "..")):
+        return {"error": "bad version"}
+    p = (os.path.join(cdir, "SELF.md") if version == "current"
+         else os.path.join(cdir, "snapshots", version, "SELF.md"))
+    if not os.path.isfile(p):
+        return {"error": "no such version"}
+    return {"name": name, "version": version,
+            "text": open(p, encoding="utf-8").read()}
+
+
+@app.get("/api/creature/{name}/reflection/{stem}")
+async def creature_reflection(name: str, stem: str, dir: str = "creatures"):
+    """Full text of one consolidation retrospective."""
+    cdir = _safe_creature_dir(name, dir)
+    if cdir is None:
+        return {"error": "no such creature"}
+    if any(s in stem for s in ("/", "\\", "..")):
+        return {"error": "bad stem"}
+    p = os.path.join(cdir, "reflections", f"{stem}.md")
+    if not os.path.isfile(p):
+        return {"error": "no such reflection"}
+    return {"name": name, "stem": stem, "text": open(p, encoding="utf-8").read()}
+
+
+# ============================================================
 # Field sessions — admit creatures into a field, run it, observe (background)
 # ============================================================
 field_sessions = {}  # sid -> {field, status, error, field_kind}  (in-memory, live)
