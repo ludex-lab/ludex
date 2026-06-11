@@ -846,9 +846,18 @@ def _field_aftermath(sess, field, field_kind, text):
     transcript = _field_transcript_text(field)
     label = "a Forum on the claim" if field_kind == "forum" else "a Council on the dilemma"
     summary = f'{label}: "{text}"'
+    # Progress counters for the observe UI: the aftermath is N reflects +
+    # N×(N-1) bond writeups, each a brain call — minutes of work that
+    # otherwise looks like a hang ("reflecting" sat unchanged for 5 min
+    # in the 2026-06-11 public Forum usability test).
+    aftermath_total = len(parts) + len(parts) * (len(parts) - 1)
+    aftermath_i = 0
+    sess["aftermath_n"] = aftermath_total
     for p in parts:                       # reflection → SELF.md
         if sess.get("stop"):
             return
+        aftermath_i += 1
+        sess["aftermath_i"] = aftermath_i
         sess["aftermath"] = f"reflect:{p.name}"
         try:
             selfhood.reflect(p.organism, field_kind, p.engine, transcript)
@@ -860,6 +869,8 @@ def _field_aftermath(sess, field, field_kind, text):
                 continue
             if sess.get("stop"):
                 return
+            aftermath_i += 1
+            sess["aftermath_i"] = aftermath_i
             sess["aftermath"] = f"bond:{p.name}->{q.name}"
             try:
                 qmodel = ""
@@ -1025,6 +1036,7 @@ async def field_session(sid: str):
             "entered": sess.get("entered", []), "building": sess.get("building", ""),
             "thinking": sess.get("thinking", ""), "mediator": sess.get("mediator", ""),
             "aftermath": sess.get("aftermath", ""),
+            "aftermath_i": sess.get("aftermath_i", 0), "aftermath_n": sess.get("aftermath_n", 0),
             "elapsed": int(time.time() - started) if started else 0,
             "turns": sum(1 for r in transcript if r["phase"] != "dilemma_posed")}
 

@@ -937,8 +937,9 @@ async function fieldPoll() {
     if (d.elapsed) meta.push(_fmtElapsed(d.elapsed));
     let statusLine = statusTxt + (meta.length ? ' · ' + meta.join(' · ') : '');
     if (d.building) statusLine += '<br>💤 ' + _esc(d.building) + ' ' + t('fld_waking');
-    if (d.aftermath && d.aftermath.indexOf('reflect:') === 0) statusLine += '<br>✍️ ' + _esc(d.aftermath.slice(8)) + ' ' + t('fld_a_reflect');
-    else if (d.aftermath && d.aftermath.indexOf('bond:') === 0) statusLine += '<br>🔗 ' + _esc(d.aftermath.slice(5)) + ' ' + t('fld_a_bond');
+    const aProg = (d.aftermath_i && d.aftermath_n) ? ` (${d.aftermath_i}/${d.aftermath_n})` : '';
+    if (d.aftermath && d.aftermath.indexOf('reflect:') === 0) statusLine += '<br>✍️ ' + _esc(d.aftermath.slice(8)) + ' ' + t('fld_a_reflect') + aProg;
+    else if (d.aftermath && d.aftermath.indexOf('bond:') === 0) statusLine += '<br>🔗 ' + _esc(d.aftermath.slice(5)) + ' ' + t('fld_a_bond') + aProg;
     document.getElementById('fieldStatus').innerHTML = statusLine;
     // transcript
     let html = '', lp = null;
