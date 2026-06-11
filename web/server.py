@@ -1025,6 +1025,8 @@ async def field_session(sid: str):
                     "entered": d.get("participants", []), "building": "", "thinking": "",
                     "mediator": d.get("mediator", ""), "aftermath": "",
                     "verdict": d.get("verdict"), "scores": d.get("scores"),
+                    "panel": (_panel_from_transcript(d.get("transcript", []))
+                              if d.get("field_kind") == "forum" else None),
                     "elapsed": int(d.get("ended", 0) - d.get("started", 0)) if d.get("started") else 0,
                     "turns": sum(1 for r in d.get("transcript", []) if r.get("phase") != "dilemma_posed")}
         except Exception:
@@ -1046,6 +1048,8 @@ async def field_session(sid: str):
             "aftermath": sess.get("aftermath", ""),
             "aftermath_i": sess.get("aftermath_i", 0), "aftermath_n": sess.get("aftermath_n", 0),
             "verdict": sess.get("verdict"), "scores": sess.get("scores"),
+            "panel": (_panel_aggregate(getattr(field, "_latest_stance", {}) or {})
+                      if sess.get("field_kind") == "forum" and field is not None else None),
             "elapsed": int(time.time() - started) if started else 0,
             "turns": sum(1 for r in transcript if r["phase"] != "dilemma_posed")}
 
@@ -1066,6 +1070,38 @@ def _parse_stance(content: str):
     c = _STANCE_RE[1].search(content or "")
     return (s.group(1).lower() if s else None,
             float(c.group(1)) if c else None)
+
+
+def _panel_aggregate(stances: dict) -> dict | None:
+    """Aggregate final stances into the panel verdict (D-087 source 1).
+
+    Collective JUDGMENT, not ground truth — rendered with that label and
+    firewalled from accuracy rewards. stances: name -> (stance, conf|None).
+    """
+    counts: dict = {}
+    weights: dict = {}
+    for _name, (stance, conf) in stances.items():
+        s = str(stance or "").lower()
+        if s not in ("true", "false", "partial"):
+            continue
+        counts[s] = counts.get(s, 0) + 1
+        weights[s] = weights.get(s, 0.0) + (conf if conf is not None else 0.5)
+    if not counts:
+        return None
+    lead = max(weights, key=lambda k: weights[k])
+    return {"counts": counts,
+            "weighted": {k: round(v, 2) for k, v in weights.items()},
+            "lead": lead}
+
+
+def _panel_from_transcript(transcript: list) -> dict | None:
+    final = {}
+    for r in transcript:
+        if r.get("kind") in ("position", "position_updated"):
+            stance, conf = _parse_stance(r.get("content", ""))
+            if stance:
+                final[r.get("participant")] = (stance, conf)
+    return _panel_aggregate(final) if final else None
 
 
 @app.post("/api/field/verdict/{sid}")
