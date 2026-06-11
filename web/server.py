@@ -785,7 +785,8 @@ def _session_transcript_records(field):
         for rd in field.rounds:
             for rec in rd.records:
                 out.append({"round": rec.round_index, "phase": rec.phase,
-                            "participant": rec.participant, "kind": rec.kind, "content": rec.content})
+                            "participant": rec.participant, "kind": rec.kind, "content": rec.content,
+                            "attributes": getattr(rec, "attributes", None) or None})
     return out
 
 
@@ -800,6 +801,7 @@ def _save_field_session(sess):
             "participants": [p.name for p in field.participants] if field else sess.get("entered", []),
             "started": sess.get("started", 0), "ended": time.time(),
             "transcript": _session_transcript_records(field),
+            "verdict": sess.get("verdict"), "scores": sess.get("scores"),
         }
         with open(os.path.join(FIELD_LOG, f"{sess.get('sid')}.json"), "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
@@ -958,6 +960,11 @@ class FieldStartRequest(BaseModel):
     mediator: str = ""     # optional: name of the creature to seat as mediator
 
 
+class FieldVerdictRequest(BaseModel):
+    value: str = ""        # true | false | partial | unknown
+    note: str = ""         # caretaker rationale, shown with the verdict
+
+
 @app.post("/api/field/start")
 async def field_start(req: FieldStartRequest):
     if req.field not in ("council", "forum"):
@@ -1017,6 +1024,7 @@ async def field_session(sid: str):
                     "participants": d.get("participants", []), "transcript": d.get("transcript", []),
                     "entered": d.get("participants", []), "building": "", "thinking": "",
                     "mediator": d.get("mediator", ""), "aftermath": "",
+                    "verdict": d.get("verdict"), "scores": d.get("scores"),
                     "elapsed": int(d.get("ended", 0) - d.get("started", 0)) if d.get("started") else 0,
                     "turns": sum(1 for r in d.get("transcript", []) if r.get("phase") != "dilemma_posed")}
         except Exception:
@@ -1037,8 +1045,95 @@ async def field_session(sid: str):
             "thinking": sess.get("thinking", ""), "mediator": sess.get("mediator", ""),
             "aftermath": sess.get("aftermath", ""),
             "aftermath_i": sess.get("aftermath_i", 0), "aftermath_n": sess.get("aftermath_n", 0),
+            "verdict": sess.get("verdict"), "scores": sess.get("scores"),
             "elapsed": int(time.time() - started) if started else 0,
             "turns": sum(1 for r in transcript if r["phase"] != "dilemma_posed")}
+
+
+_STANCE_RE = None
+
+
+def _parse_stance(content: str):
+    """Extract (stance, confidence) from a position/update record's text.
+    Creatures format these as 'STANCE: false / CONFIDENCE: 0.7' per the
+    forum prompt contract."""
+    global _STANCE_RE
+    import re as _re
+    if _STANCE_RE is None:
+        _STANCE_RE = (_re.compile(r"STANCE:\s*\**\s*(true|false|partial)", _re.I),
+                      _re.compile(r"CONFIDENCE:\s*\**\s*([01](?:\.\d+)?)", _re.I))
+    s = _STANCE_RE[0].search(content or "")
+    c = _STANCE_RE[1].search(content or "")
+    return (s.group(1).lower() if s else None,
+            float(c.group(1)) if c else None)
+
+
+@app.post("/api/field/verdict/{sid}")
+async def field_verdict(sid: str, req: FieldVerdictRequest):
+    """Caretaker discloses the ground truth for a finished Forum session.
+
+    Live session (still in server memory — the normal case, right after it
+    finishes): full ForumScore per participant via the field's own scoring.
+    Disk-only session (after a restart): the verdict is recorded and each
+    participant's FINAL stance is matched against it (hit/near/miss) —
+    simplified feedback, honestly labeled.
+    """
+    if req.value not in ("true", "false", "partial", "unknown"):
+        return {"error": "value must be true|false|partial|unknown"}
+
+    sess = field_sessions.get(sid)
+    if sess is not None and sess.get("field") is not None:
+        if sess.get("field_kind") != "forum":
+            return {"error": "verdict applies to forum sessions only"}
+        if sess.get("verdict"):
+            return {"error": "verdict already disclosed"}
+        from ludex.core.verdict import Verdict
+        field = sess["field"]
+        try:
+            field.disclose_verdict(Verdict(value=req.value,
+                                           provenance="caretaker:web",
+                                           explanation=req.note or ""))
+            scores = field.score()
+            sess["scores"] = {name: vars(s) for name, s in scores.items()}
+        except Exception as e:
+            return {"error": f"scoring failed: {e}"}
+        sess["verdict"] = {"value": req.value, "note": req.note,
+                           "scored": "full"}
+        _save_field_session(sess)
+        return {"verdict": sess["verdict"], "scores": sess["scores"]}
+
+    # disk-only fallback
+    path = os.path.join(FIELD_LOG, f"{sid}.json")
+    if not os.path.isfile(path):
+        return {"error": "Session not found"}
+    with open(path, encoding="utf-8") as f:
+        d = json.load(f)
+    if d.get("field_kind") != "forum":
+        return {"error": "verdict applies to forum sessions only"}
+    if d.get("verdict"):
+        return {"error": "verdict already disclosed"}
+    final = {}
+    for r in d.get("transcript", []):
+        if r.get("kind") in ("position", "position_updated"):
+            stance, conf = _parse_stance(r.get("content", ""))
+            if stance:
+                final[r.get("participant")] = {"stance": stance, "confidence": conf}
+    results = {}
+    for name, fs in final.items():
+        if req.value == "unknown":
+            match = "n/a"
+        elif fs["stance"] == req.value:
+            match = "hit"
+        elif "partial" in (fs["stance"], req.value):
+            match = "near"
+        else:
+            match = "miss"
+        results[name] = {**fs, "match": match}
+    d["verdict"] = {"value": req.value, "note": req.note, "scored": "simplified"}
+    d["scores"] = results
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    return {"verdict": d["verdict"], "scores": results}
 
 
 @app.post("/api/field/stop/{sid}")
