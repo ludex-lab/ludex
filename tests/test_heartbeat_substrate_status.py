@@ -1,0 +1,58 @@
+"""Heartbeat substrate_status label tests.
+
+Verifies the caretaker-declared brain.substrate_status lifecycle label
+(substrate_change_policy: live / cost-watch / wind-down / retiring /
+dormant) is surfaced in the pulse result, and absent when undeclared.
+Display-only — the heartbeat must not act on it.
+"""
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+import yaml
+
+from ludex.core.heartbeat import pulse_creature
+
+
+def _write_creature(parent: Path, name: str = "Tc",
+                    substrate_status: str | None = None) -> Path:
+    creature_dir = parent / name
+    (creature_dir / "memory").mkdir(parents=True)
+    (creature_dir / "bonds").mkdir(parents=True)
+    brain = {"provider": "gemini_cli", "model": "gemini-2.5-flash"}
+    if substrate_status:
+        brain["substrate_status"] = substrate_status
+    cfg = {
+        "name": name,
+        "brain": brain,
+        "organs": {
+            "engine": {"enabled": True, "required": True},
+            "resilience": {"enabled": True, "required": True},
+            "memory": {"enabled": True},
+        },
+        "habitat": {
+            "mode": "local",
+            "home_dir": str(creature_dir),
+            "persistent": True,
+            "origin": "",
+        },
+        "born_at": time.time() - 30 * 86400,
+        "session_count": 5,
+    }
+    (creature_dir / "ludex.yaml").write_text(
+        yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8"
+    )
+    return creature_dir
+
+
+def test_substrate_status_surfaced_in_result(tmp_path):
+    creature_dir = _write_creature(tmp_path, substrate_status="wind-down")
+    result = pulse_creature(creature_dir, dry_run=True)
+    assert result.get("substrate_status") == "wind-down"
+
+
+def test_substrate_status_absent_when_undeclared(tmp_path):
+    creature_dir = _write_creature(tmp_path)
+    result = pulse_creature(creature_dir, dry_run=True)
+    assert "substrate_status" not in result

@@ -99,6 +99,11 @@ def pulse_creature(
         "brain": model or "?",
         "timestamp": time.time(),
     }
+    # Caretaker-declared substrate lifecycle label (substrate_change_policy:
+    # live / cost-watch / wind-down / retiring / dormant). Display-only —
+    # the heartbeat never acts on it.
+    if brain.get("substrate_status"):
+        result["substrate_status"] = brain["substrate_status"]
 
     # 0. D-068 Brain fatigue check — if creature is in cooldown, surface
     # "resting" outcome immediately and skip brain calls entirely.
@@ -448,6 +453,13 @@ def pulse_all(
 
 
 def main():
+    # BYO keys from .env (existing env always wins). Without this, a
+    # launchd/cron pulse that triggers a reflect on an API-key-auth brain
+    # (e.g. gemini paid key post-2026-06-18) subprocesses the CLI with no
+    # key in env. Mirrors model_check.py's pattern.
+    from ludex.core.dotenv import load_dotenv
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         description="Heartbeat - creature lifecycle pulse (D-051)",
     )
@@ -490,6 +502,8 @@ def main():
         if r.get("skip"):
             continue
         notes_parts = []
+        if r.get("substrate_status") and r["substrate_status"] != "live":
+            notes_parts.append(f"substrate:{r['substrate_status']}")
         if r.get("consolidated"):
             c = r["consolidated"]
             notes_parts.append(f"consolidated(+{c['promoted']}/-{c['archived']})")
