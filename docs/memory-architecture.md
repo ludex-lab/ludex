@@ -50,6 +50,15 @@ about itself?** "Turn 47 took 2.3 seconds" — never; that's a span.
 that's a memory. Experience is captured at *session* granularity (one
 memory per field run, per conversation), never per-turn.
 
+One of the five deserves a special note: **bonds are the only memory
+with a built-in test of truth.** A creature doesn't just record its
+history with another — it keeps a working model of the other's mind,
+makes predictions before shared situations, and scores those
+predictions against what actually happened. Knowledge of others is
+*verified* memory: earned, not asserted. (Theory of mind in Ludex is
+not a separate module — it lives inside the bond, as a capability woven
+into relationship memory itself.)
+
 ---
 
 ## The importance ladder
