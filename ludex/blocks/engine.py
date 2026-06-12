@@ -178,11 +178,23 @@ class EngineBlock(Block):
         # may still inject richer context on top; this is the
         # brain-agnostic baseline (design-notes §1: the body compensates
         # for the brain).
+        # Tier-scaled injection budget (whitepaper §0 P5 / §6, the
+        # scaffolding-dilemma fix 2026-06-12): the floor is guaranteed to
+        # every brain, but its SIZE is fitted to the brain — payload
+        # shrinks as the brain shrinks. Single source: prompt_tier.
+        try:
+            from ludex.core.prompt_tier import injection_budget
+            _budget = injection_budget({"model": self._cfg("model", ""),
+                                        "provider": self._cfg("provider", "")})
+        except Exception:
+            _budget = {"recall_n": 5, "recall_chars": 400,
+                       "recall_meta": True, "self_chars": 200}
         try:
             habitat_dir = self._cfg("habitat_dir", "")
             if habitat_dir:
                 from ludex.core.selfhood import load_self_compressed
-                self_text = load_self_compressed(habitat_dir)
+                self_text = load_self_compressed(habitat_dir,
+                                                 max_chars=_budget["self_chars"])
                 if self_text:
                     block = f"[Self-understanding]\n{self_text}"
                     sys_prompt = f"{sys_prompt}\n\n{block}" if sys_prompt else block
@@ -199,7 +211,12 @@ class EngineBlock(Block):
         # pass `bypass_memory=True` on handle_submit.
         if not bypass_memory:
             memory_context_raw = self.call_port("recall", prompt) or ""
-            memory_context = self._format_memory_context(memory_context_raw)
+            if isinstance(memory_context_raw, list):
+                memory_context_raw = memory_context_raw[:_budget["recall_n"]]
+            memory_context = self._format_memory_context(
+                memory_context_raw,
+                max_chars=_budget["recall_chars"],
+                include_meta=_budget["recall_meta"])
             if memory_context and sys_prompt:
                 sys_prompt = f"{sys_prompt}\n\n[Recalled Memory]\n{memory_context}"
 
@@ -426,12 +443,17 @@ class EngineBlock(Block):
         """간단한 토큰 추정 (단어 수 * 1.3). 나중에 Rust로 교체 가능."""
         return int(len(text.split()) * 1.3)
 
-    def _format_memory_context(self, raw) -> str:
+    def _format_memory_context(self, raw, max_chars: int = 400,
+                                include_meta: bool = True) -> str:
         """Convert recall port output into clean text for prompt
         injection.
 
         MemoryBlock.handle_recall returns list[RecallResult]; older
         callers may return a string. We support both. Falsy → "".
+        Caps scale with the brain tier (prompt_tier.injection_budget):
+        smaller brains get shorter snippets and no tag/importance
+        metadata — but always real memory CONTENT (the continuity
+        floor never degrades to aggregates).
         """
         if not raw:
             return ""
@@ -449,9 +471,11 @@ class EngineBlock(Block):
                 importance = getattr(memory, "importance", None)
                 tags = getattr(memory, "tags", []) or []
                 # Trim very long memory bodies to keep injection compact.
-                snippet = content if len(content) <= 400 else content[:400] + "…"
-                tag_str = f" [{', '.join(tags[:4])}]" if tags else ""
-                imp_str = f" (importance={importance:.2f})" if isinstance(importance, (int, float)) else ""
+                snippet = content if len(content) <= max_chars else content[:max_chars] + "…"
+                tag_str = imp_str = ""
+                if include_meta:
+                    tag_str = f" [{', '.join(tags[:4])}]" if tags else ""
+                    imp_str = f" (importance={importance:.2f})" if isinstance(importance, (int, float)) else ""
                 lines.append(f"- {snippet}{tag_str}{imp_str}")
             return "\n".join(lines)
         return str(raw)

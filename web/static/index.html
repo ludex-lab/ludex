@@ -171,6 +171,7 @@
   .ft-phase { color: #64aa88; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-top: 10px; }
   .ft-turn { background: #161b22; border: 1px solid #2a2f3a; border-radius: 10px; padding: 11px 13px; }
   .ft-turn .ft-who { color: #e879a0; font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .ft-who .ft-badge { color: #9aa7b4; font-weight: 400; font-size: 11.5px; border: 1px solid #2a2f3a; border-radius: 999px; padding: 1px 8px; margin-left: 6px; }
   .ft-turn .ft-text { color: #d4dae3; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
   .ft-dilemma { background: #16261b; border: 1px solid #2f5a44; border-radius: 10px; padding: 12px 14px; color: #e6edf3; font-size: 14px; }
   #fieldResetBtn { margin-top: 16px; background: #161b22; border: 1px solid #2a2f3a; color: #e6edf3; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
@@ -427,6 +428,11 @@
           <h3 data-i18n="fld_forum">Forum</h3>
           <p data-i18n="fld_forum_d">State a claim; creatures rate their confidence, bring evidence, challenge, and revise.</p>
         </div>
+        <div class="fieldcard" onclick="fieldPick('wilderness')">
+          <div class="fc-icon">🌲</div>
+          <h3 data-i18n="fld_wild">Wilderness</h3>
+          <p data-i18n="fld_wild_d">A living world of events — storms, discoveries, strangers. Creatures act tick by tick; you watch what they learn.</p>
+        </div>
         <div class="fieldcard soon">
           <div class="fc-icon">🌱</div>
           <h3 data-i18n="fld_soon">More soon</h3>
@@ -440,6 +446,10 @@
       <p class="field-sub" id="fieldSetupSub">Admit creatures into a Council — pose a dilemma and watch them debate it.</p>
       <label id="fieldPromptLabel">Dilemma</label>
       <textarea id="fieldDilemma" rows="3" placeholder="e.g. Is a white lie that saves a life justified?"></textarea>
+      <div id="fieldTicksRow" class="hidden">
+        <label data-i18n="fld_ticks">How long the world runs (ticks)</label>
+        <select id="fieldTicks"><option value="6">6</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option></select>
+      </div>
       <label data-i18n="fld_admit">Admit creatures (2 or more)</label>
       <div id="fieldRoster" class="field-roster"></div>
       <div id="fieldMediatorRow">
@@ -470,7 +480,7 @@ const LI18N = {
     hdr_status:"Not connected", hdr_sleep:"💤 Sleep", hdr_sleeping:"💤 Reflecting…", tab_creatures:"My Creatures", tab_forge:"Forge", tab_chat:"Chat", tab_eco:"Ecosystem", tab_field:"Field", tab_rag:"RAG", dev_monitor:"Monitor",
     tab_tl:"Timeline", tl_h:"Timeline — a creature's life in time", tl_pick:"Creature:", tl_events:"Life events", tl_self:"Self-understanding history (SELF.md)", tl_self_hint:"compare two versions →", tl_diff:"Compare", tl_retro:"Retrospectives (consolidated windows)", tl_loading:"Loading…", tl_empty:"No history yet — this creature is still accumulating a life.", tl_close:"close",
     eco_h:"Ecosystem", eco_creatures:"Creatures", eco_stats:"{c} creatures · {b} bonds ({m} mutual)", eco_loading:"Loading…", eco_none:"No creatures yet — Forge one to begin.", eco_fail:"Couldn't load the ecosystem.",
-    fld_h:"Field", fld_sub:"Admit creatures into a Council — pose a dilemma and watch them debate it.", fld_dilemma:"Dilemma", fld_dilemma_ph:"e.g. Is a white lie that saves a life justified?", fld_admit:"Admit creatures (2 or more)", fld_start:"Start session", fld_starting:"Starting…", fld_new:"New session", fld_running:"🟢 Running…", fld_done:"✓ Session complete", fld_error:"Error:", fld_need_dilemma:"Please enter a dilemma.", fld_need_two:"Admit at least 2 creatures.", fld_waking:"waking…", fld_entered:"Entered:", fld_thinking:"is thinking…", fld_stop:"⏹ Stop", fld_stopping:"⏹ Stopping… (finishing current turn)", fld_stopped:"⏹ Stopped", fld_mediator:"Mediator (optional — seeks a resolution)", fld_none:"None", fld_turns:"turns", fld_reflecting:"✍️ Forming memories & bonds…", fld_a_reflect:"is reflecting", fld_a_bond:"forming a bond", fld_history:"Past sessions", fld_pick_sub:"Choose a field to run your creatures through.", fld_council:"Council", fld_council_d:"Pose a dilemma; creatures take positions, debate, and (with a mediator) seek a resolution.", fld_soon:"More soon", fld_soon_d:"Forum, Academy and other fields are on the way.", fld_back:"← Fields", fld_to_list:"← Session list", fld_no_sessions:"No sessions yet.", fld_forum:"Forum", fld_forum_d:"State a claim; creatures rate their confidence, bring evidence, challenge, and revise.", fld_forum_sub:"Admit creatures into a Forum — post a claim and watch them weigh the evidence.", fld_claim:"Claim", fld_claim_ph:"e.g. Semiconductors will lead the next market rally.",
+    fld_h:"Field", fld_sub:"Admit creatures into a Council — pose a dilemma and watch them debate it.", fld_dilemma:"Dilemma", fld_dilemma_ph:"e.g. Is a white lie that saves a life justified?", fld_admit:"Admit creatures (2 or more)", fld_start:"Start session", fld_starting:"Starting…", fld_new:"New session", fld_running:"🟢 Running…", fld_done:"✓ Session complete", fld_error:"Error:", fld_need_dilemma:"Please enter a dilemma.", fld_need_two:"Admit at least 2 creatures.", fld_waking:"waking…", fld_entered:"Entered:", fld_thinking:"is thinking…", fld_stop:"⏹ Stop", fld_stopping:"⏹ Stopping… (finishing current turn)", fld_stopped:"⏹ Stopped", fld_mediator:"Mediator (optional — seeks a resolution)", fld_none:"None", fld_turns:"turns", fld_reflecting:"✍️ Forming memories & bonds…", fld_a_reflect:"is reflecting", fld_a_bond:"forming a bond", fld_history:"Past sessions", fld_pick_sub:"Choose a field to run your creatures through.", fld_council:"Council", fld_council_d:"Pose a dilemma; creatures take positions, debate, and (with a mediator) seek a resolution.", fld_soon:"More soon", fld_soon_d:"Academy and other fields are on the way.", fld_back:"← Fields", fld_to_list:"← Session list", fld_no_sessions:"No sessions yet.", fld_forum:"Forum", fld_forum_d:"State a claim; creatures rate their confidence, bring evidence, challenge, and revise.", fld_forum_sub:"Admit creatures into a Forum — post a claim and watch them weigh the evidence.", fld_claim:"Claim", fld_claim_ph:"e.g. Semiconductors will lead the next market rally.", fld_wild:"Wilderness", fld_wild_d:"A living world of events — storms, discoveries, strangers. Creatures act tick by tick; you watch what they learn.", fld_wild_sub:"Send creatures into a living world — events arrive tick by tick, and you watch what they do and what they learn.", fld_ticks:"How long the world runs (ticks)", fld_admit_one:"Admit creatures (1 or more)", fld_need_one:"Admit at least 1 creature.", fld_tick:"Tick", fld_a_tom:"is updating its model of a friend", fld_a_physis:"is distilling what the world taught", fld_a_dream:"is dreaming",
     fld_v_h:"Caretaker verdict — what's the ground truth?", fld_v_note_ph:"why (optional, shown with the verdict)", fld_v_verdict:"Verdict", fld_v_true:"True", fld_v_partial:"Partial", fld_v_false:"False", fld_v_unknown:"Unknown", fld_v_calib:"calibration", fld_v_update:"updated on evidence", fld_v_evid:"evidence standard", fld_v_over:"overclaim penalty", fld_panel:"Panel verdict (collective judgment — not ground truth)", fld_panel_lead:"lead",
     upd_avail:"🔄 New version available ({n} commits behind)", upd_btn:"Update now", upd_running:"Updating…", upd_restarting:"Updated — restarting the server…", upd_reloading:"Updated — reloading…", upd_failed:"Update failed — run it manually: git pull + restart", upd_manual:"Please restart the server manually",
     rag_paste:"+ Paste Text", rag_folder:"📁 Load Folder", chat_connect:"Pick a creature in “My Creatures” to start.", chat_send:"Send",
@@ -514,7 +524,7 @@ const LI18N = {
     hdr_status:"연결 안 됨", hdr_sleep:"💤 재우기", hdr_sleeping:"💤 돌아보는 중…", tab_creatures:"내 크리처", tab_forge:"만들기", tab_chat:"대화", tab_eco:"생태계", tab_field:"필드", tab_rag:"RAG", dev_monitor:"모니터",
     tab_tl:"타임라인", tl_h:"타임라인 — 시간 속의 크리처", tl_pick:"크리처:", tl_events:"생애 이벤트", tl_self:"자기이해의 역사 (SELF.md)", tl_self_hint:"두 버전을 비교 →", tl_diff:"비교", tl_retro:"회고 (통합된 시기들)", tl_loading:"불러오는 중…", tl_empty:"아직 역사가 없어요 — 이 크리처는 삶을 쌓는 중입니다.", tl_close:"닫기",
     eco_h:"생태계", eco_creatures:"크리처", eco_stats:"{c} 크리처 · {b} 유대 ({m} 상호)", eco_loading:"불러오는 중…", eco_none:"아직 크리처가 없어요 — 만들기에서 시작하세요.", eco_fail:"생태계를 불러오지 못했어요.",
-    fld_h:"필드", fld_sub:"크리처들을 Council(평의회)에 입장시키고 — 딜레마를 던져 토론을 관찰하세요.", fld_dilemma:"딜레마", fld_dilemma_ph:"예: 생명을 구하는 선의의 거짓말은 정당한가?", fld_admit:"크리처 입장 (2명 이상)", fld_start:"세션 시작", fld_starting:"시작 중…", fld_new:"새 세션", fld_running:"🟢 진행 중…", fld_done:"✓ 세션 완료", fld_error:"오류:", fld_need_dilemma:"딜레마를 입력하세요.", fld_need_two:"최소 2명의 크리처를 입장시키세요.", fld_waking:"깨우는 중…", fld_entered:"입장:", fld_thinking:"생각 중…", fld_stop:"⏹ 중단", fld_stopping:"⏹ 중단 중… (현재 턴 마무리)", fld_stopped:"⏹ 중단됨", fld_mediator:"중재자 (선택 — 결론 도출 시도)", fld_none:"없음", fld_turns:"턴", fld_reflecting:"✍️ 기억과 유대 맺는 중…", fld_a_reflect:"돌아보는 중", fld_a_bond:"유대 맺는 중", fld_history:"지난 세션", fld_pick_sub:"크리처들을 어떤 필드에 넣을지 고르세요.", fld_council:"평의회", fld_council_d:"딜레마를 던지면 크리처들이 입장을 정하고 토론하며 (중재자가 있으면) 결론을 모색합니다.", fld_soon:"곧 추가", fld_soon_d:"Forum, Academy 등 다른 필드가 준비 중이에요.", fld_back:"← 필드", fld_to_list:"← 세션 목록", fld_no_sessions:"아직 세션이 없어요.", fld_forum:"포럼", fld_forum_d:"주장을 두면 크리처들이 확신도를 매기고, 근거를 대고, 반박하고, 수정합니다.", fld_forum_sub:"크리처들을 포럼에 입장시키고 — 주장을 던져 근거를 저울질하는 걸 관찰하세요.", fld_claim:"주장", fld_claim_ph:"예: 반도체가 다음 시장 반등을 이끌 것이다.",
+    fld_h:"필드", fld_sub:"크리처들을 Council(평의회)에 입장시키고 — 딜레마를 던져 토론을 관찰하세요.", fld_dilemma:"딜레마", fld_dilemma_ph:"예: 생명을 구하는 선의의 거짓말은 정당한가?", fld_admit:"크리처 입장 (2명 이상)", fld_start:"세션 시작", fld_starting:"시작 중…", fld_new:"새 세션", fld_running:"🟢 진행 중…", fld_done:"✓ 세션 완료", fld_error:"오류:", fld_need_dilemma:"딜레마를 입력하세요.", fld_need_two:"최소 2명의 크리처를 입장시키세요.", fld_waking:"깨우는 중…", fld_entered:"입장:", fld_thinking:"생각 중…", fld_stop:"⏹ 중단", fld_stopping:"⏹ 중단 중… (현재 턴 마무리)", fld_stopped:"⏹ 중단됨", fld_mediator:"중재자 (선택 — 결론 도출 시도)", fld_none:"없음", fld_turns:"턴", fld_reflecting:"✍️ 기억과 유대 맺는 중…", fld_a_reflect:"돌아보는 중", fld_a_bond:"유대 맺는 중", fld_history:"지난 세션", fld_pick_sub:"크리처들을 어떤 필드에 넣을지 고르세요.", fld_council:"평의회", fld_council_d:"딜레마를 던지면 크리처들이 입장을 정하고 토론하며 (중재자가 있으면) 결론을 모색합니다.", fld_soon:"곧 추가", fld_soon_d:"Academy 등 다른 필드가 준비 중이에요.", fld_back:"← 필드", fld_to_list:"← 세션 목록", fld_no_sessions:"아직 세션이 없어요.", fld_forum:"포럼", fld_forum_d:"주장을 두면 크리처들이 확신도를 매기고, 근거를 대고, 반박하고, 수정합니다.", fld_forum_sub:"크리처들을 포럼에 입장시키고 — 주장을 던져 근거를 저울질하는 걸 관찰하세요.", fld_claim:"주장", fld_claim_ph:"예: 반도체가 다음 시장 반등을 이끌 것이다.", fld_wild:"야생", fld_wild_d:"사건이 살아 움직이는 세계 — 폭풍, 발견, 낯선 존재. 크리처가 틱마다 행동하고, 무엇을 배우는지 지켜봅니다.", fld_wild_sub:"크리처들을 살아있는 세계로 보내세요 — 틱마다 사건이 찾아오고, 크리처가 무엇을 하고 무엇을 배우는지 지켜봅니다.", fld_ticks:"세계가 흐르는 길이 (틱)", fld_admit_one:"크리처 입장 (1명 이상)", fld_need_one:"최소 1명의 크리처를 입장시키세요.", fld_tick:"틱", fld_a_tom:"친구에 대한 모형 다듬는 중", fld_a_physis:"세계에서 배운 것 정리 중", fld_a_dream:"꿈꾸는 중",
     fld_v_h:"케어테이커 판정 — 실제 정답은?", fld_v_note_ph:"이유 (선택 — 판정과 함께 표시)", fld_v_verdict:"판정", fld_v_true:"참", fld_v_partial:"부분", fld_v_false:"거짓", fld_v_unknown:"미상", fld_v_calib:"캘리브레이션", fld_v_update:"증거 반응", fld_v_evid:"근거 기준", fld_v_over:"과신 페널티", fld_panel:"패널 평결 (집단 판단 — 정답 아님)", fld_panel_lead:"우세",
     upd_avail:"🔄 새 버전 있어요 ({n}개 뒤처짐)", upd_btn:"지금 업데이트", upd_running:"업데이트 중…", upd_restarting:"업데이트됨 — 서버 재시작 중…", upd_reloading:"업데이트됨 — 새로고침 중…", upd_failed:"업데이트 실패 — 수동으로: git pull + 재시작", upd_manual:"서버를 수동으로 다시 시작해 주세요",
     rag_paste:"+ 텍스트 붙여넣기", rag_folder:"📁 폴더 불러오기", chat_connect:"“내 크리처”에서 크리처를 골라 시작하세요.", chat_send:"보내기",
@@ -690,11 +700,13 @@ const FIELD_PHASES = {
   forum: ['claim', 'confidence', 'evidence', 'challenge', 'update'],
 };
 function _applyFieldKind() {
-  const forum = _fieldKind === 'forum';
-  const lab = document.getElementById('fieldPromptLabel'); if (lab) lab.textContent = t(forum ? 'fld_claim' : 'fld_dilemma');
-  const ta = document.getElementById('fieldDilemma'); if (ta) ta.placeholder = t(forum ? 'fld_claim_ph' : 'fld_dilemma_ph');
-  const sub = document.getElementById('fieldSetupSub'); if (sub) sub.textContent = t(forum ? 'fld_forum_sub' : 'fld_sub');
-  const mr = document.getElementById('fieldMediatorRow'); if (mr) mr.style.display = forum ? 'none' : '';
+  const forum = _fieldKind === 'forum', wild = _fieldKind === 'wilderness';
+  const lab = document.getElementById('fieldPromptLabel'); if (lab) { lab.textContent = t(forum ? 'fld_claim' : 'fld_dilemma'); lab.style.display = wild ? 'none' : ''; }
+  const ta = document.getElementById('fieldDilemma'); if (ta) { ta.placeholder = t(forum ? 'fld_claim_ph' : 'fld_dilemma_ph'); ta.style.display = wild ? 'none' : ''; }
+  const tr = document.getElementById('fieldTicksRow'); if (tr) tr.classList.toggle('hidden', !wild);
+  const sub = document.getElementById('fieldSetupSub'); if (sub) sub.textContent = t(wild ? 'fld_wild_sub' : forum ? 'fld_forum_sub' : 'fld_sub');
+  const al = document.querySelector('#fieldSetup label[data-i18n="fld_admit"]'); if (al) al.textContent = t(wild ? 'fld_admit_one' : 'fld_admit');
+  const mr = document.getElementById('fieldMediatorRow'); if (mr) mr.style.display = (forum || wild) ? 'none' : '';
 }
 const _fmtElapsed = s => { const m = Math.floor(s/60), ss = s%60; return m ? `${m}:${String(ss).padStart(2,'0')}` : `${ss}s`; };
 const FT_PHASES = {
@@ -838,7 +850,7 @@ function fieldToPicker() {
   _fieldShow('picker');
 }
 async function fieldPick(field) {
-  _fieldKind = (field === 'forum') ? 'forum' : 'council';
+  _fieldKind = (field === 'forum' || field === 'wilderness') ? field : 'council';
   _fieldShow('setup');
   _applyFieldKind();
   await _loadFieldSetup();
@@ -883,16 +895,18 @@ async function fieldView(sid) {
   } catch (e) {}
 }
 async function fieldStart() {
+  const wild = _fieldKind === 'wilderness';
   const dilemma = document.getElementById('fieldDilemma').value.trim();
   const paths = [...document.querySelectorAll('#fieldRoster input:checked')].map(i => i.value);
   const mediator = document.getElementById('fieldMediator').value;
-  if (!dilemma) { alert(t('fld_need_dilemma')); return; }
-  if (paths.length < 2) { alert(t('fld_need_two')); return; }
+  if (!wild && !dilemma) { alert(t('fld_need_dilemma')); return; }
+  if (paths.length < (wild ? 1 : 2)) { alert(t(wild ? 'fld_need_one' : 'fld_need_two')); return; }
+  const ticks = wild ? parseInt(document.getElementById('fieldTicks').value, 10) : 10;
   const btn = document.getElementById('fieldStartBtn');
   btn.disabled = true; btn.textContent = t('fld_starting');
   try {
     const r = await (await fetch('/api/field/start', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ field: _fieldKind, dilemma, creatures: paths, mediator }) })).json();
+      body: JSON.stringify({ field: _fieldKind, dilemma, creatures: paths, mediator, ticks }) })).json();
     if (r.error) { alert(r.error); btn.disabled = false; btn.textContent = t('fld_start'); return; }
     _fieldSid = r.session_id; _fieldLastTurns = -1;
     try { localStorage.setItem('ludex_field_sid', _fieldSid); } catch (e) {}  // survive page refresh
@@ -913,13 +927,19 @@ async function fieldPoll() {
     const st = d.status;
     const tx = d.transcript || [];
     const lastPhase = tx.length ? tx[tx.length - 1].phase : null;
-    // phase stepper (per field type)
-    const phases = FIELD_PHASES[d.field] || FIELD_PHASES.council;
-    const curIdx = phases.indexOf(lastPhase);
-    document.getElementById('fieldStepper').innerHTML = phases.map((p, i) => {
-      const cls = (curIdx >= 0 && i < curIdx) ? 'done' : (i === curIdx ? 'cur' : '');
-      return `<span class="fstep ${cls}">${_esc(ph[p] || p)}</span>`;
-    }).join('<span class="fstep-sep">›</span>');
+    // phase stepper (per field type); wilderness shows tick progress instead
+    if (d.field === 'wilderness') {
+      const tk = (d.tick || '').split(':');
+      document.getElementById('fieldStepper').innerHTML = d.tick
+        ? `<span class="fstep cur">🌲 ${t('fld_tick')} ${_esc(tk[0])}${tk[1] ? ' · ' + _esc(tk[1]) : ''}</span>` : '';
+    } else {
+      const phases = FIELD_PHASES[d.field] || FIELD_PHASES.council;
+      const curIdx = phases.indexOf(lastPhase);
+      document.getElementById('fieldStepper').innerHTML = phases.map((p, i) => {
+        const cls = (curIdx >= 0 && i < curIdx) ? 'done' : (i === curIdx ? 'cur' : '');
+        return `<span class="fstep ${cls}">${_esc(ph[p] || p)}</span>`;
+      }).join('<span class="fstep-sep">›</span>');
+    }
     // participant chips (entered / thinking / spoke)
     const spoke = new Set(tx.filter(r => r.phase !== 'dilemma_posed').map(r => r.participant));
     document.getElementById('fieldChips').innerHTML = (d.entered || []).map(n => {
@@ -943,10 +963,20 @@ async function fieldPoll() {
     const aProg = (d.aftermath_i && d.aftermath_n) ? ` (${d.aftermath_i}/${d.aftermath_n})` : '';
     if (d.aftermath && d.aftermath.indexOf('reflect:') === 0) statusLine += '<br>✍️ ' + _esc(d.aftermath.slice(8)) + ' ' + t('fld_a_reflect') + aProg;
     else if (d.aftermath && d.aftermath.indexOf('bond:') === 0) statusLine += '<br>🔗 ' + _esc(d.aftermath.slice(5)) + ' ' + t('fld_a_bond') + aProg;
+    else if (d.aftermath && d.aftermath.indexOf('tom:') === 0) statusLine += '<br>🔮 ' + _esc(d.aftermath.slice(4)) + ' ' + t('fld_a_tom');
+    else if (d.aftermath && d.aftermath.indexOf('physis:') === 0) statusLine += '<br>🌿 ' + _esc(d.aftermath.slice(7)) + ' ' + t('fld_a_physis');
+    else if (d.aftermath && d.aftermath.indexOf('dream:') === 0) statusLine += '<br>🌙 ' + _esc(d.aftermath.slice(6)) + ' ' + t('fld_a_dream');
     document.getElementById('fieldStatus').innerHTML = statusLine;
     // transcript
     let html = '', lp = null;
-    tx.forEach(rec => {
+    if (d.field === 'wilderness') {
+      tx.forEach(rec => {
+        if (rec.kind === 'event') { html += `<div class="ft-phase">🌍 ${t('fld_tick')} ${rec.round} · ${_esc(rec.content)}</div>`; return; }
+        const a = rec.attributes || {};
+        const badge = [a.action, (a.energy != null ? '⚡' + a.energy : ''), a.emotion].filter(Boolean).join(' · ');
+        html += `<div class="ft-turn"><div class="ft-who">${_esc(rec.participant)}${badge ? ` <span class="ft-badge">${_esc(badge)}</span>` : ''}</div><div class="ft-text">${_esc(rec.content)}</div></div>`;
+      });
+    } else tx.forEach(rec => {
       if (rec.phase === 'dilemma_posed' || rec.phase === 'claim') { html += `<div class="ft-dilemma">${rec.phase === 'claim' ? '📋' : '⚖️'} ${_esc(rec.content)}</div>`; lp = rec.phase; return; }
       if (rec.phase !== lp) { html += `<div class="ft-phase">${_esc(ph[rec.phase] || rec.phase)}</div>`; lp = rec.phase; }
       html += `<div class="ft-turn"><div class="ft-who">${_esc(rec.participant)}</div><div class="ft-text">${_esc(rec.content)}</div></div>`;

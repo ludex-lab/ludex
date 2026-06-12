@@ -64,11 +64,13 @@ def extract_identity_block(text: str) -> str:
     return text[start:end + len(IDENTITY_BLOCK_END)]
 
 
-def load_self_compressed(habitat_dir: str) -> str:
-    """Load SELF.md compressed for SLM prompt injection.
+def load_self_compressed(habitat_dir: str, max_chars: int = 200) -> str:
+    """Load SELF.md compressed for prompt injection.
 
     Extracts key lines (behavioral patterns, lessons) and compresses
-    to a short block suitable for system prompt.
+    to a short block suitable for system prompt. `max_chars` scales
+    with the brain tier (prompt_tier.injection_budget): a large brain
+    can carry a fuller self; a small one gets the essence.
     """
     content = load_self(habitat_dir)
     if not content or "empty at birth" in content:
@@ -98,10 +100,10 @@ def load_self_compressed(habitat_dir: str) -> str:
     if not lines:
         return ""
 
-    # Compress to max ~200 chars
+    # Compress to the caller's budget (default ~200 chars)
     compressed = "; ".join(lines)
-    if len(compressed) > 200:
-        compressed = compressed[:200] + "..."
+    if len(compressed) > max_chars:
+        compressed = compressed[:max_chars] + "..."
     return f"[Self] {compressed}"
 
 

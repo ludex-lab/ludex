@@ -40,7 +40,7 @@ class Tier(Enum):
 # Patterns are regex searched against lowercased model string.
 _TIER_PATTERNS: list[tuple[Tier, list[str]]] = [
     (Tier.LARGE, [
-        r"opus", r"gemini-3?.*pro", r"gpt-5-pro", r"ultra",
+        r"opus", r"gemini-3?.*pro", r"gpt-5-pro", r"gpt-5\.5", r"ultra",
     ]),
     (Tier.MID, [
         r"sonnet", r"haiku", r"flash", r"gpt-5$", r"gpt-4",
@@ -50,13 +50,40 @@ _TIER_PATTERNS: list[tuple[Tier, list[str]]] = [
     ]),
     (Tier.MID_SLM, [
         r"gemma4:e4b", r"gemma.*(?:4b|5b|6b)", r"llama.*3\.2.*3b",
-        r"phi-?3\.5", r"qwen.*3b",
+        r"phi-?3\.5", r"qwen.*3b", r"nano",
     ]),
     (Tier.SMALL_SLM, [
         r"smollm", r"phi-?3-mini", r"gemma.*(?:2b|1b)", r"llama.*1b",
         r"tinyllama",
     ]),
 ]
+
+
+# ============================================================
+# Injection budget — the scaffolding-dilemma fix (2026-06-12)
+# ============================================================
+# memory-whitepaper §0 P5 / §6: scaffolding (body work) scales UP as
+# the brain shrinks; payload (injected tokens) scales DOWN. Single
+# source for how much of the engine's per-call injection (identity
+# floor + recalled memory) reaches each tier's prompt. Two rules:
+#   - payload shrinks monotonically down the tiers (a small model is
+#     hurt by irrelevant context more than helped by marginal context);
+#   - the floor never drops to zero CONTENT — the 06-11 continuity-
+#     inequality fix must hold for the smallest brains too, so recall
+#     keeps real memory text at every tier (fewer and shorter, never
+#     tag-aggregates only).
+INJECTION_BUDGET = {
+    Tier.LARGE:     {"recall_n": 5, "recall_chars": 400, "recall_meta": True,  "self_chars": 600},
+    Tier.MID:       {"recall_n": 5, "recall_chars": 300, "recall_meta": True,  "self_chars": 400},
+    Tier.LARGE_SLM: {"recall_n": 3, "recall_chars": 200, "recall_meta": False, "self_chars": 250},
+    Tier.MID_SLM:   {"recall_n": 2, "recall_chars": 150, "recall_meta": False, "self_chars": 200},
+    Tier.SMALL_SLM: {"recall_n": 2, "recall_chars": 120, "recall_meta": False, "self_chars": 150},
+}
+
+
+def injection_budget(brain: dict | None) -> dict:
+    """Per-call injection budget for a creature's brain tier."""
+    return dict(INJECTION_BUDGET.get(tier_of(brain or {}), INJECTION_BUDGET[Tier.MID]))
 
 
 def tier_of(brain: dict | None) -> Tier:

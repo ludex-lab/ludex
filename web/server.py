@@ -771,13 +771,38 @@ FIELD_LOG = os.path.join(REPO_ROOT, "field_log")  # finished sessions persisted 
 
 def _session_transcript_records(field):
     out = []
-    if field is not None:
+    if field is None:
+        return out
+    if hasattr(field, "rounds"):                  # council / forum
         for rd in field.rounds:
             for rec in rd.records:
                 out.append({"round": rec.round_index, "phase": rec.phase,
                             "participant": rec.participant, "kind": rec.kind, "content": rec.content,
                             "attributes": getattr(rec, "attributes", None) or None})
+    elif hasattr(field, "log"):                   # wilderness — tick log
+        for t in field.log:
+            out.append({"round": t.get("tick"), "phase": "event", "participant": "world",
+                        "kind": "event",
+                        "content": f"{t.get('event', '')} — {t.get('event_description', '')}",
+                        "attributes": {"category": t.get("event_category")}})
+            for c in t.get("creatures", []):
+                out.append({"round": t.get("tick"), "phase": "tick",
+                            "participant": c.get("name"), "kind": "action",
+                            "content": c.get("response", ""),
+                            "attributes": {"action": c.get("action"), "energy": c.get("energy"),
+                                           "emotion": c.get("emotion", ""),
+                                           "threat": c.get("threat")}})
     return out
+
+
+def _field_participant_names(field) -> list:
+    if field is None:
+        return []
+    if hasattr(field, "participants"):
+        return [p.name for p in field.participants]
+    if hasattr(field, "creatures"):               # wilderness
+        return [c.name for c in field.creatures]
+    return []
 
 
 def _save_field_session(sess):
@@ -788,7 +813,7 @@ def _save_field_session(sess):
         data = {
             "sid": sess.get("sid"), "field_kind": sess.get("field_kind"), "status": sess.get("status"),
             "dilemma": sess.get("dilemma", ""), "mediator": sess.get("mediator", ""),
-            "participants": [p.name for p in field.participants] if field else sess.get("entered", []),
+            "participants": _field_participant_names(field) or sess.get("entered", []),
             "started": sess.get("started", 0), "ended": time.time(),
             "transcript": _session_transcript_records(field),
             "verdict": sess.get("verdict"), "scores": sess.get("scores"),
@@ -878,7 +903,8 @@ def _field_aftermath(sess, field, field_kind, text):
     sess["aftermath"] = ""
 
 
-def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, mediator: str = ""):
+def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, mediator: str = "",
+                  ticks: int = 10):
     """Background worker: build the chosen field, admit creatures, run it. Transcript
     accumulates in the field object (polled). Progress (waking/entered/thinking) is
     surfaced so the UI isn't a black box — brain calls (incl. the D-072 probe at first
@@ -887,7 +913,24 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
     sess = field_sessions[sid]
     try:
         from ludex.fields.conversation import Participant
-        if field_kind == "forum":
+        if field_kind == "wilderness":
+            from ludex.fields.wilderness import Wilderness
+
+            def _wild_progress(stage, detail):
+                if stage == "tick":
+                    sess["tick"] = detail                  # "3/10:storm"
+                elif stage == "thinking":
+                    sess["thinking"] = detail
+                elif stage == "aftermath":
+                    sess["aftermath"] = detail
+                    if detail:                             # aftermath runs INSIDE wild.run()
+                        sess["status"] = "reflecting"
+
+            field = Wilderness(name=f"web-wild-{sid}", total_ticks=ticks,
+                               auto_tom=True, auto_trace=True,
+                               progress_cb=_wild_progress,
+                               stop_check=lambda: bool(sess.get("stop")))
+        elif field_kind == "forum":
             from ludex.fields.forum import Forum, ForumClaim
             field = Forum(name=f"web-forum-{sid}", claim=ForumClaim(text=text), verdict=None, auto_trace=False)
         else:
@@ -899,9 +942,12 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
             sess["building"] = name0          # "waking <name>…" (build may probe the brain)
             org = _build_creature_org(path)
             name = getattr(org, "name", None) or name0
-            role = "mediator" if (field_kind == "council" and mediator and mediator in (name, name0)) else "discussant"
-            field.add_participant(Participant(name=name, role=role,
-                                              organism=org, engine=org.get_block("engine")))
+            if field_kind == "wilderness":
+                field.join(org)
+            else:
+                role = "mediator" if (field_kind == "council" and mediator and mediator in (name, name0)) else "discussant"
+                field.add_participant(Participant(name=name, role=role,
+                                                  organism=org, engine=org.get_block("engine")))
             sess["entered"].append(name)
             sess["building"] = ""
 
@@ -920,7 +966,12 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
                 sess["thinking"] = ""
 
         sess["status"] = "running"
-        if field_kind == "forum":
+        if field_kind == "wilderness":
+            # Wilderness runs its own loop (engines called directly) and its
+            # own aftermath (_finish: memory/bonds/ToM/physis/reflect/dream) —
+            # progress surfaces via the callback; no _field_aftermath here.
+            field.run()
+        elif field_kind == "forum":
             field.post_claim()
             field.confidence_round(response_fn)
             field.evidence_round(response_fn)
@@ -928,8 +979,9 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
             field.update_round(response_fn)
         else:
             field.run(response_fn)
-        sess["status"] = "reflecting"      # post-session: durable memory + bonds (JJ)
-        _field_aftermath(sess, field, field_kind, text)
+        if field_kind != "wilderness":
+            sess["status"] = "reflecting"      # post-session: durable memory + bonds (JJ)
+            _field_aftermath(sess, field, field_kind, text)
         sess["status"] = "stopped" if sess.get("stop") else "done"
     except _StopField:
         sess["status"] = "stopped"
@@ -948,6 +1000,7 @@ class FieldStartRequest(BaseModel):
     dilemma: str = ""
     creatures: list = []   # habitat paths
     mediator: str = ""     # optional: name of the creature to seat as mediator
+    ticks: int = 10        # wilderness only: how long the world runs
 
 
 class FieldVerdictRequest(BaseModel):
@@ -957,18 +1010,25 @@ class FieldVerdictRequest(BaseModel):
 
 @app.post("/api/field/start")
 async def field_start(req: FieldStartRequest):
-    if req.field not in ("council", "forum"):
+    if req.field not in ("council", "forum", "wilderness"):
         return {"error": f"Field '{req.field}' is not supported yet."}
-    if not (req.dilemma or "").strip():
-        return {"error": "A dilemma/claim is required."}
-    if len(req.creatures) < 2:
-        return {"error": "Admit at least 2 creatures."}
+    ticks = max(3, min(int(req.ticks or 10), 30))
+    if req.field == "wilderness":
+        if len(req.creatures) < 1:
+            return {"error": "Admit at least 1 creature."}
+        dilemma = f"Wilderness · {ticks} ticks"     # history label (no claim text)
+    else:
+        if not (req.dilemma or "").strip():
+            return {"error": "A dilemma/claim is required."}
+        if len(req.creatures) < 2:
+            return {"error": "Admit at least 2 creatures."}
+        dilemma = req.dilemma
     import threading
     sid = f"f{int(time.time() * 1000) % 1000000}"
     field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "", "field_kind": req.field,
-                           "dilemma": req.dilemma, "entered": [], "building": "", "thinking": "", "stop": False,
-                           "started": time.time(), "mediator": req.mediator, "aftermath": ""}
-    threading.Thread(target=_run_field_bg, args=(sid, req.field, req.dilemma, req.creatures, req.mediator), daemon=True).start()
+                           "dilemma": dilemma, "entered": [], "building": "", "thinking": "", "stop": False,
+                           "started": time.time(), "mediator": req.mediator, "aftermath": "", "tick": ""}
+    threading.Thread(target=_run_field_bg, args=(sid, req.field, dilemma, req.creatures, req.mediator, ticks), daemon=True).start()
     return {"session_id": sid, "status": "starting"}
 
 
@@ -996,7 +1056,7 @@ async def field_sessions_list():
         field = sess.get("field")
         out[sid] = {"sid": sid, "status": sess.get("status"), "dilemma": sess.get("dilemma", ""),
                     "field": sess.get("field_kind", "council"),
-                    "participants": [p.name for p in field.participants] if field else sess.get("entered", []),
+                    "participants": _field_participant_names(field) or sess.get("entered", []),
                     "started": sess.get("started", 0), "live": True,
                     "turns": sum(1 for rd in (field.rounds if field else []) for rec in rd.records
                                  if rec.phase not in ("dilemma_posed", "claim"))}
@@ -1021,21 +1081,15 @@ async def field_session(sid: str):
                     "turns": sum(1 for r in d.get("transcript", []) if r.get("phase") != "dilemma_posed")}
         except Exception:
             return {"error": "Session not found"}
-    transcript, participants = [], []
     field = sess.get("field")
-    if field is not None:
-        participants = [p.name for p in field.participants]
-        for rd in field.rounds:
-            for rec in rd.records:
-                transcript.append({"round": rec.round_index, "phase": rec.phase,
-                                   "participant": rec.participant, "kind": rec.kind,
-                                   "content": rec.content})
+    transcript = _session_transcript_records(field)
+    participants = _field_participant_names(field)
     started = sess.get("started", 0)
     return {"status": sess.get("status"), "error": sess.get("error", ""),
             "field": sess.get("field_kind"), "participants": participants, "transcript": transcript,
             "entered": sess.get("entered", []), "building": sess.get("building", ""),
             "thinking": sess.get("thinking", ""), "mediator": sess.get("mediator", ""),
-            "aftermath": sess.get("aftermath", ""),
+            "aftermath": sess.get("aftermath", ""), "tick": sess.get("tick", ""),
             "aftermath_i": sess.get("aftermath_i", 0), "aftermath_n": sess.get("aftermath_n", 0),
             "verdict": sess.get("verdict"), "scores": sess.get("scores"),
             "panel": (_panel_aggregate(getattr(field, "_latest_stance", {}) or {})

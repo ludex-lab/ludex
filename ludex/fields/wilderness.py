@@ -131,6 +131,8 @@ class Wilderness:
         auto_dream: bool = True,
         auto_tom: bool = False,
         auto_trace: bool = True,
+        progress_cb=None,
+        stop_check=None,
     ):
         self.name = name
         self.total_ticks = total_ticks
@@ -139,6 +141,14 @@ class Wilderness:
         self.creatures: list[WildernessCreature] = []
         self.log: list[dict] = []
         self.current_tick = 0
+        # Web/observer hooks (both optional, default = unchanged behavior).
+        # progress_cb(stage: str, detail: str) — tick / thinking / aftermath
+        # stages, so an observer UI isn't a black box during brain calls.
+        # stop_check() -> bool — polled at tick boundaries; True breaks the
+        # tick loop early but _finish still runs, so memories, bonds, and
+        # spans close cleanly for the ticks that were actually lived.
+        self.progress_cb = progress_cb
+        self.stop_check = stop_check
         self.seed = seed
         self.auto_reflect = auto_reflect
         self.auto_dream = auto_dream
@@ -154,6 +164,22 @@ class Wilderness:
 
         if output_dir:
             Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    def _progress(self, stage: str, detail: str = ""):
+        if self.progress_cb is None:
+            return
+        try:
+            self.progress_cb(stage, detail)
+        except Exception:
+            pass
+
+    def _stopped(self) -> bool:
+        if self.stop_check is None:
+            return False
+        try:
+            return bool(self.stop_check())
+        except Exception:
+            return False
 
     def join(self, organism, engine=None) -> str:
         """A creature enters the wilderness."""
@@ -234,6 +260,9 @@ class Wilderness:
                 logger.debug(f"Pre-field ToM predictions skipped: {e}")
 
         for tick in range(1, self.total_ticks + 1):
+            if self._stopped():
+                print(f"  (stopped early at tick {tick - 1}/{self.total_ticks})")
+                break
             self.current_tick = tick
             self._run_tick(tick)
 
@@ -248,6 +277,7 @@ class Wilderness:
         Creatures experience a sequence of meaningful moments, not empty waiting.
         """
         event = self._pick_event()
+        self._progress("tick", f"{tick}/{self.total_ticks}:{event.name if event else ''}")
 
         print(f"  --- Tick {tick}/{self.total_ticks} ---")
         if event:
@@ -282,6 +312,7 @@ class Wilderness:
             prompt = self._build_tick_prompt(creature, tick, event)
 
             # Get creature's response
+            self._progress("thinking", creature.name)
             start = time.time()
             try:
                 result = creature.engine.handle_submit(prompt)
@@ -289,6 +320,7 @@ class Wilderness:
             except Exception as e:
                 response = f"(error: {e})"
             latency = (time.time() - start) * 1000
+            self._progress("thinking", "")
 
             # Parse action (best effort)
             action = self._parse_action(response)
@@ -737,6 +769,7 @@ class Wilderness:
                             f"My energy: {c.energy}, their energy: {other.energy}. "
                             f"My actions: {dict((a, c.actions_taken.count(a)) for a in set(c.actions_taken))}."
                         )
+                        self._progress("aftermath", f"bond:{c.name}->{other.name}")
                         update_bond(
                             c.organism, other.name,
                             shared_experience=shared,
@@ -771,6 +804,7 @@ class Wilderness:
                         if other.name == c.name:
                             continue
                         if other.name.lower() in bonds:
+                            self._progress("aftermath", f"tom:{c.name}->{other.name}")
                             update_mental_model(c.organism, other.name, recent, engine=c.engine)
                             print(f"  {c.name} refined mental model of {other.name}")
             except Exception as e:
@@ -832,6 +866,7 @@ class Wilderness:
             if c.physis is None:
                 continue
             try:
+                self._progress("aftermath", f"physis:{c.name}")
                 c.physis.handle_consolidate(
                     field=PHYSIS_FIELD,
                     brain_engine=c.engine,
@@ -858,6 +893,7 @@ class Wilderness:
                 for c in self.creatures:
                     if not c.engine:
                         continue
+                    self._progress("aftermath", f"reflect:{c.name}")
                     print(f"  {c.name} reflecting...")
                     # Build session_context from authoritative tally
                     # so the brain doesn't have to reconstruct the
@@ -895,6 +931,7 @@ class Wilderness:
                 for c in self.creatures:
                     health = measure_memory_health(c.organism)
                     if health.get("needs_consolidation"):
+                        self._progress("aftermath", f"dream:{c.name}")
                         print(f"  {c.name} dreaming... ({health['total']}/{health['target']} memories)")
                         report = dream_cycle(c.organism, engine=c.engine)
                         print(f"  {c.name} dream complete: {report.before_count} → {report.after_count}")
@@ -911,3 +948,5 @@ class Wilderness:
                 _tr.clear_current_field()
             except Exception:
                 pass
+
+        self._progress("aftermath", "")
