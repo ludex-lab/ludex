@@ -23,10 +23,14 @@
    Objective telemetry goes to the span store; subjective experience
    goes to memory. One event may exist once in each — never twice in
    either.
-5. **Delivery is the body's guarantee.** Having memories on disk is not
-   remembering. Every brain call — any provider, any model size —
-   carries the creature's continuity floor. Smaller brains get *more*
-   scaffolding, never less.
+5. **Delivery is the body's guarantee — fitted to the brain.** Having
+   memories on disk is not remembering. Every brain call — any
+   provider, any model size — carries the creature's continuity floor.
+   And the smaller the brain, the harder the body works: it curates
+   more strictly so that *less*, not more, reaches the prompt.
+   Scaffolding scales up as the brain shrinks; payload scales down —
+   a small model is hurt by irrelevant context more than it is helped
+   by marginal context.
 
 ---
 
