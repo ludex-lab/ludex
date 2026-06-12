@@ -167,6 +167,28 @@ class EngineBlock(Block):
         except Exception as e:
             logger.debug(f"engine: self_introspect skipped ({e})")
 
+        # Identity floor (2026-06-11, environment event — the continuity-
+        # inequality fix). The body guarantees that EVERY brain — any
+        # adapter (HTTP included), any tier — wakes into its compressed
+        # self-understanding. Before this, continuity depended on which
+        # adapter injected context and whether the brain was agentic
+        # enough to read its own files (opus did, haiku didn't — observed
+        # in the 2026-06-11 public Forum test: two of four creatures could
+        # not recall a field they had just lived through). CLI adapters
+        # may still inject richer context on top; this is the
+        # brain-agnostic baseline (design-notes §1: the body compensates
+        # for the brain).
+        try:
+            habitat_dir = self._cfg("habitat_dir", "")
+            if habitat_dir:
+                from ludex.core.selfhood import load_self_compressed
+                self_text = load_self_compressed(habitat_dir)
+                if self_text:
+                    block = f"[Self-understanding]\n{self_text}"
+                    sys_prompt = f"{sys_prompt}\n\n{block}" if sys_prompt else block
+        except Exception as e:
+            logger.debug(f"engine: self-understanding floor skipped ({e})")
+
         # 메모리 리콜 (선택적). MemoryBlock.handle_recall returns
         # list[RecallResult]; serialize to readable lines before
         # injection so the f-string below doesn't dump Python repr

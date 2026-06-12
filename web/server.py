@@ -474,7 +474,13 @@ async def chat(req: ChatRequest):
                 content=f'In conversation, the user said: "{req.message}" — I replied: "{result.response}"',
                 memory_type="episodic",
                 tags=["conversation", "web_chat"],
-                importance=0.5,
+                # 0.35 (was 0.5): chat captures must stay topical-recall
+                # material and never outrank lived-experience reflections
+                # (0.8) on the recency channel — observed 2026-06-11: a
+                # user's "do you remember the forum?" question, captured
+                # at 0.5, became the top recall hit ABOUT the forum,
+                # shadowing the actual forum reflection.
+                importance=0.35,
                 source="web_chat",
             )
         except Exception as e:

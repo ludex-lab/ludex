@@ -19,6 +19,7 @@ Reference:
 from __future__ import annotations
 
 import json
+import math
 import time
 import logging
 import os
@@ -397,6 +398,7 @@ class MemoryBlock(Block):
                 doc_freq[w] = doc_freq.get(w, 0) + 1
         n_docs = max(len(active_memories), 1)
 
+        _recall_now = time.time()
         for memory in active_memories:
             if memory_type and memory.memory_type != memory_type:
                 continue
@@ -413,7 +415,6 @@ class MemoryBlock(Block):
                     # TF: 쿼리 단어가 문서에 있으면 1
                     tf = 1.0
                     # IDF: log(N / df) — 희귀한 단어일수록 높음
-                    import math
                     df = doc_freq.get(word, 1)
                     idf = math.log(n_docs / df + 1)
                     tfidf_score += tf * idf
@@ -436,6 +437,22 @@ class MemoryBlock(Block):
                 tag_match * 0.2 +
                 memory.importance * 0.1
             )
+
+            # Recency-significance channel (2026-06-11, environment event —
+            # the continuity-inequality fix): a creature must surface what
+            # it RECENTLY lived through (field reflections, major events)
+            # even when the query shares no tokens with the memory — a chat
+            # in another language, a vague "어떻게 지냈어". Lexical recall
+            # alone made continuity depend on query wording; the body must
+            # not. Gated to SIGNIFICANT memories (importance ≥ 0.7) so
+            # routine captures and default-importance notes neither ride it
+            # nor enter the surfaced→importance-bump inflation loop the
+            # recall-count tests guard. ~1-week decay: an importance-0.8
+            # reflection clears the 0.15 gate on this channel alone for
+            # ~10 days.
+            if memory.importance >= 0.7:
+                age_days = max((_recall_now - memory.created_at) / 86400.0, 0.0)
+                relevance += memory.importance * math.exp(-age_days / 7.0) * 0.35
 
             if relevance > 0.15:
                 results.append(RecallResult(memory=memory, relevance=relevance))
