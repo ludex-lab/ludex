@@ -96,6 +96,7 @@ python web/server.py          # then open http://localhost:7860
 Two orientation docs:
 
 - [`docs/design-notes.md`](docs/design-notes.md) — the design philosophy (the "why")
+- [`docs/memory-architecture.md`](docs/memory-architecture.md) — how a creature remembers ([한국어](docs/memory-architecture.ko.md))
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — inter-organ communication system (the "how")
 
 ## License
