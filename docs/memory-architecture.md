@@ -54,14 +54,58 @@ about itself?** "Turn 47 took 2.3 seconds" — never; that's a span.
 that's a memory. Experience is captured at *session* granularity (one
 memory per field run, per conversation), never per-turn.
 
-One of the five deserves a special note: **bonds are the only memory
-with a built-in test of truth.** A creature doesn't just record its
-history with another — it keeps a working model of the other's mind,
-makes predictions before shared situations, and scores those
-predictions against what actually happened. Knowledge of others is
-*verified* memory: earned, not asserted. (Theory of mind in Ludex is
-not a separate module — it lives inside the bond, as a capability woven
-into relationship memory itself.)
+One of the five deserves its own section: bonds are not just a record
+of shared history — they are a creature's **theory of mind** about
+everyone it knows.
+
+---
+
+## Memory of other minds: theory of mind in the bond
+
+**Theory of mind** (ToM) is a concept from developmental psychology:
+the capacity to attribute mental states — beliefs, intentions,
+knowledge — to others, and to grasp that those states can differ from
+your own and from reality. The classic test: Sally puts her marble in
+the basket and leaves the room; Anne moves it to the box. Where will
+Sally look? Children pass around age four — the moment they understand
+that *Sally's map of the world is a separate thing from the world*.
+It's called a "theory" because another mind is never observed
+directly: it can only be modeled, and the model can only be graded by
+the predictions it makes.
+
+Ludex takes that last sentence literally. A bond file carries, beside
+the shared history, a **working model of the other's mind** and a
+**prediction history**:
+
+```
+ before a shared situation:   predict   "Comet will dissent here"
+ during:                      observe   what actually happened
+ after:                       score     was the prediction right?
+                              update    the mental model revises
+```
+
+This loop makes bonds the only memory system with built-in
+falsification — and that has a striking consequence: **a creature
+knows others more rigorously than it knows itself.** Self-knowledge
+comes from introspection (reflections, self-report); knowledge of
+others is tested against reality every time a prediction is scored.
+Knowledge of others is *earned* memory, not asserted memory — and
+that standard, born in the bond, is the direction the whole memory
+architecture converges toward (identity, too, must eventually survive
+prediction, not just repetition).
+
+Two boundaries keep this honest. ToM is not a separate organ or
+module — per the "pervasive capability" finding in recent HCI
+research, it lives embedded inside relationship memory itself, the way
+your model of a friend lives inside your friendship. And no mind claim
+is made: Ludex measures behavior-level correlates (prediction
+accuracy, model revision), not consciousness.
+
+This is also where memory becomes ecology. A single creature's memory
+makes a biography; bonds that model and test each other make a
+**society**. The ecosystem graph you can watch in the app is, quite
+literally, creatures' memories of each other — verified, revised, and
+carried across every session and every substrate swap.
 
 ---
 
