@@ -28,6 +28,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ludex.core.block import Block
+from ludex.core.memory_types import (
+    IMPORTANCE_ARCHIVE_FLOOR,
+    IMPORTANCE_CEILING,
+    IMPORTANCE_RECALL_BUMP,
+    IMPORTANCE_SIGNIFICANCE_LINE,
+)
 from ludex.core.port import Port
 
 logger = logging.getLogger(__name__)
@@ -52,10 +58,10 @@ class Memory:
     "not yet computed" (old JSONL without this field); recomputed
     lazily when needed.
 
-    status: "active" | "archived" | "deleted" |
-    "candidate_for_distillation" (Phase 2 new — warm-tier memory
-    that the dream cycle has selected for narrative distillation,
-    awaiting the creature's reflect() to integrate).
+    status: "active" | "archived" | "deleted".
+    ("candidate_for_distillation" retired 2026-06-12 — dead-end state,
+    audit F2; legacy entries, if any, read as active for recall
+    purposes since recall filters on status == "active".)
     """
     id: str
     content: str
@@ -237,8 +243,12 @@ class MemoryBlock(Block):
         self._load()
 
         # 자동 캡처: 턴 결과를 episodic 기억으로 저장
-        if self._auto_capture:
-            self._listen("turn.ended", self._auto_capture_turn)
+        # D-024 / F1 (2026-06-12): the turn.ended auto-capture listener is
+        # retired entirely. Its last remaining duty (error-turn transient
+        # memories) duplicated the brain_call span, which already records
+        # every call's error state durably (cost_report's ok/err columns
+        # read exactly that). `auto_capture` stays accepted in configs for
+        # back-compat but is inert.
 
         # Periodic weight check on turn end
         self._listen("turn.ended", self._periodic_weight_check)
@@ -450,7 +460,7 @@ class MemoryBlock(Block):
             # recall-count tests guard. ~1-week decay: an importance-0.8
             # reflection clears the 0.15 gate on this channel alone for
             # ~10 days.
-            if memory.importance >= 0.7:
+            if memory.importance >= IMPORTANCE_SIGNIFICANCE_LINE:
                 age_days = max((_recall_now - memory.created_at) / 86400.0, 0.0)
                 relevance += memory.importance * math.exp(-age_days / 7.0) * 0.35
 
@@ -480,7 +490,8 @@ class MemoryBlock(Block):
         recall_dirty = False
         for r in limited:
             r.memory.recall_count += 1
-            new_importance = min(0.95, r.memory.importance + 0.05)
+            new_importance = min(IMPORTANCE_CEILING,
+                                 r.memory.importance + IMPORTANCE_RECALL_BUMP)
             if new_importance != r.memory.importance:
                 r.memory.importance = new_importance
             recall_dirty = True
@@ -831,13 +842,13 @@ class MemoryBlock(Block):
           - Budget-aware: when HOT token budget is exceeded, archive
             oldest-effective-age HOT memories until under budget.
 
-        Phase 2 (new — mark-and-signal):
-          - When WARM token budget is exceeded, select the oldest-
-            effective-age WARM memories that together bring the tier
-            back under budget. Mark them `candidate_for_distillation`.
-          - Emit `memory.distillation_candidate` signal + span. Does
-            NOT rewrite SELF.md (D-044: creature authors own changes).
-            Sprint 2 will wire this signal to a reflect() trigger.
+        (Phase 2 RETIRED 2026-06-12, audit F2 / whitepaper I5: the
+        mark-and-signal path for WARM overflow was a dead-end state —
+        its planned reflect()-wiring never landed, and its purpose is
+        served by the D-085 retrospective (narrative compression of a
+        life window) plus the forgetting pass (budget pressure). The
+        original intent — "the creature itself distills its overflow"
+        — is recorded in the whitepaper; JJ chose removal 2026-06-12.)
 
         COLD (identity) is never capped, never archived by the cycle.
         """
@@ -849,7 +860,6 @@ class MemoryBlock(Block):
         archived = 0
         deleted = 0
         contradictions = 0
-        distillation_candidates: list[Memory] = []
 
         now = time.time()
         seven_days = 7 * 24 * 3600
@@ -878,7 +888,7 @@ class MemoryBlock(Block):
                 continue
             if tier_for_type(mem.memory_type) != "hot":
                 continue
-            if _mature(mem) and mem.importance < 0.3:
+            if _mature(mem) and mem.importance < IMPORTANCE_ARCHIVE_FLOOR:
                 mem.status = "archived"
                 mem.updated_at = now
                 archived += 1
@@ -899,8 +909,15 @@ class MemoryBlock(Block):
         warm_budget = caps["warm_tokens"]
 
         def _active_by_tier(tier: str) -> list[Memory]:
+            # F4 alignment (2026-06-12): exclude deprecated:*-tagged
+            # memories from tier budgets, matching the forgetting pass's
+            # recallable definition — both processes now account the same
+            # surface. (Deprecated memories are recall-suppressed, so they
+            # occupy disk but never prompt capacity.)
             return [m for m in self._memories.values()
-                    if m.status == "active" and tier_for_type(m.memory_type) == tier]
+                    if m.status == "active"
+                    and tier_for_type(m.memory_type) == tier
+                    and not any(t.startswith("deprecated:") for t in (m.tags or []))]
 
         def _total_tokens(mems: list[Memory]) -> int:
             return sum((m.token_count or 0) for m in mems)
@@ -948,56 +965,12 @@ class MemoryBlock(Block):
                 content=summary,
                 memory_type="belief",
                 tags=[tag, "consolidated"],
-                importance=0.7,
+                importance=IMPORTANCE_SIGNIFICANCE_LINE,
                 source="consolidation",
             )
             promoted += 1
 
-        # --- Phase 2: mark-and-signal for WARM over budget ---
-        warm = _active_by_tier("warm")
-        if _total_tokens(warm) > warm_budget:
-            # Select oldest-effective-age warm memories until under budget
-            warm_sorted = sorted(
-                warm,
-                key=lambda m: effective_age(now - m.created_at, m.memory_type),
-                reverse=True,  # oldest effective-age first
-            )
-            overshoot = _total_tokens(warm) - warm_budget
-            freed = 0
-            for mem in warm_sorted:
-                if freed >= overshoot:
-                    break
-                mem.status = "candidate_for_distillation"
-                mem.updated_at = now
-                distillation_candidates.append(mem)
-                freed += mem.token_count or 0
-
         self._save()
-
-        # Signal + span for Phase 2 candidates
-        if distillation_candidates:
-            try:
-                self._publish("memory.distillation_candidate", {
-                    "count": len(distillation_candidates),
-                    "token_total": sum(
-                        m.token_count or 0 for m in distillation_candidates
-                    ),
-                    "sample_ids": [m.id for m in distillation_candidates[:5]],
-                })
-            except Exception:
-                pass
-            try:
-                from ludex.core import trace as _tr
-                _tr.emit_memory_distillation_candidate(
-                    self._organism,
-                    count=len(distillation_candidates),
-                    token_total=sum(
-                        m.token_count or 0 for m in distillation_candidates
-                    ),
-                    sample_ids=[m.id for m in distillation_candidates[:5]],
-                )
-            except Exception:
-                pass
 
         total = sum(1 for m in self._memories.values() if m.status == "active")
         report = ConsolidationReport(
@@ -1009,11 +982,9 @@ class MemoryBlock(Block):
         )
 
         self._emit("memory.consolidated",
-                   promoted=promoted, archived=archived,
-                   distillation_candidates=len(distillation_candidates))
+                   promoted=promoted, archived=archived)
         logger.info(
             f"Consolidation: +{promoted} promoted, -{archived} archived, "
-            f"{len(distillation_candidates)} distillation candidates, "
             f"{total} remaining"
         )
         self._last_consolidated_at = now
@@ -1172,33 +1143,6 @@ class MemoryBlock(Block):
         return results[:limit]
 
     # --- Auto-capture ---
-
-    def _auto_capture_turn(self, turn_number: int = 0, success: bool = True, **kwargs):
-        """턴 완료 신호 처리.
-
-        D-024 Sprint 3 (2026-04-16): turn-boundary events are
-        operational telemetry, not lived experience. They belong in
-        the span store (D-028, KIND_TICK-family for field ticks,
-        tracking block for engine turns), not in creature memory.
-        Roster health survey (2026-04-16) found these had been
-        dominating 44-72% of active memory across the population,
-        with no code actually reading them.
-
-        This handler now only records failures at error-level as
-        transient memory (for post-hoc diagnosis). Successful turns
-        are no-ops — tracking/tracing blocks already record them.
-        """
-        if success:
-            return
-        model = self._cfg("model", "unknown")
-        self.handle_remember(
-            content=f"Turn {turn_number}: error (model: {model})",
-            memory_type="transient",
-            tags=["turn", model, "error"],
-            importance=0.4,
-            source="auto_capture/error",
-            metadata={"turn": turn_number, "success": False},
-        )
 
     # --- Persistence (JSONL) ---
 

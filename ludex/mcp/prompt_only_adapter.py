@@ -120,11 +120,14 @@ def render_organ_state(organism) -> str:
         config = getattr(organism, "config", None)
         habitat_dir = config.get("habitat_dir", "") if config else ""
         if habitat_dir:
-            # D-021: Self-understanding
-            from ludex.core.selfhood import load_self_compressed, load_bonds_compressed
-            self_block = load_self_compressed(habitat_dir)
-            if self_block:
-                result += "\n\n" + self_block
+            # D-021 self-understanding is NOT injected here anymore —
+            # the engine's identity floor (2026-06-12, audit F3) already
+            # guarantees the compressed SELF on every brain call, and
+            # this adapter's copy was the same 200 chars twice. Ownership:
+            # the ENGINE delivers identity; adapters/renderers contribute
+            # only what the floor doesn't carry (bonds, organ state,
+            # skills below).
+            from ludex.core.selfhood import load_bonds_compressed
 
             # D-022: Known beings
             bonds_block = load_bonds_compressed(habitat_dir)

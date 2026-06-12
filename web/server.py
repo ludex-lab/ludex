@@ -40,6 +40,7 @@ from ludex.blocks.immune import ImmuneBlock
 from ludex.blocks.humoral_immune import HumoralImmuneBlock
 from ludex.blocks.emotion import EmotionBlock
 from ludex.blocks.memory import MemoryBlock
+from ludex.core.memory_types import IMPORTANCE_SESSION_CHAT
 
 
 # ============================================================
@@ -462,29 +463,12 @@ async def chat(req: ChatRequest):
     if emotion and result.response:
         emotion.handle_analyze_emotion(text=result.response)
 
-    # Capture the exchange as episodic memory. This is lived experience (the content
-    # of a conversation), NOT the turn-boundary telemetry that D-024 removed from
-    # auto-capture — so it belongs in memory. Gives the creature durable, recall-able
-    # conversational continuity across turns AND sessions (the channel the rest of
-    # the system uses), complementing the session-scoped history flatten.
-    memory = org.get_block("memory")
-    if memory and result.response and not result.error:
-        try:
-            memory.handle_remember(
-                content=f'In conversation, the user said: "{req.message}" — I replied: "{result.response}"',
-                memory_type="episodic",
-                tags=["conversation", "web_chat"],
-                # 0.35 (was 0.5): chat captures must stay topical-recall
-                # material and never outrank lived-experience reflections
-                # (0.8) on the recency channel — observed 2026-06-11: a
-                # user's "do you remember the forum?" question, captured
-                # at 0.5, became the top recall hit ABOUT the forum,
-                # shadowing the actual forum reflection.
-                importance=0.35,
-                source="web_chat",
-            )
-        except Exception as e:
-            print(f"chat memory capture failed: {e}")
+    # D-024 / F1 (2026-06-12): per-TURN chat capture removed. A turn is
+    # telemetry granularity (brain_call spans already record it); the
+    # conversation as lived experience is captured ONCE per session at
+    # disconnect/sleep (see /api/disconnect), and its meaning lands via
+    # the sleep reflection. Per-turn captures were inflating memory and
+    # shadowing real reflections in recall (2026-06-11 finding).
 
     # Collect vitals
     vitals = get_vitals(org)
@@ -1487,6 +1471,23 @@ async def disconnect(session_id: str):
             engine = org.get_block("engine")
             if engine and getattr(engine, "_turn_count", 0) >= 1:
                 convo = _session_transcript(engine)
+                # One episodic memory per conversation SESSION (D-024/F1:
+                # session granularity, not per-turn). The reflection below
+                # carries the meaning; this carries the episode.
+                memory = org.get_block("memory")
+                if memory and convo:
+                    try:
+                        turns = getattr(engine, "_turn_count", 0)
+                        memory.handle_remember(
+                            content=(f"A conversation with the user "
+                                     f"({turns} turn(s)). " + convo[:500]),
+                            memory_type="episodic",
+                            tags=["conversation", "web_chat"],
+                            importance=IMPORTANCE_SESSION_CHAT,
+                            source="web_chat/session",
+                        )
+                    except Exception as e:
+                        print(f"session memory capture failed: {e}")
                 from ludex.core import selfhood
                 text = await asyncio.to_thread(selfhood.reflect, org, "sleep", engine, convo)
                 reflected = bool(text)

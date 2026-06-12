@@ -102,8 +102,12 @@ def test_3_hot_budget_enforced_on_small_slm():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def test_4_warm_overflow_emits_distillation_candidate():
-    """WARM tier over budget → mark-and-signal Phase 2."""
+def test_4_warm_overflow_no_longer_marks_candidates():
+    """Phase 2 RETIRED (2026-06-12, audit F2): WARM overflow no longer
+    mutates memory status or emits distillation signals — the D-085
+    retrospective + the forgetting pass cover that ground. The dream
+    cycle must complete cleanly over an over-budget WARM tier and leave
+    every entry in a live status."""
     tmp = tempfile.mkdtemp(prefix="sprint1_phase2_")
     try:
         mem = _make_block(tmp, brain={"model": "gemma:2b"})  # warm cap 2000
@@ -114,7 +118,7 @@ def test_4_warm_overflow_emits_distillation_candidate():
             subscriber="test",
         )
 
-        # Fill warm tier with belief memories — 30 × ~120 tokens = 3600 > 2000
+        # Fill warm tier with belief memories — well over the 2000 cap
         for i in range(30):
             mid = mem.handle_remember(
                 content=("held conviction " * 25)[:400] + f" #{i}",
@@ -125,28 +129,11 @@ def test_4_warm_overflow_emits_distillation_candidate():
 
         mem.handle_consolidate()
 
-        # Signal must have fired with a non-trivial count
-        assert len(captured) >= 1, "no distillation_candidate signal"
-        evt = captured[0]
-        assert evt["count"] >= 1
-        assert evt["token_total"] >= 100
-        assert len(evt["sample_ids"]) <= 5
-
-        # Candidate memories now have new status
-        candidates = [
-            m for m in mem._memories.values()
-            if m.status == "candidate_for_distillation"
-        ]
-        assert len(candidates) == evt["count"]
-
-        # Surviving active warm memories are under budget
-        warm_active_tokens = sum(
-            (m.token_count or 0) for m in mem._memories.values()
-            if m.status == "active" and tier_for_type(m.memory_type) == "warm"
-        )
-        assert warm_active_tokens <= 2000, f"warm active {warm_active_tokens} > 2000"
-        print(f"  [PASS] Phase 2 emits distillation_candidate "
-              f"(count={evt['count']}, warm active tokens={warm_active_tokens}/2000)")
+        assert captured == [], "retired signal must not fire"
+        assert all(m.status != "candidate_for_distillation"
+                   for m in mem._memories.values()), \
+            "retired status must not be assigned"
+        print("  [PASS] Phase 2 retired — no candidate marking, no signal")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -45,6 +45,8 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from ludex.core.memory_types import IMPORTANCE_REFLECTION, IMPORTANCE_SIGNIFICANCE_LINE
+
 logger = logging.getLogger(__name__)
 
 
@@ -466,7 +468,7 @@ def dream_cycle(organism, engine=None) -> DreamReport:
                 f"[Dream consolidation] {narrative[:400]}",
                 memory_type="semantic",
                 tags=["dream", "consolidation"],
-                importance=0.8,
+                importance=IMPORTANCE_REFLECTION,
                 source=f"dream_cycle/{int(time.time())}",
             )
         except Exception:

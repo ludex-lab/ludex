@@ -118,7 +118,6 @@ KIND_BRAIN_CALL = "brain_call"
 KIND_BIDIRECTIONAL_KD_DETECTED = "bidirectional_kd_detected"
 
 # D-024 Sprint 1 — memory distillation candidate signal
-KIND_MEMORY_DISTILLATION_CANDIDATE = "memory.distillation_candidate"
 
 # D-048 — Opsis (vision) sensing
 KIND_OPSIS_INVOKED = "opsis_invoked"
@@ -820,26 +819,6 @@ def emit_sensory_consolidation(
             "wrote_memory": bool(wrote_memory),
             "importance": round(float(importance), 3),
             "reasons": list(reasons or [])[:10],
-        })
-    except Exception:
-        pass
-
-
-def emit_memory_distillation_candidate(
-    organism, count: int, token_total: int, sample_ids: list[str],
-    field_name: str | None = None,
-) -> None:
-    """D-024 Sprint 1 Phase 2 signal. Emitted when the dream cycle
-    selects warm-tier memories for narrative distillation. No
-    content is embedded — Sprint 2's reflect() trigger will load
-    the actual memories by id when the creature integrates them.
-    """
-    try:
-        _emit(organism, KIND_MEMORY_DISTILLATION_CANDIDATE, {
-            "count": count,
-            "token_total": token_total,
-            "sample_ids": sample_ids[:5],
-            "field_name": _fn(field_name),
         })
     except Exception:
         pass

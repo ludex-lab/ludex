@@ -96,10 +96,24 @@ def validate_creature(habitat: Path) -> tuple[list[str], dict]:
     if spans.exists():
         stats["spans"] = _check_jsonl(spans, errors, required=SPAN_REQUIRED)
 
-    for extra in (habitat / "store" / "rewards.jsonl",
-                  habitat / "memory" / "memories.jsonl"):
-        if extra.exists():
-            _check_jsonl(extra, errors)
+    rewards = habitat / "store" / "rewards.jsonl"
+    if rewards.exists():
+        _check_jsonl(rewards, errors)
+
+    mems = habitat / "memory" / "memories.jsonl"
+    if mems.exists():
+        _check_jsonl(mems, errors)
+        # Status vocabulary (candidate_for_distillation retired 2026-06-12)
+        for i, line in enumerate(mems.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                status = json.loads(line).get("status", "active")
+            except json.JSONDecodeError:
+                continue  # already reported by _check_jsonl
+            if status not in ("active", "archived", "deleted"):
+                errors.append(f"{_rel(mems)}:{i}: unknown status {status!r} "
+                              "(known: active/archived/deleted)")
 
     snaps = habitat / "snapshots"
     if snaps.is_dir():

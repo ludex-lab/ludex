@@ -505,19 +505,26 @@ def _make_orch_with_hooks(tmp_path, organism, config=None) -> ReachOrchestrator:
     )
 
 
-def test_remember_per_turn_writes_episodic_with_session_tags(tmp_path, monkeypatch):
+def test_remember_turn_accumulates_without_memory_write(tmp_path, monkeypatch):
+    """D-024/F1 (2026-06-12): per-turn calls only accumulate excerpts;
+    the single episodic memory is written at session close."""
     mem = _FakeMemoryBlock()
     org = _OrgWithMemory(mem, _FakeEngine("ok"))
     orch = _make_orch_with_hooks(tmp_path, org)
     orch._cache_peer_info()
     orch._remember_turn(turn_n=2, prompt_body="Primo says hi", response_text="Hearth replies")
-    assert len(mem.calls) == 1
+    assert mem.calls == []                       # no per-turn write
+    assert len(orch._session_turn_log) == 1      # accumulated instead
+
+    orch._answered_turns.add(2)
+    orch._remember_session_on_close()
+    assert len(mem.calls) == 1                   # ONE session memory
     call = mem.calls[0]
     assert call["memory_type"] == "episodic"
     assert "reach" in call["tags"]
     assert "reach_2026-04-24_hearth_primo_001" in call["tags"]
     assert call["source"].startswith("reach:")
-    assert call["metadata"]["turn"] == 2
+    assert call["metadata"]["turns"] == 1
     assert call["metadata"]["peer_creature"] == "Primo"
     assert "Primo says hi" in call["content"]
     assert "Hearth replies" in call["content"]
@@ -539,17 +546,19 @@ def test_remember_per_turn_skipped_when_organism_is_none(tmp_path, monkeypatch):
     # No assertion on memory calls — there's no memory block to record on.
 
 
-def test_remember_per_turn_excerpts_long_bodies(tmp_path, monkeypatch):
+def test_session_summary_excerpts_long_bodies(tmp_path, monkeypatch):
     mem = _FakeMemoryBlock()
     org = _OrgWithMemory(mem, _FakeEngine("ok"))
     orch = _make_orch_with_hooks(tmp_path, org)
     orch._cache_peer_info()
     long_body = "abcdef " * 200
     orch._remember_turn(turn_n=1, prompt_body=long_body, response_text=long_body)
+    orch._answered_turns.add(1)
+    orch._remember_session_on_close()
     content = mem.calls[0]["content"]
     # Excerpt cap is 240 chars per side; ellipsis present.
     assert "…" in content
-    # Memory content should be much shorter than 2x raw long body (~2400 chars).
+    # Summary stays compact even for long sessions.
     assert len(content) < 700
 
 

@@ -59,6 +59,8 @@ from ludex.reach.schema_io import (
     write_turn_pointer,
 )
 
+from ludex.core.memory_types import IMPORTANCE_DEFAULT
+
 logger = logging.getLogger(__name__)
 
 
@@ -286,6 +288,21 @@ class ReachOrchestrator:
         prompt_body: str,
         response_text: str,
     ) -> None:
+        """D-024 / F1 (2026-06-12): per-TURN memory writes removed —
+        turn granularity is telemetry (the reach spans + repo files
+        already record it). The lived experience is captured ONCE per
+        session at close (_remember_session_on_close); here we only
+        accumulate the excerpts that summary will draw from."""
+        peer_excerpt = _excerpt(prompt_body, 240)
+        mine_excerpt = _excerpt(response_text, 240)
+        if not hasattr(self, "_session_turn_log"):
+            self._session_turn_log: list[tuple[int, str, str]] = []
+        self._session_turn_log.append((turn_n, peer_excerpt, mine_excerpt))
+
+    def _remember_session_on_close(self) -> None:
+        """One episodic memory for the whole reach session (D-024/F1:
+        session granularity — a real cross-habitat meeting is lived
+        experience; its forty turns are not forty experiences)."""
         if self.organism is None:
             return
         try:
@@ -295,31 +312,31 @@ class ReachOrchestrator:
         if mem is None:
             return
         peer = self._peer_creature or "peer"
-        # Cap the strings so memory entries do not balloon. Full text
-        # already lives in `responses/` and `prompts/`; this is a
-        # condensed reminder for the creature's own recall.
-        peer_excerpt = _excerpt(prompt_body, 240)
-        mine_excerpt = _excerpt(response_text, 240)
+        log = getattr(self, "_session_turn_log", [])
+        n = len(self._answered_turns)
+        first = f' It opened with {peer}: "{log[0][1]}".' if log else ""
+        last = f' My last reply: "{log[-1][2]}".' if log else ""
         content = (
-            f"Reach session {self.session_id} turn {turn_n}: "
-            f"{peer} said “{peer_excerpt}”. "
-            f"I responded “{mine_excerpt}”."
+            f"A reach session with {peer} "
+            f"({self._peer_machine_alias or 'another habitat'}) — "
+            f"{n} turn(s) across the pipe.{first}{last}"
         )
         try:
             mem.handle_remember(
                 content,
                 memory_type="episodic",
                 tags=["reach", self.session_id, f"peer:{peer}"],
+                importance=IMPORTANCE_DEFAULT,
                 source=f"reach:{self.session_id}",
                 metadata={
-                    "turn": turn_n,
+                    "turns": n,
                     "reach_span_id": self._reach_span_id,
                     "peer_creature": peer,
                     "peer_machine_alias": self._peer_machine_alias,
                 },
             )
         except Exception:
-            logger.debug("remember_turn failed", exc_info=True)
+            logger.debug("remember_session_on_close failed", exc_info=True)
 
     def _on_session_close(self) -> None:
         """Run all configured narrative hooks at session end. Each is
@@ -345,6 +362,7 @@ class ReachOrchestrator:
         self._cache_peer_info()
         if self._peer_creature is None:
             return
+        self._safe_run("remember_session_on_close", self._remember_session_on_close)
         if self.config.update_bond_on_close:
             self._safe_run("update_bond_on_close", self._update_bond_on_close)
         if self.config.take_snapshot_on_close:

@@ -28,6 +28,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ludex.core.memory_types import IMPORTANCE_REFLECTION
+
 logger = logging.getLogger(__name__)
 
 
@@ -306,7 +308,7 @@ def reflect(organism, trigger: str = "manual", engine=None,
                 memory_type="identity",
                 tags=["reflection", "self", trigger],
                 source=f"reflection/{trigger}",
-                importance=0.8,
+                importance=IMPORTANCE_REFLECTION,
             )
         except Exception:
             pass

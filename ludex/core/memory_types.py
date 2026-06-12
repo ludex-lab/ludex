@@ -23,6 +23,26 @@ if TYPE_CHECKING:
 
 
 # ============================================================
+# The importance ladder — the store's constitution
+# ============================================================
+# (Whitepaper §2, centralized 2026-06-12 per audit F5.) One scale,
+# many readers. Above the SIGNIFICANCE_LINE is what the creature *is
+# about*; below DEFAULT is what merely passed through. Writers pick a
+# rung from this ladder, never an arbitrary float; processes that gate
+# on importance read these names, never literals. Moving a rung is a
+# system-wide decision — every consumer moves with it.
+
+IMPORTANCE_CEILING = 0.95           # recall bumps stop here
+IMPORTANCE_REFLECTION = 0.8         # lived-experience reflections (selfhood)
+IMPORTANCE_SIGNIFICANCE_LINE = 0.7  # recency channel rides; beliefs promote here
+IMPORTANCE_DEFAULT = 0.5            # unremarkable episodic
+IMPORTANCE_SESSION_CHAT = 0.45      # one-per-session conversation memory
+IMPORTANCE_CONVERSATIONAL = 0.35    # low-stakes conversational material
+IMPORTANCE_ARCHIVE_FLOOR = 0.3      # below this + mature → dream-cycle archives
+IMPORTANCE_RECALL_BUMP = 0.05       # usage adaptation per surfaced recall
+
+
+# ============================================================
 # The 8-type vocabulary (+ 2 legacy aliases for compatibility)
 # ============================================================
 

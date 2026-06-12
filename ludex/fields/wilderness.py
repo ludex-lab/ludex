@@ -342,25 +342,13 @@ class Wilderness:
 
             print(f"  {creature.name} [energy:{creature.energy}{state_str}]: {response[:120]}")
 
-            # Store memory
-            if creature.memory:
-                memory_content = f"Wilderness tick {tick}: "
-                if event:
-                    memory_content += f"{event.name} occurred. "
-                memory_content += f"I chose to {action}. Energy: {creature.energy}/100."
-                try:
-                    # Don't tag with `tick_<n>` — every turn would create
-                    # a unique tag, inflating tag distribution noise without
-                    # helping recall (no two memories share a tick number).
-                    # Tick is preserved in `source` for trace replay.
-                    creature.memory.handle_remember(
-                        memory_content,
-                        memory_type="episodic",
-                        tags=["wilderness", self.name],
-                        source=f"wilderness/{self.name}/tick_{tick}",
-                    )
-                except Exception:
-                    pass
+            # D-024 / F1 (2026-06-12): the per-tick episodic memory write
+            # that lived here is removed. Per-tick records are telemetry,
+            # not lived experience — emit_tick below is the record (span
+            # store), and the creature's MEMORY of a wilderness run is the
+            # end-of-session summary written at field close. This was the
+            # exact pattern Sprint-3 removed from auto-capture (44–72% of
+            # active memory in the roster survey), never migrated here.
 
             tick_log["creatures"].append({
                 "name": creature.name,

@@ -151,6 +151,15 @@ def pulse_creature(
         except Exception as e:
             result["health_error"] = str(e)
 
+    # ── Pulse ordering contract (F4, documented 2026-06-12) ──
+    # 정리 (dream-cycle, step 2) → forgetting (step 2b) → reflect (step 5).
+    # The dream cycle reorganizes the shelf FIRST so forgetting counts a
+    # fresh recallable surface; freshly-promoted beliefs are naturally
+    # safe from the forgetting pass because forget_score scales with the
+    # entry's OWN age (a just-created belief scores ~0 regardless of how
+    # old its source episodics were). Reflect runs last so it sees the
+    # post-housekeeping store. Reorder only with a deliberate decision.
+
     # 2. Consolidate if stale
     consolidated = False
     if health and not health.consolidation_fresh and not dry_run:
@@ -203,18 +212,12 @@ def pulse_creature(
             "reason": hiatus_marker.reason,
         }
 
-    # 3b. D-073 follow-up: write one staleness memory per stale period
-    # per bond. Cheap (no LLM), idempotent (re-pulse won't re-write),
-    # creature-internal substrate. Caretaker layer (ludex inspect /
-    # cohort) reads bond mtime directly via list_bonds.
-    if mem and stale_bonds and not dry_run:
-        try:
-            from ludex.core.bond_staleness import maybe_record_bond_staleness
-            recorded = maybe_record_bond_staleness(mem, creature_dir, stale_bonds)
-            if recorded:
-                result["bond_staleness_recorded"] = recorded
-        except Exception as e:
-            result["bond_staleness_error"] = str(e)
+    # 3b removed (D-024 / F1, 2026-06-12): staleness memories were
+    # observability, not lived experience. The creature already receives
+    # staleness through the reflect trigger string
+    # ("heartbeat:stale_bonds=[...]") which enters the reflection prompt
+    # header; the caretaker layer reads bond mtimes directly. Writing it
+    # into memory duplicated the signal into the wrong store.
 
     # 3d. Model-currency check (D-051 phase 2; model_currency_cadence).
     # Reuses the classifier from the manual model_check CLI. The live
