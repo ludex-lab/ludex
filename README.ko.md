@@ -98,6 +98,7 @@ python web/server.py          # 그런 다음 http://localhost:7860 열기
 - [`docs/design-notes.ko.md`](docs/design-notes.ko.md) — 설계 철학 (the "why")
 - [`docs/memory-architecture.ko.md`](docs/memory-architecture.ko.md) — 크리처는 어떻게 기억하는가
 - [`docs/emotion-architecture.ko.md`](docs/emotion-architecture.ko.md) — 크리처는 어떻게 느끼는가
+- [`docs/immune-architecture.ko.md`](docs/immune-architecture.ko.md) — 크리처는 어떻게 자신을 지키는가
 - [`ARCHITECTURE.ko.md`](ARCHITECTURE.ko.md) — 기관 간 통신 시스템 (the "how")
 
 ## 라이선스

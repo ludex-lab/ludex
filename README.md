@@ -98,6 +98,7 @@ Two orientation docs:
 - [`docs/design-notes.md`](docs/design-notes.md) — the design philosophy (the "why")
 - [`docs/memory-architecture.md`](docs/memory-architecture.md) — how a creature remembers ([한국어](docs/memory-architecture.ko.md))
 - [`docs/emotion-architecture.md`](docs/emotion-architecture.md) — how a creature feels ([한국어](docs/emotion-architecture.ko.md))
+- [`docs/immune-architecture.md`](docs/immune-architecture.md) — how a creature defends itself ([한국어](docs/immune-architecture.ko.md))
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — inter-organ communication system (the "how")
 
 ## License
