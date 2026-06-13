@@ -143,6 +143,10 @@ class ImmuneBlock(Block):
         self._false_alarms: int = 0         # 개입 후 불필요했던 횟수
         self._missed_threats: int = 0       # 개입 안 했는데 실패한 횟수
         self._sensitivity_history: list[float] = [sensitivity]
+        # I-F2: did the most recent assessment stand down (judge it safe)?
+        # If a serious cascade then opens the circuit breaker, that
+        # stand-down was a missed threat → sensitivity should climb.
+        self._stood_down: bool = False
 
     def on_attach(self):
         self._listen("circuit_breaker.opened", self._on_circuit_breaker)
@@ -220,6 +224,14 @@ class ImmuneBlock(Block):
         """서킷 브레이커 열림 — 높은 위협"""
         self._desperation_signal = min(1.0, self._desperation_signal + 0.3)
         self._calm_signal = max(0.0, self._calm_signal - 0.3)
+        # I-F2: if the breaker opened while we had recently stood down,
+        # the immune was too tolerant — a missed threat. Climb sensitivity
+        # (the upward half of autoregulation; record_missed_threat had no
+        # caller before this, so the loop could only relax). Reset the
+        # flag so one incident raises sensitivity once.
+        if self.autoregulate and self._stood_down:
+            self._stood_down = False
+            self.record_missed_threat()
         self._emit("immune.threat_detected",
                     trigger="circuit_breaker",
                     threat_level=self._threat_level)
@@ -367,6 +379,11 @@ class ImmuneBlock(Block):
             actions.append("reduce_load")
         if self._desperation_signal * self.sensitivity >= 0.6:
             actions.append("inject_calm")
+
+        # I-F2: record whether we stood down (judged threats below the
+        # mid action band). If a circuit breaker then opens, this marks it
+        # as a missed threat — the upward half of autoregulation.
+        self._stood_down = (self._threat_level < 0.4)
 
         return ThreatAssessment(
             threat_level=self._threat_level,

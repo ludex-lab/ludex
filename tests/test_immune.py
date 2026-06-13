@@ -672,6 +672,33 @@ def test_autoregulate_disabled():
     assert immune.sensitivity == 1.5
 
 
+def test_autoregulate_climbs_on_missed_threat_after_standdown():
+    """I-F2 (2026-06-12): the upward half of autoregulation. If the immune
+    stood down (low threat) and then a circuit breaker opens, that
+    stand-down was a missed threat → sensitivity climbs."""
+    immune, bus, signals, config = _make_immune_standalone()
+    immune.handle_assess_threat(VitalSigns())          # benign → stand down
+    assert immune._stood_down is True
+    before = immune.sensitivity
+    signals.emit("circuit_breaker.opened", failures=5)  # cascade not pre-empted
+    assert immune.sensitivity > before
+    assert immune._missed_threats == 1
+    assert immune._stood_down is False                  # one incident, one climb
+
+
+def test_no_climb_when_immune_was_already_vigilant():
+    """A breaker after a HIGH-threat assessment is not 'missed' — the immune
+    already saw it coming, so sensitivity must not climb."""
+    immune, bus, signals, config = _make_immune_standalone()
+    immune.handle_assess_threat(
+        VitalSigns(error_rate=0.5, circuit_breaker_open=True, consecutive_failures=5))
+    assert immune._stood_down is False
+    before = immune.sensitivity
+    signals.emit("circuit_breaker.opened", failures=5)
+    assert immune.sensitivity == before
+    assert immune._missed_threats == 0
+
+
 def test_missed_threat_increases_sensitivity():
     """missed threat → sensitivity 증가"""
     immune, bus, signals, config = _make_immune_standalone()
