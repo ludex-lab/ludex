@@ -352,12 +352,40 @@ def load_bonds(habitat_dir: str) -> dict[str, str]:
     return bonds
 
 
+def load_immune_wariness(habitat_dir: str) -> dict[str, str]:
+    """Read the humoral immune's antibodies → a short wariness note per
+    source that has earned one (I-F5 / IM6). READ-side by design: this
+    surfaces immune memory ALONGSIDE the bond without ever mutating the
+    bond file. The antibody feeds the bond; it does not become it.
+    Only matured antibodies (distrust/defect) surface — a single flag or
+    a weak 'caution' never does (the autoimmunity guard).
+    """
+    import json
+    path = Path(habitat_dir) / "humoral" / "state.json"
+    if not path.exists():
+        return {}
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for src, ab in (state.get("antibodies", {}) or {}).items():
+        action = (ab or {}).get("action", "")
+        if action == "defect":
+            out[src.lower()] = "guarded — repeated manipulative persuasion"
+        elif action == "distrust":
+            out[src.lower()] = "wary — manipulative persuasion noted"
+        # 'caution' is too weak to surface
+    return out
+
+
 def load_bonds_compressed(habitat_dir: str) -> str:
     """Load bonds compressed for SLM prompt injection."""
     bonds = load_bonds(habitat_dir)
     if not bonds:
         return ""
 
+    wariness = load_immune_wariness(habitat_dir)   # I-F5: immune feeds the bond
     lines = ["[Known beings]"]
     for name, content in bonds.items():
         # Extract first non-header, non-empty line as summary
@@ -367,10 +395,11 @@ def load_bonds_compressed(habitat_dir: str) -> str:
             if stripped and not stripped.startswith("#") and not stripped.startswith("First met"):
                 summary = stripped[:80]
                 break
-        if summary:
-            lines.append(f"- {name}: {summary}")
-        else:
-            lines.append(f"- {name}")
+        bond_line = f"- {name}: {summary}" if summary else f"- {name}"
+        note = wariness.get(name)
+        if note:
+            bond_line += f"  [immune: {note}]"
+        lines.append(bond_line)
     return "\n".join(lines)
 
 

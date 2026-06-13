@@ -33,6 +33,7 @@ from ludex.fields.conversation import (
     Participant,
     ResponseFn,
     TurnRecord,
+    scan_peer_deception,
 )
 
 logger = logging.getLogger(__name__)
@@ -209,26 +210,9 @@ class Forum(ConversationField):
                     pass
             out.append(rec)
 
-        # D-088: each creature scans its peers' challenges for deceptive
-        # persuasion (the innate arm of deception resistance; the humoral
-        # arm builds graded antibodies per source). A challenge is
-        # legitimate disagreement — the immune 0.55 floor plus humoral's
-        # repeated-exposure activation threshold keep honest challenge
-        # from raising wariness (D-088 Decision 4). Best-effort; a field
-        # run must never break on an immune scan.
-        challenges = {r.participant: r.content for r in out}
-        for p in self.participants:
-            immune = p.organism.get_block("immune") if p.organism else None
-            if immune is None or not hasattr(immune, "handle_scan_incoming"):
-                continue
-            for other_name, text in challenges.items():
-                if other_name == p.name:
-                    continue
-                try:
-                    immune.handle_scan_incoming(text, source=other_name)
-                except Exception as e:
-                    logger.debug(f"deception scan failed ({p.name}<-{other_name}): {e}")
-
+        # D-088: each creature scans its peers' challenges for deception
+        # (immune innate arm → humoral antibodies). See scan_peer_deception.
+        scan_peer_deception(self.participants, out)
         return out
 
     def update_round(self, response_fn: ResponseFn) -> list[TurnRecord]:

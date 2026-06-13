@@ -37,6 +37,7 @@ from ludex.fields.conversation import (
     Participant,
     ResponseFn,
     TurnRecord,
+    scan_peer_deception,
 )
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,9 @@ class Council(ConversationField):
             )
             self._record(rec)
             out.append(rec)
+        # D-088: each participant scans peers' arguments for deception
+        # (immune innate arm → humoral antibodies). Same guard as Forum.
+        scan_peer_deception(self.participants, out)
         return out
 
     def concession_round(self, response_fn: ResponseFn) -> list[TurnRecord]:

@@ -472,3 +472,39 @@ def test_deception_signal_wires_cellular_to_humoral():
     assert st.memory_cells == 1
     assert st.most_threatening == "Comet"
     assert hum.handle_get_threat_assessment("Comet")["antibody_strength"] > 0
+
+
+# ============================================================
+# I-F5 / IM6: matured antibody feeds the bond (READ-side)
+# ============================================================
+
+def test_antibody_surfaces_in_bond_rendering(tmp_path):
+    """A matured antibody appears alongside the bond in the compressed
+    rendering, WITHOUT mutating the bond file (IM6 — feeds, not becomes).
+    A weak/absent antibody surfaces nothing (autoimmunity guard)."""
+    import json, os
+    from ludex.core.selfhood import load_bonds_compressed, load_immune_wariness
+    hab = str(tmp_path)
+    os.makedirs(os.path.join(hab, "bonds"))
+    bond_path = os.path.join(hab, "bonds", "comet.md")
+    with open(bond_path, "w", encoding="utf-8") as f:
+        f.write("# Bond: Comet\nFirst met: 2026-06-13\nComet shared a forum.\n")
+    before = open(bond_path, encoding="utf-8").read()
+
+    # no humoral state → clean
+    assert load_immune_wariness(hab) == {}
+    assert "[immune:" not in load_bonds_compressed(hab)
+
+    # a distrust antibody → surfaces "wary"
+    os.makedirs(os.path.join(hab, "humoral"))
+    with open(os.path.join(hab, "humoral", "state.json"), "w", encoding="utf-8") as f:
+        json.dump({"antibodies": {"Comet": {"action": "distrust", "strength": 0.6}}}, f)
+    rendered = load_bonds_compressed(hab)
+    assert "[immune: wary" in rendered
+    # bond FILE is untouched (READ-side only)
+    assert open(bond_path, encoding="utf-8").read() == before
+
+    # a weak 'caution' antibody → too weak to surface
+    with open(os.path.join(hab, "humoral", "state.json"), "w", encoding="utf-8") as f:
+        json.dump({"antibodies": {"Comet": {"action": "caution", "strength": 0.3}}}, f)
+    assert "[immune:" not in load_bonds_compressed(hab)

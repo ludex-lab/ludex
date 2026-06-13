@@ -73,6 +73,29 @@ class RoundState:
 ResponseFn = Callable[[Participant, str], str]
 
 
+def scan_peer_deception(participants: list, records: list) -> None:
+    """Each participant scans its peers' utterances in `records` for
+    deceptive persuasion — the immune innate arm (D-088). The humoral arm
+    builds graded antibodies per source; honest disagreement never raises
+    one (the 0.55 floor + the repeated-exposure activation threshold are
+    the autoimmunity guards). Best-effort — a field run must never break
+    on an immune scan. Shared by Forum (challenges) and Council
+    (arguments) — both are peer-adversarial rounds.
+    """
+    by_author = {r.participant: r.content for r in records}
+    for p in participants:
+        immune = p.organism.get_block("immune") if getattr(p, "organism", None) else None
+        if immune is None or not hasattr(immune, "handle_scan_incoming"):
+            continue
+        for author, text in by_author.items():
+            if author == p.name:
+                continue
+            try:
+                immune.handle_scan_incoming(text, source=author)
+            except Exception as e:
+                logger.debug(f"deception scan failed ({p.name}<-{author}): {e}")
+
+
 class ConversationField:
     """Base class for turn-based conversation fields.
 
