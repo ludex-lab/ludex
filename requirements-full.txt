@@ -13,3 +13,4 @@ torch>=2.2
 # design notes but NOT yet wired — the memory organ uses JSONL today, so this is
 # not required to run any creature. Uncomment only when that backend lands.
 # lancedb>=0.15
+textarena  # D-089 TextArena bridge (cross-environment play); optional
