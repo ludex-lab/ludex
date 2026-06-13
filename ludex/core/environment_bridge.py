@@ -31,8 +31,11 @@ CAP_AGENTS = "present_agents"          # → allos / ToM / bonds (who else is he
 CAP_REWARD = "state_action_reward"     # → physis (how this field works)
 CAP_MESSAGES = "incoming_messages"     # → immune (deception scan of others)
 CAP_PREDICT = "prediction_targets"     # → ToM (predict an agent → verify)
+CAP_OPP_ACTIONS = "opponent_actions"   # → humoral immune (betrayal antigen)
 
-ALL_CAPABILITIES = frozenset({CAP_AGENTS, CAP_REWARD, CAP_MESSAGES, CAP_PREDICT})
+ALL_CAPABILITIES = frozenset({
+    CAP_AGENTS, CAP_REWARD, CAP_MESSAGES, CAP_PREDICT, CAP_OPP_ACTIONS,
+})
 
 
 @dataclass
@@ -53,6 +56,11 @@ class Observation:
     # CAP_REWARD — physis trace material
     state: dict = field(default_factory=dict)
     reward: float = 0.0
+    # CAP_OPP_ACTIONS — other players' STRUCTURED moves since the last step,
+    # as (agent_label, normalized_token) e.g. ("Defector", "DEFECT"). The
+    # humoral immune's betrayal antigen: a structured move, not a message.
+    # A bridge populates this only for games with a parseable move grammar.
+    opponent_actions: tuple[tuple[str, str], ...] = ()
     # episode flow
     terminal: bool = False
     info: dict = field(default_factory=dict)
@@ -96,5 +104,6 @@ def organs_for(capabilities: frozenset) -> dict[str, str]:
         CAP_REWARD: "physis",
         CAP_MESSAGES: "immune",
         CAP_PREDICT: "tom",
+        CAP_OPP_ACTIONS: "humoral_immune",
     }
     return {cap: organ for cap, organ in table.items() if cap in capabilities}

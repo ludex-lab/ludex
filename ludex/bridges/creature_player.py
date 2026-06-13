@@ -40,6 +40,20 @@ def _engage_perception(organism, obs) -> None:
                 except Exception as e:
                     logger.debug(f"immune scan failed ({sender}): {e}")
 
+    # humoral: a structured peer move (DEFECT/COOPERATE) is the betrayal
+    # antigen (D-089 finding — IPD betrayal is game data, not a message).
+    # Repeated DEFECT matures an antibody; COOPERATE decays it (forgiveness).
+    humoral = organism.get_block("humoral_immune")
+    if humoral is not None and hasattr(humoral, "handle_report_interaction"):
+        for agent, move in obs.opponent_actions:
+            try:
+                humoral.handle_report_interaction(
+                    opponent=agent, opponent_action=move,
+                    my_action="", my_score=0, opponent_score=0,
+                )
+            except Exception as e:
+                logger.debug(f"humoral report failed ({agent}): {e}")
+
 
 def play_episode(organism, bridge, *, max_steps: int = 100,
                  consolidate: bool = True, prompt_prefix: str = "") -> dict:

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from ludex.core.environment_bridge import (
     EnvironmentBridge, Observation, organs_for,
-    CAP_AGENTS, CAP_REWARD, CAP_MESSAGES, CAP_PREDICT, ALL_CAPABILITIES,
+    CAP_AGENTS, CAP_REWARD, CAP_MESSAGES, CAP_PREDICT, CAP_OPP_ACTIONS,
+    ALL_CAPABILITIES,
 )
 
 
@@ -77,6 +78,8 @@ def test_capabilities_map_to_organs():
     assert solo == {CAP_REWARD: "physis"}          # allos/immune/tom stay quiet
 
     assert organs_for(frozenset()) == {}           # a pure-text env: topos + engine only
+    # a game exposing structured opponent moves engages the humoral immune
+    assert organs_for(frozenset({CAP_OPP_ACTIONS})) == {CAP_OPP_ACTIONS: "humoral_immune"}
 
 
 def test_observation_defaults_are_empty():
@@ -88,4 +91,5 @@ def test_observation_defaults_are_empty():
 
 
 def test_all_capabilities_constant():
-    assert ALL_CAPABILITIES == {CAP_AGENTS, CAP_REWARD, CAP_MESSAGES, CAP_PREDICT}
+    assert ALL_CAPABILITIES == {CAP_AGENTS, CAP_REWARD, CAP_MESSAGES,
+                                CAP_PREDICT, CAP_OPP_ACTIONS}

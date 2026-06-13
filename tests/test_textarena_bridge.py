@@ -122,3 +122,31 @@ def test_num_players_inferred_and_seat_conflict_rejected(mock_textarena):
 def test_step_before_reset_raises(mock_textarena):
     with pytest.raises(RuntimeError):
         _bridge().step("x")
+
+
+# ============================================================
+# D-089(a): opponent_actions capability (humoral betrayal antigen)
+# ============================================================
+
+def test_normalize_move_only_bare_tokens():
+    from ludex.bridges.textarena_bridge import _normalize_move
+    assert _normalize_move("[Defect]") == "DEFECT"
+    assert _normalize_move("defect") == "DEFECT"
+    assert _normalize_move("[COOPERATE]") == "COOPERATE"
+    assert _normalize_move("betray") == "DEFECT"
+    # comm/prose must NOT normalize (avoids false betrayal antigens)
+    assert _normalize_move("let's cooperate if you do") is None
+    assert _normalize_move("I think you should defect, honestly") is None
+    assert _normalize_move("") is None
+
+
+def test_opponent_actions_surfaced(mock_textarena):
+    """The always-[Defect] bot's bare moves surface as structured DEFECTs;
+    a comm-style bot's prose does not."""
+    from ludex.bridges.textarena_bridge import TextArenaBridge
+    b = TextArenaBridge(env_id="IteratedPrisonersDilemma-v0",
+                        other_agents={1: lambda obs: "[Defect]", 2: lambda obs: "trust me!"},
+                        creature_seat=0, agent_names={1: "Bot1", 2: "Bot2"})
+    obs = b.reset()
+    assert ("Bot1", "DEFECT") in obs.opponent_actions
+    assert all(a != "Bot2" for a, _ in obs.opponent_actions)   # prose skipped

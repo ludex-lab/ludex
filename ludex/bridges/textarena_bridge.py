@@ -33,16 +33,31 @@ next pieces — local play first (where the controlled experiment lives).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Callable, Optional
 
 from ludex.core.environment_bridge import (
-    Observation, CAP_AGENTS, CAP_REWARD, CAP_MESSAGES, CAP_PREDICT,
+    Observation, CAP_AGENTS, CAP_REWARD, CAP_MESSAGES, CAP_PREDICT, CAP_OPP_ACTIONS,
 )
 
 logger = logging.getLogger(__name__)
 
 # A non-creature seat is any callable: observation text -> action text.
 AgentFn = Callable[[str], str]
+
+# Conservative structured-move normalizer (CAP_OPP_ACTIONS). Matches ONLY a
+# bare move token (optionally bracketed) — "[Defect]", "defect", "[COOPERATE]"
+# — so a decision-phase action normalizes but a free-text *communication*
+# turn ("let's cooperate if you do") does NOT false-positive as a move. Games
+# without a cooperate/defect grammar simply yield nothing (capability empty).
+_MOVE_RE = re.compile(r"^\W*(cooperate|defect|betray|collude)\W*$", re.IGNORECASE)
+_MOVE_MAP = {"cooperate": "COOPERATE", "collude": "COOPERATE",
+             "defect": "DEFECT", "betray": "DEFECT"}
+
+
+def _normalize_move(action_text: str) -> Optional[str]:
+    m = _MOVE_RE.match((action_text or "").strip())
+    return _MOVE_MAP[m.group(1).lower()] if m else None
 
 
 class TextArenaBridge:
@@ -53,7 +68,8 @@ class TextArenaBridge:
 
     environment = "textarena"
     # TextArena social games expose the full suite; the engine always acts.
-    capabilities = frozenset({CAP_AGENTS, CAP_REWARD, CAP_MESSAGES, CAP_PREDICT})
+    capabilities = frozenset({CAP_AGENTS, CAP_REWARD, CAP_MESSAGES,
+                              CAP_PREDICT, CAP_OPP_ACTIONS})
 
     def __init__(
         self,
@@ -88,6 +104,17 @@ class TextArenaBridge:
 
     def _present_agents(self) -> tuple[str, ...]:
         return tuple(self._label(pid) for pid in sorted(self._others))
+
+    @staticmethod
+    def _opp_actions(incoming) -> tuple[tuple[str, str], ...]:
+        """Normalize peers' bare move tokens into structured (label, token)
+        for the humoral betrayal antigen; comm/prose turns yield nothing."""
+        out = []
+        for label, text in incoming:
+            tok = _normalize_move(text)
+            if tok:
+                out.append((label, tok))
+        return tuple(out)
 
     def _advance_to_creature(self) -> tuple[str, tuple[tuple[str, str], ...], bool]:
         """Run other players until it is the creature's turn (or the game
@@ -139,6 +166,7 @@ class TextArenaBridge:
             text=obs_text,
             present_agents=self._present_agents(),
             incoming_messages=incoming,
+            opponent_actions=self._opp_actions(incoming),
             state={"env": self.env_id, "seat": self.creature_seat},
             reward=self._reward() if terminal else 0.0,
             terminal=terminal,
@@ -164,6 +192,7 @@ class TextArenaBridge:
             text=obs_text,
             present_agents=self._present_agents(),
             incoming_messages=incoming,
+            opponent_actions=self._opp_actions(incoming),
             state={"env": self.env_id, "seat": self.creature_seat},
             reward=self._reward() if terminal else 0.0,
             terminal=terminal,
