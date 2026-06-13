@@ -805,6 +805,14 @@ def _field_participant_names(field) -> list:
     return []
 
 
+def _count_turns(records) -> int:
+    """History-line activity count: creature contributions only — excludes
+    the dilemma/claim posting and wilderness world-event rows. Field-type
+    agnostic (reads the mapped transcript, not field.rounds)."""
+    return sum(1 for r in records
+               if r.get("phase") not in ("dilemma_posed", "claim", "event"))
+
+
 def _save_field_session(sess):
     """Persist a finished session to disk so it survives server restarts (history)."""
     try:
@@ -1047,19 +1055,21 @@ async def field_sessions_list():
                     "sid": d.get("sid", fn[:-5]), "status": d.get("status"), "dilemma": d.get("dilemma", ""),
                     "field": d.get("field_kind", "council"),
                     "participants": d.get("participants", []), "started": d.get("started", 0), "live": False,
-                    "turns": sum(1 for r in d.get("transcript", []) if r.get("phase") not in ("dilemma_posed", "claim"))}
+                    "turns": _count_turns(d.get("transcript", []))}
             except Exception:
                 pass
     except FileNotFoundError:
         pass
     for sid, sess in field_sessions.items():    # live overrides disk
-        field = sess.get("field")
-        out[sid] = {"sid": sid, "status": sess.get("status"), "dilemma": sess.get("dilemma", ""),
-                    "field": sess.get("field_kind", "council"),
-                    "participants": _field_participant_names(field) or sess.get("entered", []),
-                    "started": sess.get("started", 0), "live": True,
-                    "turns": sum(1 for rd in (field.rounds if field else []) for rec in rd.records
-                                 if rec.phase not in ("dilemma_posed", "claim"))}
+        try:
+            field = sess.get("field")
+            out[sid] = {"sid": sid, "status": sess.get("status"), "dilemma": sess.get("dilemma", ""),
+                        "field": sess.get("field_kind", "council"),
+                        "participants": _field_participant_names(field) or sess.get("entered", []),
+                        "started": sess.get("started", 0), "live": True,
+                        "turns": _count_turns(_session_transcript_records(field))}
+        except Exception:
+            pass
     return {"sessions": sorted(out.values(), key=lambda s: s.get("started", 0), reverse=True)}
 
 

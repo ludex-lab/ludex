@@ -67,6 +67,19 @@ def test_wilderness_participant_names():
     assert srv._field_participant_names(None) == []
 
 
+def test_count_turns_excludes_world_events():
+    """Regression: a done wilderness session in memory must not crash the
+    sessions list. _count_turns reads the mapped transcript (no field.rounds)
+    and excludes world-event rows — 10 events + 30 actions → 30 turns."""
+    srv = _load_server_helpers()
+    recs = srv._session_transcript_records(_FakeWild())
+    assert srv._count_turns(recs) == 2          # the _FakeWild has 1 tick, 2 actions
+    # council/forum-shaped records: posting rows excluded, turns counted
+    council = [{"phase": "dilemma_posed"}, {"phase": "first_position"},
+               {"phase": "argument"}, {"phase": "claim"}]
+    assert srv._count_turns(council) == 2
+
+
 def test_wilderness_hooks_exist_and_default_off():
     from ludex.fields.wilderness import Wilderness
     w = Wilderness(total_ticks=3)
