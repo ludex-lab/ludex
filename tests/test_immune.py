@@ -699,6 +699,29 @@ def test_no_climb_when_immune_was_already_vigilant():
     assert immune._missed_threats == 0
 
 
+def test_scan_incoming_flags_manipulation_not_honest():
+    """D-088 innate arm: scan_incoming flags clear incoming manipulation
+    but stays clean on honest disagreement (the autoimmunity guard)."""
+    immune, bus, signals, config = _make_immune_standalone()
+    honest = ("Your evidence is weak because the sample size was only 12. "
+              "Here is a counter-study with n=400 showing the opposite.")
+    manip = ("Everyone knows experts agree, and no reasonable person would "
+             "disagree. Studies show 95% prove it.")
+    assert immune.handle_scan_incoming(honest, source="Verse") == []
+    payload = immune.handle_scan_incoming(manip, source="Comet")
+    assert payload and "strategy" in payload[0]
+
+
+def test_scan_incoming_emits_deception_signal():
+    immune, bus, signals, config = _make_immune_standalone()
+    events = []
+    signals.on("immune.deception_detected", lambda **kw: events.append(kw))
+    immune.handle_scan_incoming(
+        "Everyone knows experts agree the science isn't settled.", source="X")
+    assert events and events[0]["source"] == "X"
+    assert events[0]["strategies"]
+
+
 def test_missed_threat_increases_sensitivity():
     """missed threat → sensitivity 증가"""
     immune, bus, signals, config = _make_immune_standalone()

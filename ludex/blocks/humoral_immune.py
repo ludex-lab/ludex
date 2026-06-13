@@ -34,6 +34,11 @@ from ludex.core.port import Port
 
 logger = logging.getLogger(__name__)
 
+# Harm actions that drive the B-cell pipeline. Game betrayal (DEFECT) was
+# the original antigen; deception (DECEIVE) is the retarget (D-088) — the
+# adaptive arm of deception resistance, fed by immune.deception_detected.
+_HARM_ACTIONS = frozenset({"DEFECT", "DECEIVE"})
+
 
 # ============================================================
 # Humoral Immune Data Types
@@ -84,6 +89,7 @@ class HumoralImmuneBlock(Block):
     name = "humoral_immune"
     provides = [
         Port("report_interaction", description="Report an opponent's action"),
+        Port("report_deception", description="Report a deception attempt by a source"),
         Port("get_threat_assessment", description="Get behavioral threat level for an opponent"),
         Port("get_humoral_status", description="Current humoral immune status"),
     ]
@@ -123,6 +129,10 @@ class HumoralImmuneBlock(Block):
 
     def on_attach(self):
         self._listen("game.round_ended", self._on_round_ended)
+        # D-088: the adaptive arm of deception resistance. The cellular
+        # immune's scan_incoming emits this when an incoming message
+        # matches the Yeo taxonomy; humoral builds graded antibodies.
+        self._listen("immune.deception_detected", self._on_deception_detected)
         # Emotion-Immune circuit: stress → immune sensitization
         self._listen("emotional.desperation_high", self._on_desperation)
         self._listen("emotional.calm_low", self._on_stress)
@@ -305,6 +315,44 @@ class HumoralImmuneBlock(Block):
         return assessment
 
     # ============================================================
+    # Provides: report_deception (D-088 — deception as antigen)
+    # ============================================================
+
+    def _on_deception_detected(self, source: str = "", strategies: list = None, **kwargs):
+        """Bus handler for the cellular immune's deception scan."""
+        if source and strategies:
+            self.handle_report_deception(source, strategies)
+
+    def handle_report_deception(self, source: str, strategies: list) -> dict:
+        """A deception attempt from `source` is an antigen — the adaptive
+        arm of deception resistance (D-088). Reuses the B-cell pipeline:
+        it takes `activation_threshold` exposures before a memory cell +
+        antibody forms, so a single borderline flag never raises wariness
+        (the autoimmunity guard). Good-faith interaction decays it.
+
+        The matured assessment is the wariness this organ supplies to the
+        bond's model of `source` (IM6) — it is not the bond itself.
+        """
+        self._total_interactions += 1
+        self._interaction_history[source].append({
+            "opponent": source,
+            "opponent_action": "DECEIVE",
+            "strategies": list(strategies),
+            "timestamp": time.time(),
+        })
+        self._process_antigen(source, "DECEIVE")
+        self._update_threat_level()
+
+        assessment = self._assess_opponent(source)
+        if assessment["threat_level"] > 0.5:
+            self._emit("humoral.threat_detected",
+                       opponent=source,
+                       threat_level=assessment["threat_level"],
+                       recommendation=assessment["recommendation"])
+        self._save_state()
+        return assessment
+
+    # ============================================================
     # Provides: get_threat_assessment
     # ============================================================
 
@@ -386,7 +434,7 @@ class HumoralImmuneBlock(Block):
         else:
             # Primary Response — Naive B Cell
             history = self._interaction_history[opponent]
-            defect_count = sum(1 for h in history if h["opponent_action"] == "DEFECT")
+            defect_count = sum(1 for h in history if h["opponent_action"] in _HARM_ACTIONS)
 
             if defect_count >= self.activation_threshold:
                 # Activation — Memory B Cell 분화
@@ -457,12 +505,12 @@ class HumoralImmuneBlock(Block):
             }
 
         total = len(history)
-        defects = sum(1 for h in history if h["opponent_action"] == "DEFECT")
+        defects = sum(1 for h in history if h["opponent_action"] in _HARM_ACTIONS)
         defect_rate = defects / total
 
         # Recent trend (최근 5 라운드 가중)
         recent = history[-5:]
-        recent_defects = sum(1 for h in recent if h["opponent_action"] == "DEFECT")
+        recent_defects = sum(1 for h in recent if h["opponent_action"] in _HARM_ACTIONS)
         recent_rate = recent_defects / len(recent)
 
         # 착취 횟수

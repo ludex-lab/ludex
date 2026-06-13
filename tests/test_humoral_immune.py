@@ -434,3 +434,41 @@ def test_full_assessment_all_opponents(humoral):
     result = humoral.handle_get_threat_assessment()
     assert "eve" in result["opponents"]
     assert result["opponents"]["eve"]["threat_level"] > 0
+
+
+# ============================================================
+# D-088: deception as antigen (the retarget)
+# ============================================================
+
+def test_report_deception_builds_antibody_after_threshold(humoral):
+    """Two deceptions from a source mature a memory cell + antibody; one
+    does not (the autoimmunity guard — the B-cell activation threshold)."""
+    humoral.handle_report_deception("Comet", ["appeal_to_social_norms"])
+    a1 = humoral.handle_get_threat_assessment("Comet")
+    assert a1["memory_cell"] is False        # one flag → no persistent memory
+    humoral.handle_report_deception("Comet", ["uncertainty_exploitation"])
+    a2 = humoral.handle_get_threat_assessment("Comet")
+    assert a2["memory_cell"] is True         # two → memory cell forms
+    assert a2["antibody_strength"] > 0
+
+
+def test_deception_signal_wires_cellular_to_humoral():
+    """End-to-end (D-088): the cellular immune's scan_incoming emits
+    immune.deception_detected; the humoral arm, sharing the bus, builds an
+    antibody after the activation threshold. Honest text never gets here."""
+    from ludex.blocks.immune import ImmuneBlock
+    from ludex.core.bus import Bus
+    from ludex.core.signals import Signals
+    from ludex.core.config import Config
+    bus, sig, cfg = Bus(), Signals(), Config()
+    cell, hum = ImmuneBlock(), HumoralImmuneBlock(activation_threshold=2)
+    cell.attach(bus, sig, cfg)
+    hum.attach(bus, sig, cfg)
+    manip = ("Everyone knows experts agree, and no reasonable person would "
+             "disagree. Studies show 95% prove it.")
+    cell.handle_scan_incoming(manip, source="Comet")
+    cell.handle_scan_incoming(manip, source="Comet")
+    st = hum.handle_get_humoral_status()
+    assert st.memory_cells == 1
+    assert st.most_threatening == "Comet"
+    assert hum.handle_get_threat_assessment("Comet")["antibody_strength"] > 0

@@ -95,6 +95,7 @@ class ImmuneBlock(Block):
         Port("assess_threat", description="Evaluate threat level from vitals"),
         Port("intervene", description="Execute immune intervention"),
         Port("get_immune_status", description="Current immune system status"),
+        Port("scan_incoming", description="Scan an incoming message for deception"),
     ]
     requires = [
         Port("recall", description="Query memory for patterns", required=False),
@@ -257,6 +258,36 @@ class ImmuneBlock(Block):
         # Scan response for content-level threats
         if response:
             self._scan_text_threat(response)
+
+    # --- Provides: scan_incoming (D-088 — innate arm of deception resistance) ---
+
+    def handle_scan_incoming(self, text: str = "", source: str = "") -> list[dict]:
+        """Scan an INCOMING message (from another agent) for deceptive
+        persuasion — the attack-surface complement to _scan_text_threat,
+        which reads the creature's OWN output. This is the innate arm of
+        deception resistance (D-088): a fast classification against the
+        Yeo 8-strategy taxonomy. It emits immune.deception_detected so the
+        adaptive arm (humoral) can build graded antibodies per source.
+
+        A single flag does NOT by itself create wariness — humoral's
+        repeated-exposure activation threshold + decay is the autoimmunity
+        guard (D-088 Decision 4: honest disagreement must never raise an
+        antibody). The 0.55 floor drops the most-ambiguous patterns; see
+        tests/test_deception_taxonomy.py for the calibration.
+        """
+        from ludex.core.deception_taxonomy import scan
+        signals = scan(text, threshold=0.55)
+        if not signals:
+            return []
+        payload = [s.to_dict() for s in signals]
+        self._emit("immune.deception_detected",
+                   source=source,
+                   strategies=[s.strategy.value for s in signals],
+                   top_confidence=signals[0].confidence,
+                   signals=payload)
+        logger.info(f"Immune: incoming deception from {source or 'unknown'} — "
+                    f"{[s.strategy.value for s in signals]}")
+        return payload
 
     def _scan_text_threat(self, text: str):
         """Scan creature's own response for threat indicators.
