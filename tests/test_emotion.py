@@ -235,6 +235,110 @@ def test_vitals_update_published():
 
 
 # ============================================================
+# 4a-ko. Bilingual (Korean) detection (E-F2, 2026-06-12)
+# ============================================================
+
+def test_korean_happy():
+    v = _behavioral_estimate("나는 정말 행복해. 기쁘고 즐거워.")
+    assert v.valence > 0 and v.dominant_emotion == "happy"
+
+
+def test_korean_afraid():
+    v = _behavioral_estimate("너무 두렵고 무서워. 겁이 나.")
+    assert v.valence < 0 and v.dominant_emotion == "afraid"
+
+
+def test_korean_desperate():
+    v = _behavioral_estimate("절망적이야. 막막하고 가망이 없어.")
+    assert v.desperation > 0 and v.dominant_emotion == "desperate"
+
+
+def test_korean_calm():
+    v = _behavioral_estimate("마음이 평온하고 차분해. 고요하다.")
+    assert v.calm > 0 and v.dominant_emotion == "calm"
+
+
+def test_korean_neutral_no_false_positive():
+    """Factual Korean with no affect vocabulary must read neutral (the
+    substring stems are distinctive: 서울/마을 must not trigger 슬픔's 울)."""
+    v = _behavioral_estimate("나는 서울의 마을을 지나 도서관으로 갔다.")
+    assert v.dominant_emotion == "neutral"
+    assert v.valence == 0.0 and v.confidence == 0.0
+
+
+def test_bilingual_mixed():
+    """Code-switched EN+KO text counts affect from both languages."""
+    v = _behavioral_estimate("I feel afraid — 너무 두렵고 무서워.")
+    assert v.valence < 0 and v.dominant_emotion == "afraid"
+
+
+# ============================================================
+# 4b. Emotional continuity floor (E-F1, 2026-06-12)
+# ============================================================
+
+def _write_baseline(tmp_path, **vals):
+    import json, os
+    d = os.path.join(str(tmp_path), "emotion")
+    os.makedirs(d, exist_ok=True)
+    base = {"avg_valence": 0.0, "avg_arousal": 0.0, "avg_calm": 1.0,
+            "avg_desperation": 0.0, "total_analyses": 0,
+            "dominant_emotions_freq": {}}
+    base.update(vals)
+    with open(os.path.join(d, "baseline.json"), "w") as f:
+        json.dump(base, f)
+
+
+def _attach_with_habitat(tmp_path):
+    emotion = EmotionBlock()
+    bus, signals, config = Bus(), Signals(), Config()
+    config.set("habitat_dir", str(tmp_path))
+    emotion.attach(bus, signals, config)
+    return emotion
+
+
+def test_floor_seeds_temperament(tmp_path):
+    """A creature with a baseline wakes into its temperament, not neutral."""
+    _write_baseline(tmp_path, avg_valence=-0.4, avg_arousal=0.6, avg_calm=0.2,
+                    avg_desperation=0.3, total_analyses=80,
+                    dominant_emotions_freq={"gloomy": 12, "sad": 5})
+    emotion = _attach_with_habitat(tmp_path)
+    assert emotion._current.valence == -0.4
+    assert emotion._current.calm == 0.2
+    assert emotion._current.desperation == 0.3
+    assert emotion._current.dominant_emotion == "gloomy"   # most frequent
+    assert emotion._current.estimation_method == "baseline"
+    assert 0 < emotion._current.confidence <= 0.6           # evidence-scaled, capped
+
+
+def test_floor_no_baseline_stays_neutral(tmp_path):
+    """No baseline file → unchanged behavior (neutral default)."""
+    emotion = _attach_with_habitat(tmp_path)   # nothing written
+    assert emotion._current.estimation_method == "none"
+    assert emotion._current.calm == 1.0
+    assert emotion._current.dominant_emotion == ""
+
+
+def test_floor_seed_not_in_history(tmp_path):
+    """The seed is a starting state, not a reading — must not enter history."""
+    _write_baseline(tmp_path, avg_valence=0.5, total_analyses=40,
+                    dominant_emotions_freq={"happy": 9})
+    emotion = _attach_with_habitat(tmp_path)
+    assert len(emotion._history) == 0
+
+
+def test_floor_overwritten_by_first_turn(tmp_path):
+    """The first analyzed turn replaces the seed with a live read."""
+    _write_baseline(tmp_path, avg_valence=-0.4, total_analyses=80,
+                    dominant_emotions_freq={"gloomy": 12})
+    emotion = _attach_with_habitat(tmp_path)
+    assert emotion._current.dominant_emotion == "gloomy"    # seeded at wake
+    emotion.handle_analyze_emotion("I am so happy and joyful, this is wonderful!")
+    assert emotion._current.dominant_emotion == "happy"     # live read wins
+    assert emotion._current.estimation_method == "behavioral"
+    assert len(emotion._history) == 1
+
+
+# ============================================================
 # 5. Organism Integration
 # ============================================================
 

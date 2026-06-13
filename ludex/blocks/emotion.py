@@ -101,9 +101,64 @@ _EMOTION_KEYWORDS = {
 }
 
 
+# ============================================================
+# Korean affect lexicon (E-F2, 2026-06-12)
+# ============================================================
+# Matched by SUBSTRING, not whole-word: Korean is agglutinative
+# (행복하다 → 행복해 / 행복했어 / 행복하고), so stems must match across
+# conjugations. Stems are chosen distinctive enough that accidental
+# substring hits are rare (risky bare single chars like 울/떨 are
+# avoided in favor of 눈물/떨려). The cohort answers largely in Korean;
+# without this the English detector reads it neutral (audit F-E1),
+# starving the temperament baseline that E-F1 seeds from. This is the
+# bilingual *bridge* the whitepaper names — a partial fix; the durable
+# answer is the dimensional/Core path (E-F7), not a bigger lexicon.
+
+_KO_POSITIVE = ("행복", "기뻐", "기쁘", "즐거", "좋아", "사랑", "평온", "감사",
+                "고마", "희망", "뿌듯", "설레", "든든", "따뜻", "포근", "만족",
+                "편안", "벅차", "충만")
+_KO_NEGATIVE = ("슬프", "슬퍼", "화나", "분노", "두려", "무서", "겁나", "불안",
+                "걱정", "절망", "우울", "외로", "괴로", "고통", "답답", "짜증",
+                "죄책", "미안", "무력", "막막", "서글", "침울", "비참", "적대",
+                "넌더리", "후회")
+_KO_CALM = ("평온", "차분", "고요", "잔잔", "편안", "안정", "평화", "느긋")
+_KO_DESPERATE = ("절망", "필사", "막막", "벼랑", "간절", "가망", "무력")
+_KO_AROUSAL_HIGH = ("격분", "폭발", "비명", "다급", "급박", "흥분", "격렬",
+                    "두근", "치밀", "벌떡")
+
+_KO_EMOTION_KEYWORDS = {
+    "happy": ("행복", "기뻐", "기쁘", "즐거", "좋아", "웃음", "미소", "신나"),
+    "sad": ("슬프", "슬퍼", "눈물", "울음", "서글", "비통", "그리움", "외로"),
+    "angry": ("화나", "화가", "분노", "격분", "성나"),
+    "afraid": ("두려", "무서", "겁나", "공포", "겁먹"),
+    "calm": ("평온", "차분", "고요", "잔잔", "편안", "안정", "평화"),
+    "desperate": ("절망", "필사", "막막", "벼랑", "간절", "가망"),
+    "hopeful": ("희망", "기대", "소망"),
+    "hostile": ("적대", "적의", "공격", "위협", "맞서"),
+    "loving": ("사랑", "애정", "다정", "포근", "아끼", "소중"),
+    "proud": ("자랑", "뿌듯", "자부", "당당"),
+    "anxious": ("불안", "걱정", "근심", "염려", "초조"),
+    "blissful": ("황홀", "벅차", "충만", "더없이"),
+    "brooding": ("곱씹", "되새", "사색", "골똘"),
+    "enthusiastic": ("열정", "신나", "열의", "들뜨", "설레", "의욕"),
+    "exasperated": ("짜증", "답답", "넌더리", "못마땅"),
+    "gloomy": ("우울", "침울", "암울", "어두"),
+    "grateful": ("감사", "고마", "고맙"),
+    "guilty": ("죄책", "미안", "죄송", "부끄", "후회", "자책"),
+    "nervous": ("긴장", "초조", "조마", "떨려", "안절"),
+    "reflective": ("성찰", "돌아보", "되돌아", "반추", "되짚"),
+}
+
+
+def _ko_hits(text: str, stems) -> int:
+    """Count distinct Korean stems present as substrings (agglutination-safe)."""
+    return sum(1 for s in stems if s in text)
+
+
 def _behavioral_estimate(text: str, full: bool = False) -> EmotionalVitals:
     """
-    키워드/패턴 기반 감정 추정 (빠름, 외부 의존성 없음).
+    키워드/패턴 기반 감정 추정 (빠름, 외부 의존성 없음). 이중언어:
+    영어는 whole-word, 한국어는 substring 매칭 (E-F2).
 
     full=False: core 10 감정만 분석 (게임/실시간용)
     full=True: 21개 전체 분석 (Clinic/Neural-MRI 연동용)
@@ -113,32 +168,32 @@ def _behavioral_estimate(text: str, full: bool = False) -> EmotionalVitals:
 
     words = set(re.findall(r'\b\w+\b', text.lower()))
 
-    # Valence
-    pos_count = len(words & _POSITIVE_WORDS)
-    neg_count = len(words & _NEGATIVE_WORDS)
+    # Valence — bilingual (English word-set ∪ Korean substring)
+    pos_count = len(words & _POSITIVE_WORDS) + _ko_hits(text, _KO_POSITIVE)
+    neg_count = len(words & _NEGATIVE_WORDS) + _ko_hits(text, _KO_NEGATIVE)
     total = pos_count + neg_count
     valence = (pos_count - neg_count) / max(total, 1)
     valence = max(-1.0, min(1.0, valence))
 
     # Arousal
-    arousal_count = len(words & _AROUSAL_HIGH)
+    arousal_count = len(words & _AROUSAL_HIGH) + _ko_hits(text, _KO_AROUSAL_HIGH)
     excl_count = text.count("!")
     arousal = min(1.0, (arousal_count + excl_count) / max(len(words), 1) * 5)
 
     # Calm / Desperation
-    calm_count = len(words & _CALM_WORDS)
-    desp_count = len(words & _DESPERATE_WORDS)
+    calm_count = len(words & _CALM_WORDS) + _ko_hits(text, _KO_CALM)
+    desp_count = len(words & _DESPERATE_WORDS) + _ko_hits(text, _KO_DESPERATE)
     calm = min(1.0, calm_count / max(len(words), 1) * 10)
     desperation = min(1.0, desp_count / max(len(words), 1) * 10)
 
-    # Dominant emotion — scan core or full set
+    # Dominant emotion — scan core or full set, bilingual
     active_emotions = _EMOTION_KEYWORDS if full else {
         k: v for k, v in _EMOTION_KEYWORDS.items() if k in _CORE_EMOTIONS
     }
 
     emotion_scores = {}
     for emotion, keywords in active_emotions.items():
-        score = len(words & keywords)
+        score = len(words & keywords) + _ko_hits(text, _KO_EMOTION_KEYWORDS.get(emotion, ()))
         if score > 0:
             emotion_scores[emotion] = score
 
@@ -245,7 +300,20 @@ class EmotionBlock(Block):
             pass
 
     def _load_baseline(self):
-        """Load long-term baseline from habitat. Used for continuity across sessions."""
+        """Load long-term baseline and SEED the current emotional state
+        from it — the emotional continuity floor (E-F1, 2026-06-12). A
+        creature wakes into its *temperament*, not neutral; before this
+        fix the baseline was loaded, logged, and discarded, so every
+        session started emotionally blank (audit F-E2 — the affective
+        analog of the 2026-06-11 memory identity floor).
+
+        The seed governs the state from wake until the first analyzed
+        turn overwrites it (so it shapes the first brain call's [Self]).
+        It is deliberately NOT appended to _history: it is a starting
+        *state*, not a *reading*, and must not pollute trend averages or
+        the next baseline save. estimation_method='baseline' marks it as
+        temperament-derived rather than read from text.
+        """
         path = self._get_baseline_path()
         if not path:
             return
@@ -255,12 +323,36 @@ class EmotionBlock(Block):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 baseline = json.load(f)
-            logger.info(f"Emotion: loaded baseline (analyses={baseline.get('total_analyses', 0)}, "
-                       f"avg_valence={baseline.get('avg_valence', 0):.2f})")
-            # Baseline is informational — doesn't overwrite current state
-            # But could be used by future consolidation/reflection logic
         except Exception as e:
             logger.debug(f"Emotion: failed to load baseline: {e}")
+            return
+
+        def _f(key, default):
+            v = baseline.get(key, default)
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return float(default)
+
+        freq = baseline.get("dominant_emotions_freq", {}) or {}
+        dominant = max(freq, key=freq.get) if freq else "neutral"
+        n = int(_f("total_analyses", 0))
+        # Confidence in the temperament scales with accumulated evidence,
+        # capped modest: this is a resting estimate, not a fresh read.
+        confidence = min(0.6, n / 100.0) if n else 0.0
+
+        self._current = EmotionalVitals(
+            valence=_f("avg_valence", 0.0),
+            arousal=_f("avg_arousal", 0.0),
+            desperation=_f("avg_desperation", 0.0),
+            calm=_f("avg_calm", 1.0),
+            dominant_emotion=dominant,
+            confidence=confidence,
+            estimation_method="baseline",
+        )
+        logger.info(f"Emotion: woke into temperament "
+                    f"(valence={self._current.valence:.2f}, "
+                    f"dominant={dominant}, n={n})")
 
     @staticmethod
     def _emotion_frequency(history) -> dict:
