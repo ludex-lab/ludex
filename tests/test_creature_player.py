@@ -105,6 +105,19 @@ def test_control_arm_engine_only_still_plays():
     assert len(engine.prompts) == 2                 # it still played every turn
 
 
+def test_on_turn_hook_traces_each_turn():
+    """The instrumentation hook fires once per turn with the move/score trace —
+    what an experiment needs without losing organ engagement."""
+    org = _StubOrganism({"engine": _RecordingEngine()})
+    seen = []
+    play_episode(org, _StubBridge(), on_turn=seen.append)
+    assert len(seen) == 2
+    assert seen[0]["turn"] == 0 and seen[0]["action"] == "[Cooperate]"
+    assert seen[0]["saw"].startswith("round 1") and "saw" in seen[1]
+    assert seen[-1]["terminal"] is True            # last turn carries terminal + reward
+    assert seen[-1]["reward"] == 3.0
+
+
 def test_missing_engine_is_a_hard_error():
     import pytest
     with pytest.raises(ValueError):

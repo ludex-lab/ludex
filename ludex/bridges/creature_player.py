@@ -56,12 +56,17 @@ def _engage_perception(organism, obs) -> None:
 
 
 def play_episode(organism, bridge, *, max_steps: int = 100,
-                 consolidate: bool = True, prompt_prefix: str = "") -> dict:
+                 consolidate: bool = True, prompt_prefix: str = "",
+                 on_turn=None) -> dict:
     """Run one episode of `organism` in `bridge`'s environment.
 
     Returns a result dict: {field, reward, turns, present_agents}.
     Engine errors on a turn fall back to an empty action (the env decides
     how to handle it); a missing engine is a hard error.
+
+    `on_turn`, if given, is called once per turn with a dict
+    {turn, saw, action, result, reward, terminal} — the per-turn trace an
+    experiment needs (move/score capture) without losing organ engagement.
     """
     engine = organism.get_block("engine")
     if engine is None:
@@ -82,6 +87,7 @@ def play_episode(organism, bridge, *, max_steps: int = 100,
     total_reward = 0.0
     while not obs.terminal and turn < max_steps:
         _engage_perception(organism, obs)
+        saw = obs.text
         prompt = (prompt_prefix + obs.text) if prompt_prefix else obs.text
         try:
             result = engine.handle_submit(prompt)
@@ -93,6 +99,12 @@ def play_episode(organism, bridge, *, max_steps: int = 100,
         prev_state = dict(obs.state)
         obs = bridge.step(action)
         total_reward = obs.reward      # bridge reports the latest cumulative seat reward
+        if on_turn is not None:        # per-turn trace hook (move/score capture for experiments)
+            try:
+                on_turn({"turn": turn, "saw": saw, "action": action,
+                         "result": obs.text, "reward": obs.reward, "terminal": obs.terminal})
+            except Exception as e:
+                logger.debug(f"on_turn hook failed at turn {turn}: {e}")
 
         if physis is not None:
             try:
