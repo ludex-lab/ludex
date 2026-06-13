@@ -768,6 +768,42 @@ async def creature_reflection(name: str, stem: str, dir: str = "creatures"):
 field_sessions = {}  # sid -> {field, status, error, field_kind}  (in-memory, live)
 FIELD_LOG = os.path.join(REPO_ROOT, "field_log")  # finished sessions persisted here (survive restarts)
 
+# Declarative field taxonomy — the single source of truth the Field tab renders
+# (D-089 cross-environment + internal fields). Internal fields run via
+# _run_field_bg today; bridge arenas are DECLARED here, their execution wired in
+# a later phase. Add a game = add an entry. Served at GET /api/fields.
+FIELD_REGISTRY = {
+    "internal": [
+        {"id": "council", "name": "Council", "i18n": "fld_council", "viewer": "transcript",
+         "min_creatures": 2, "prompt": "dilemma", "mediator": True, "impl": True},
+        {"id": "forum", "name": "Forum", "i18n": "fld_forum", "viewer": "transcript",
+         "min_creatures": 2, "prompt": "claim", "impl": True},
+        {"id": "wilderness", "name": "Wilderness", "i18n": "fld_wild", "viewer": "ticklog",
+         "min_creatures": 1, "prompt": None, "ticks": True, "impl": True},
+    ],
+    "bridge": [
+        {"id": "kaggle_ga", "name": "Kaggle Game Arena", "impl": "local", "viewer": "game+standings",
+         "note": "Google DeepMind / OpenSpiel — always-on public leaderboard (online submission separate)",
+         "games": [
+             {"id": "universal_poker", "name": "Heads-Up Poker"},
+             {"id": "tic_tac_toe", "name": "Tic-Tac-Toe"},
+             {"id": "chess", "name": "Chess"},
+             {"id": "connect_four", "name": "Connect Four"},
+             {"id": "go", "name": "Go"},
+         ]},
+        {"id": "textarena", "name": "TextArena", "impl": "local", "viewer": "game+standings",
+         "note": "online matchmaking dormant between NeurIPS MindGames cycles; local play available",
+         "games": [
+             {"id": "IteratedPrisonersDilemma-v0", "name": "Iterated Prisoner's Dilemma"},
+             {"id": "SecretMafia-v0", "name": "Secret Mafia"},
+             {"id": "TicTacToe-v0", "name": "Tic-Tac-Toe"},
+             {"id": "Chess-v0", "name": "Chess"},
+         ]},
+        {"id": "lxm", "name": "Ludus ex Machina", "impl": False, "viewer": "placeholder",
+         "note": "JJ's own arena — bridge not yet wired", "games": []},
+    ],
+}
+
 
 def _session_transcript_records(field):
     out = []
@@ -1014,6 +1050,13 @@ class FieldStartRequest(BaseModel):
 class FieldVerdictRequest(BaseModel):
     value: str = ""        # true | false | partial | unknown
     note: str = ""         # caretaker rationale, shown with the verdict
+
+
+@app.get("/api/fields")
+async def fields_registry():
+    """The field taxonomy the Field tab renders — internal fields + bridged arenas
+    (each with its games). Declarative; add a game by editing FIELD_REGISTRY."""
+    return FIELD_REGISTRY
 
 
 @app.post("/api/field/start")
