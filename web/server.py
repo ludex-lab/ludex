@@ -805,10 +805,26 @@ FIELD_REGISTRY = {
 }
 
 
+class BridgeField:
+    """One bridged-arena game session's transcript (D-089) — the 'field' object
+    for a creature playing in an external arena (Kaggle Game Arena / TextArena).
+    Each turn streams the creature's reasoning + move in for the observe view."""
+    def __init__(self):
+        self.transcript_records = []
+        self.participant_names = []
+        self.reward = None
+    def add_turn(self, turn, name, content, attributes):
+        self.transcript_records.append({"round": turn, "phase": "move", "participant": name,
+                                        "kind": "move", "content": content,
+                                        "attributes": attributes or {}})
+
+
 def _session_transcript_records(field):
     out = []
     if field is None:
         return out
+    if hasattr(field, "transcript_records"):       # bridged-arena game (BridgeField)
+        return list(field.transcript_records)
     if hasattr(field, "rounds"):                  # council / forum
         for rd in field.rounds:
             for rec in rd.records:
@@ -834,6 +850,8 @@ def _session_transcript_records(field):
 def _field_participant_names(field) -> list:
     if field is None:
         return []
+    if hasattr(field, "participant_names"):        # bridged-arena game (BridgeField)
+        return list(field.participant_names)
     if hasattr(field, "participants"):
         return [p.name for p in field.participants]
     if hasattr(field, "creatures"):               # wilderness
@@ -1039,12 +1057,64 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
         _save_field_session(sess)   # persist for history (survives restart)
 
 
+def _make_bridge(arena: str, game: str):
+    """Construct the EnvironmentBridge for a bridged-arena game (D-089)."""
+    if arena == "kaggle_ga":
+        from ludex.bridges.game_arena_bridge import GameArenaBridge
+        return GameArenaBridge(game)               # built-in random opponent
+    if arena == "textarena":
+        raise ValueError("TextArena play is not wired into the web app yet.")
+    raise ValueError(f"Unknown arena: {arena}")
+
+
+def _run_bridge_bg(sid: str, arena: str, game: str, creature_path: str):
+    """Background worker: a creature plays one game in a bridged external arena
+    (D-089). Runs EPHEMERAL (D-090 — the live creature is never mutated) and
+    streams each turn (reasoning + move) into a BridgeField for the observe view."""
+    sess = field_sessions[sid]
+    try:
+        from ludex.core.integrity import ephemeral_creature
+        from ludex.bridges.creature_player import play_episode
+        name0 = os.path.basename(str(creature_path).rstrip("/\\"))
+        sess["building"] = name0
+        bf = BridgeField(); sess["field"] = bf
+        with ephemeral_creature(creature_path) as cfg:
+            org = cfg.build()
+            name = getattr(org, "name", None) or name0
+            bf.participant_names = [name]; sess["entered"].append(name); sess["building"] = ""
+            bridge = _make_bridge(arena, game)
+
+            def on_turn(rec):
+                if sess.get("stop"):
+                    raise _StopField()
+                sess["thinking"] = name
+                bf.add_turn(rec["turn"], name, rec.get("action", ""),
+                            {"reward": rec.get("reward"), "terminal": rec.get("terminal")})
+
+            sess["status"] = "running"; sess["thinking"] = name
+            prefix = (f"You are {name}, playing {game} in the {arena} arena against an opponent. "
+                      f"Read the game state below and make your move exactly as instructed.\n\n")
+            result = play_episode(org, bridge, max_steps=60, consolidate=False,
+                                  prompt_prefix=prefix, on_turn=on_turn)
+            bf.reward = result.get("reward")
+        sess["status"] = "done"
+    except _StopField:
+        sess["status"] = "stopped"
+    except Exception as e:
+        sess["status"] = "error"; sess["error"] = str(e)
+    finally:
+        sess["thinking"] = ""; sess["building"] = ""
+        _save_field_session(sess)
+
+
 class FieldStartRequest(BaseModel):
     field: str = "council"
     dilemma: str = ""
     creatures: list = []   # habitat paths
     mediator: str = ""     # optional: name of the creature to seat as mediator
     ticks: int = 10        # wilderness only: how long the world runs
+    arena: str = ""        # bridge fields only: which external arena (kaggle_ga…)
+    game: str = ""         # bridge fields only: which game in that arena
 
 
 class FieldVerdictRequest(BaseModel):
@@ -1061,6 +1131,26 @@ async def fields_registry():
 
 @app.post("/api/field/start")
 async def field_start(req: FieldStartRequest):
+    if req.field == "bridge":
+        arenas = {a["id"]: a for a in FIELD_REGISTRY["bridge"]}
+        a = arenas.get(req.arena)
+        if not a or not (a.get("impl") and a["impl"] is not False):
+            return {"error": f"Arena '{req.arena}' is not playable."}
+        if req.arena != "kaggle_ga":
+            return {"error": "Only Kaggle Game Arena play is wired so far — more arenas soon."}
+        if req.game not in {g["id"] for g in a.get("games", [])}:
+            return {"error": f"Game '{req.game}' is not in {a['name']}."}
+        if len(req.creatures) != 1:
+            return {"error": "Admit exactly one creature to an arena game."}
+        import threading
+        sid = f"f{int(time.time() * 1000) % 1000000}"
+        field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "",
+                               "field_kind": "bridge", "dilemma": f"{a['name']} · {req.game}",
+                               "entered": [], "building": "", "thinking": "", "stop": False,
+                               "started": time.time(), "mediator": "", "aftermath": "", "tick": "",
+                               "arena": req.arena, "game": req.game}
+        threading.Thread(target=_run_bridge_bg, args=(sid, req.arena, req.game, req.creatures[0]), daemon=True).start()
+        return {"session_id": sid, "status": "starting"}
     if req.field not in ("council", "forum", "wilderness"):
         return {"error": f"Field '{req.field}' is not supported yet."}
     ticks = max(3, min(int(req.ticks or 10), 30))
