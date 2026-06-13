@@ -7,17 +7,23 @@ worked before*.
 
 Design doc: ``docs/field-indexed-world-models-design.md``.
 
-This file is the Phase A skeleton — substrate only:
+Both phases are LIVE (the "Phase A skeleton" framing below is historical
+— Phase B brain-distillation, confidence-tiered hints, and YAML hint
+retrieval all ship and have produced *confirmed* world models). The
+organ is environment-agnostic: it takes a generic ``field`` string and
+consumes a (state, action, reward) stream from whatever field feeds it —
+internal (Wilderness) or bridged (LxM, TextArena) via the Environment
+Bridge contract (D-089).
 
 - `handle_load_world_model(field)` — read `creatures/<C>/memory/
   world_models/<field>.md` into context if it exists
 - `handle_step(field, state, action, reward, next_state, **extra)` —
   append a trace entry to the in-session buffer
 - `handle_consolidate(field, brain_engine=None)` — flush the
-  in-session trace into `world_models/<field>.md`. The Phase A
-  flush is mechanical (bare append). Phase B will wire a brain
-  engine that *distills* the trace into reward correlates / policy
-  hints / open uncertainty (see design doc §3.3).
+  in-session trace into `world_models/<field>.md`. With no brain the
+  flush is a mechanical append; with a brain_engine it *distills* the
+  trace into reward correlates / policy hints / open uncertainty
+  (live — see design doc §3.3).
 
 Trace I/O follows the schema convention from
 `docs/field-indexed-world-models-design.md` and the LxM-side
@@ -188,7 +194,8 @@ class PhysisBlock(Block):
 
     requires: (none — reads habitat dir from organism config)
 
-    D-067 Phase A skeleton.
+    D-067. Phase B (brain distillation + confidence-tiered hint
+    retrieval) is live. Fed by any field — internal or bridged (D-089).
     """
 
     name = "physis"
@@ -210,11 +217,11 @@ class PhysisBlock(Block):
     # --- Lifecycle ---
 
     def on_attach(self) -> None:
-        # Phase A doesn't subscribe to any turn-end signal yet — fields
-        # call step()/consolidate() explicitly through the port wiring.
-        # Phase B will add a "field.tick.ended" subscription so that
-        # fields with native ticks emit traces without needing the field
-        # author to plumb physis manually.
+        # Physis subscribes to no signal: fields call step()/consolidate()
+        # explicitly through the port wiring. Under D-089, a bridged
+        # environment enters AS a field and drives the organ through that
+        # same wiring — the clean activation path the audit's F-P6 wanted
+        # (no field.tick.ended global subscription needed).
         pass
 
     # --- Internal helpers ---

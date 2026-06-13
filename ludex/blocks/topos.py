@@ -258,15 +258,19 @@ class ToposBlock(Block):
 
     def _field_kind(self, field_name: str) -> str:
         """Heuristic: derive field kind from field_name token when the
-        caller followed the convention. E.g. 'ray_council_v1' → 'Council'."""
+        caller followed the convention. E.g. 'ray_council_v1' → 'Council'.
+
+        Only Ludex's OWN internal fields are enumerated here. Kinds for
+        external/bridged environments (LxM games, TextArena, …) come from
+        the bridge's environment_id, never a hardcoded list in this organ
+        — topos stays environment-agnostic (D-089)."""
         if not field_name:
             return ""
         lower = field_name.lower()
         for token, kind in (
             ("council", "Council"), ("forum", "Forum"),
             ("academy", "Academy"), ("agora", "Agora"),
-            ("wilderness", "Wilderness"), ("trust", "TrustGame"),
-            ("avalon", "Avalon"),
+            ("wilderness", "Wilderness"),
         ):
             if token in lower:
                 return kind
