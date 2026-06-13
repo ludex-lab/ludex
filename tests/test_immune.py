@@ -107,6 +107,31 @@ def test_assess_threat_recommends_actions():
     assert len(assessment.recommended_actions) > 0
 
 
+def test_action_thresholds_are_clean_constants():
+    """F-I4 (2026-06-12): action thresholds are plain constants — 0.7 high
+    (switch_model + compact), 0.4 mid (reduce_load) — after removing the
+    sensitivity-cancelling math. Pin the two bands."""
+    immune, *_ = _make_immune_standalone()
+    mid = immune.handle_assess_threat(VitalSigns(error_rate=0.5, consecutive_failures=3))
+    assert 0.4 <= mid.threat_level < 0.7
+    assert "reduce_load" in mid.recommended_actions
+    assert "switch_model" not in mid.recommended_actions
+
+    immune2, *_ = _make_immune_standalone()
+    hi = immune2.handle_assess_threat(
+        VitalSigns(error_rate=0.5, circuit_breaker_open=True, consecutive_failures=5))
+    assert hi.threat_level >= 0.7
+    assert "switch_model" in hi.recommended_actions
+    assert "compact_context" in hi.recommended_actions
+
+
+def test_threat_threshold_param_removed():
+    """F-I5 (2026-06-12): the dead threat_threshold constructor param is gone."""
+    import inspect
+    assert "threat_threshold" not in inspect.signature(ImmuneBlock.__init__).parameters
+    assert not hasattr(ImmuneBlock(), "threat_threshold")
+
+
 # ============================================================
 # 2. Desperation Estimation
 # ============================================================

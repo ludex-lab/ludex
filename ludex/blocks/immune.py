@@ -104,7 +104,6 @@ class ImmuneBlock(Block):
 
     def __init__(
         self,
-        threat_threshold: float = 0.5,
         desperation_window: int = 10,
         learning_enabled: bool = True,
         sensitivity: float = 1.0,
@@ -122,7 +121,6 @@ class ImmuneBlock(Block):
         """
         super().__init__()
         # Config
-        self.threat_threshold = threat_threshold
         self.desperation_window = desperation_window
         self.learning_enabled = learning_enabled
         self.sensitivity = max(0.0, min(2.0, sensitivity))
@@ -357,14 +355,15 @@ class ImmuneBlock(Block):
         raw_threat = vitals_threat * 0.4 + self._desperation_signal * 0.4 + pattern_threat * 0.2
         self._threat_level = min(1.0, raw_threat * self.sensitivity)
 
-        # 권장 조치 결정 (threshold도 sensitivity 반비례)
-        effective_threshold_high = 0.7 / max(self.sensitivity, 0.1)
-        effective_threshold_mid = 0.4 / max(self.sensitivity, 0.1)
-
-        if self._threat_level >= min(0.95, effective_threshold_high * self.sensitivity):
+        # Recommended actions. threat_level is already sensitivity-scaled
+        # above, so the action thresholds are plain constants. (Audit
+        # F-I4: the prior code wrote `0.7 / sensitivity` then tested it
+        # against `... * sensitivity` — the two cancelled to exactly these
+        # constants for every reachable sensitivity ≥ 0.1.)
+        if self._threat_level >= 0.7:
             actions.append("switch_model")
             actions.append("compact_context")
-        elif self._threat_level >= min(0.95, effective_threshold_mid * self.sensitivity):
+        elif self._threat_level >= 0.4:
             actions.append("reduce_load")
         if self._desperation_signal * self.sensitivity >= 0.6:
             actions.append("inject_calm")
