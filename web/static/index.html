@@ -901,7 +901,9 @@ async function _loadFieldSetup() {
   // Past sessions (live + finished, from disk)
   try {
     const ss = ((await (await fetch('/api/field/sessions')).json()).sessions || [])
-      .filter(s => (s.field || 'council') === _fieldKind);   // only this field's sessions
+      .filter(s => _fieldKind === 'bridge'
+        ? (s.field === 'bridge' && s.game === _bridgeGame)    // bridge: only THIS game's sessions
+        : (s.field || 'council') === _fieldKind);             // internal: this field's sessions
     const h = document.getElementById('fieldHistory');
     h.innerHTML = `<label>${t('fld_history')}</label>` + (ss.length ? ss.map(s => {
       const term = ['done', 'error', 'stopped'].includes(s.status);

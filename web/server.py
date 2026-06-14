@@ -875,6 +875,7 @@ def _save_field_session(sess):
         data = {
             "sid": sess.get("sid"), "field_kind": sess.get("field_kind"), "status": sess.get("status"),
             "dilemma": sess.get("dilemma", ""), "mediator": sess.get("mediator", ""),
+            "arena": sess.get("arena", ""), "game": sess.get("game", ""),
             "participants": _field_participant_names(field) or sess.get("entered", []),
             "started": sess.get("started", 0), "ended": time.time(),
             "transcript": _session_transcript_records(field),
@@ -1188,7 +1189,7 @@ async def field_sessions_list():
                     d = json.load(f)
                 out[d.get("sid", fn[:-5])] = {
                     "sid": d.get("sid", fn[:-5]), "status": d.get("status"), "dilemma": d.get("dilemma", ""),
-                    "field": d.get("field_kind", "council"),
+                    "field": d.get("field_kind", "council"), "game": d.get("game", ""),
                     "participants": d.get("participants", []), "started": d.get("started", 0), "live": False,
                     "turns": _count_turns(d.get("transcript", []))}
             except Exception:
@@ -1199,7 +1200,7 @@ async def field_sessions_list():
         try:
             field = sess.get("field")
             out[sid] = {"sid": sid, "status": sess.get("status"), "dilemma": sess.get("dilemma", ""),
-                        "field": sess.get("field_kind", "council"),
+                        "field": sess.get("field_kind", "council"), "game": sess.get("game", ""),
                         "participants": _field_participant_names(field) or sess.get("entered", []),
                         "started": sess.get("started", 0), "live": True,
                         "turns": _count_turns(_session_transcript_records(field))}
