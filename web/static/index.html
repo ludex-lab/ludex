@@ -473,6 +473,7 @@
   </div>
 </div>
 
+<script src="/static/renderers/tictactoe.js"></script>
 <script>
 // ---- Local app i18n (ko/en) ----
 const LI18N = {
@@ -923,6 +924,66 @@ async function fieldView(sid) {
     if (!['done', 'error', 'stopped'].includes(d.status)) _fieldTimer = setInterval(fieldPoll, 3000);
   } catch (e) {}
 }
+// ---- bridged-arena game viewer: Canvas board + turn-by-turn playback (LxM renderers) ----
+let _bvBoards = [], _bvMoves = [], _bvGame = '', _bvTurn = -1, _bvRenderer = null, _bvLive = true, _bvSid = '';
+function renderBridgeViewer(tx, d) {
+  const cont = document.getElementById('fieldTranscript');
+  if (_bvSid !== _fieldSid) { _bvSid = _fieldSid; _bvRenderer = null; _bvTurn = -1; _bvLive = true; cont.innerHTML = ''; }
+  const rows = tx.filter(r => (r.attributes || {}).board);
+  _bvBoards = rows.map(r => r.attributes.board);
+  _bvMoves = rows.map(r => ({ who: r.participant, text: r.content }));
+  _bvGame = (tx.find(r => (r.attributes || {}).game) || { attributes: {} }).attributes.game || '';
+  if (!_bvBoards.length) { cont.innerHTML = `<div class="field-status">${t('fld_thinking') || '…'}</div>`; return; }
+  const live = !['done', 'error', 'stopped'].includes(d.status);
+  if (!cont.querySelector('.bv')) {
+    const b = (lbl, oc) => `<button onclick="${oc}" style="background:#1d2433;border:1px solid #2f3a4f;color:#cdd6e6;border-radius:8px;padding:5px 13px;font-size:15px;cursor:pointer">${lbl}</button>`;
+    cont.innerHTML = `<div class="bv">
+      <div id="bvBoard" style="width:100%;max-width:340px;aspect-ratio:1;margin:0 auto;background:#0d111a;border:1px solid #232a3a;border-radius:14px"></div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin:12px 0 4px">
+        ${b('⏮', 'bvStep(-99)')}${b('◀', 'bvStep(-1)')}<span id="bvTurn" style="font-size:13px;color:#9aa4b3;min-width:96px;text-align:center"></span>${b('▶', 'bvStep(1)')}${b('⏭', 'bvStep(99)')}
+      </div>
+      <div id="bvMove" style="font-size:13px;color:#cdd6e6;background:#11151f;border:1px solid #232a3a;border-radius:8px;padding:10px 12px;margin-top:6px;line-height:1.5"></div>
+    </div>`;
+    _bvRenderer = null;
+  }
+  if (!_bvRenderer && _bvGame && window.LxMRenderers && window.LxMRenderers[_bvGame]) {
+    const host = document.getElementById('bvBoard'); host.innerHTML = '';
+    _bvRenderer = new window.LxMRenderers[_bvGame](host);
+  }
+  if (live && _bvLive) _bvTurn = _bvBoards.length - 1;          // live → follow the latest turn
+  else if (_bvTurn < 0) _bvTurn = _bvBoards.length - 1;          // finished → open at the final board
+  bvRender();
+}
+function bvRender() {
+  if (!_bvBoards.length) return;
+  _bvTurn = Math.max(0, Math.min(_bvBoards.length - 1, _bvTurn));
+  const board = _bvBoards[_bvTurn], host = document.getElementById('bvBoard');
+  if (_bvRenderer && _bvRenderer.render) {
+    const state = bvBoardToState(board, _bvGame);
+    _bvRenderer.render(state, _bvTurn, null);
+    if (_bvTurn === _bvBoards.length - 1 && _bvRenderer.renderResult) _bvRenderer.renderResult({}, state);
+  } else if (host) {
+    host.innerHTML = `<pre style="white-space:pre;font-family:ui-monospace,Menlo,monospace;font-size:24px;text-align:center;margin:0;padding:26px;color:#dfe6f0">${_esc(board)}</pre>`;
+  }
+  const tEl = document.getElementById('bvTurn');
+  if (tEl) tEl.textContent = `${_llang === 'ko' ? '턴' : 'Turn'} ${_bvTurn + 1} / ${_bvBoards.length}`;
+  const m = _bvMoves[_bvTurn] || {}, mEl = document.getElementById('bvMove');
+  if (mEl) mEl.innerHTML = `🎮 <b>${_esc(m.who || '')}</b> · ${_esc(m.text || '')}`;
+}
+function bvStep(delta) {
+  _bvLive = false;
+  _bvTurn = Math.max(0, Math.min(_bvBoards.length - 1, _bvTurn + delta));
+  if (_bvTurn >= _bvBoards.length - 1) _bvLive = true;          // back at the end → resume live-follow
+  bvRender();
+}
+function bvBoardToState(readable, game) {
+  if (game === 'tic_tac_toe' || game === 'tictactoe') {
+    const grid = (readable || '').trim().split('\n').map(line =>
+      line.trim().split(/\s+/).map(c => (c === '.' || !c) ? null : c.toUpperCase()));
+    return { board: grid.slice(0, 3).map(row => { const r = row.slice(0, 3); while (r.length < 3) r.push(null); return r; }) };
+  }
+  return { board: [[null, null, null], [null, null, null], [null, null, null]] };
+}
 async function fieldStart() {
   const wild = _fieldKind === 'wilderness', bridge = _fieldKind === 'bridge';
   const dilemma = document.getElementById('fieldDilemma').value.trim();
@@ -1014,23 +1075,21 @@ async function fieldPoll() {
         html += `<div class="ft-turn"><div class="ft-who">${_esc(rec.participant)}${badge ? ` <span class="ft-badge">${_esc(badge)}</span>` : ''}</div><div class="ft-text">${_esc(rec.content)}</div></div>`;
       });
     } else if (d.field === 'bridge') {
-      const boards = tx.map(r => (r.attributes || {}).board).filter(Boolean);
-      const latest = boards.length ? boards[boards.length - 1] : '';
-      if (latest) html += `<div style="white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:26px;line-height:1.55;text-align:center;background:#0f1420;border:1px solid #2a3550;border-radius:12px;padding:20px;margin-bottom:14px;color:#dfe6f0">${_esc(latest)}</div>`;
-      tx.forEach(rec => {
-        html += `<div class="ft-turn"><div class="ft-who">🎮 ${_esc(rec.participant)} · ${_esc(ph['move'] || 'move')} ${(rec.round || 0) + 1}</div><div class="ft-text">${_esc(rec.content)}</div></div>`;
-      });
+      renderBridgeViewer(tx, d);
+      html = null;                       // the bridge viewer owns #fieldTranscript (canvas — don't rebuild)
     } else tx.forEach(rec => {
       if (rec.phase === 'dilemma_posed' || rec.phase === 'claim') { html += `<div class="ft-dilemma">${rec.phase === 'claim' ? '📋' : '⚖️'} ${_esc(rec.content)}</div>`; lp = rec.phase; return; }
       if (rec.phase !== lp) { html += `<div class="ft-phase">${_esc(ph[rec.phase] || rec.phase)}</div>`; lp = rec.phase; }
       html += `<div class="ft-turn"><div class="ft-who">${_esc(rec.participant)}</div><div class="ft-text">${_esc(rec.content)}</div></div>`;
     });
-    document.getElementById('fieldTranscript').innerHTML = html;
-    // auto-scroll to the newest turn when the count grows
-    if (tx.length !== _fieldLastTurns) {
-      _fieldLastTurns = tx.length;
-      const tr = document.getElementById('fieldTranscript');
-      if (tr.lastElementChild) tr.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (html !== null) {
+      document.getElementById('fieldTranscript').innerHTML = html;
+      // auto-scroll to the newest turn when the count grows
+      if (tx.length !== _fieldLastTurns) {
+        _fieldLastTurns = tx.length;
+        const tr = document.getElementById('fieldTranscript');
+        if (tr.lastElementChild) tr.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
     }
     const sb = document.getElementById('fieldStopBtn');
     if (sb) sb.style.display = ['done', 'error', 'stopped'].includes(st) ? 'none' : '';
