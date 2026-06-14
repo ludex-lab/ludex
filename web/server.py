@@ -768,10 +768,9 @@ async def creature_reflection(name: str, stem: str, dir: str = "creatures"):
 field_sessions = {}  # sid -> {field, status, error, field_kind}  (in-memory, live)
 FIELD_LOG = os.path.join(REPO_ROOT, "field_log")  # finished sessions persisted here (survive restarts)
 
-# Declarative field taxonomy — the single source of truth the Field tab renders
-# (D-089 cross-environment + internal fields). Internal fields run via
-# _run_field_bg today; bridge arenas are DECLARED here, their execution wired in
-# a later phase. Add a game = add an entry. Served at GET /api/fields.
+# Declarative field taxonomy — the single source of truth the Field tab renders.
+# Internal fields run via _run_field_bg. Add a field = add an entry.
+# Served at GET /api/fields.
 FIELD_REGISTRY = {
     "internal": [
         {"id": "council", "name": "Council", "i18n": "fld_council", "viewer": "transcript",
@@ -781,50 +780,13 @@ FIELD_REGISTRY = {
         {"id": "wilderness", "name": "Wilderness", "i18n": "fld_wild", "viewer": "ticklog",
          "min_creatures": 1, "prompt": None, "ticks": True, "impl": True},
     ],
-    "bridge": [
-        {"id": "kaggle_ga", "name": "Kaggle Game Arena", "impl": "local", "viewer": "game+standings",
-         "note": "Google DeepMind / OpenSpiel — always-on public leaderboard (online submission separate)",
-         "games": [
-             {"id": "universal_poker", "name": "Heads-Up Poker"},
-             {"id": "tic_tac_toe", "name": "Tic-Tac-Toe"},
-             {"id": "chess", "name": "Chess"},
-             {"id": "connect_four", "name": "Connect Four"},
-             {"id": "go", "name": "Go"},
-         ]},
-        {"id": "textarena", "name": "TextArena", "impl": "local", "viewer": "game+standings",
-         "note": "online matchmaking dormant between NeurIPS MindGames cycles; local play available",
-         "games": [
-             {"id": "IteratedPrisonersDilemma-v0", "name": "Iterated Prisoner's Dilemma"},
-             {"id": "SecretMafia-v0", "name": "Secret Mafia"},
-             {"id": "TicTacToe-v0", "name": "Tic-Tac-Toe"},
-             {"id": "Chess-v0", "name": "Chess"},
-         ]},
-        {"id": "lxm", "name": "Ludus ex Machina", "impl": False, "viewer": "placeholder",
-         "note": "JJ's own arena — bridge not yet wired", "games": []},
-    ],
 }
-
-
-class BridgeField:
-    """One bridged-arena game session's transcript (D-089) — the 'field' object
-    for a creature playing in an external arena (Kaggle Game Arena / TextArena).
-    Each turn streams the creature's reasoning + move in for the observe view."""
-    def __init__(self):
-        self.transcript_records = []
-        self.participant_names = []
-        self.reward = None
-    def add_turn(self, turn, name, content, attributes):
-        self.transcript_records.append({"round": turn, "phase": "move", "participant": name,
-                                        "kind": "move", "content": content,
-                                        "attributes": attributes or {}})
 
 
 def _session_transcript_records(field):
     out = []
     if field is None:
         return out
-    if hasattr(field, "transcript_records"):       # bridged-arena game (BridgeField)
-        return list(field.transcript_records)
     if hasattr(field, "rounds"):                  # council / forum
         for rd in field.rounds:
             for rec in rd.records:
@@ -850,8 +812,6 @@ def _session_transcript_records(field):
 def _field_participant_names(field) -> list:
     if field is None:
         return []
-    if hasattr(field, "participant_names"):        # bridged-arena game (BridgeField)
-        return list(field.participant_names)
     if hasattr(field, "participants"):
         return [p.name for p in field.participants]
     if hasattr(field, "creatures"):               # wilderness
@@ -875,7 +835,6 @@ def _save_field_session(sess):
         data = {
             "sid": sess.get("sid"), "field_kind": sess.get("field_kind"), "status": sess.get("status"),
             "dilemma": sess.get("dilemma", ""), "mediator": sess.get("mediator", ""),
-            "arena": sess.get("arena", ""), "game": sess.get("game", ""),
             "participants": _field_participant_names(field) or sess.get("entered", []),
             "started": sess.get("started", 0), "ended": time.time(),
             "transcript": _session_transcript_records(field),
@@ -1058,66 +1017,12 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
         _save_field_session(sess)   # persist for history (survives restart)
 
 
-def _make_bridge(arena: str, game: str):
-    """Construct the EnvironmentBridge for a bridged-arena game (D-089)."""
-    if arena == "kaggle_ga":
-        from ludex.bridges.game_arena_bridge import GameArenaBridge
-        return GameArenaBridge(game)               # built-in random opponent
-    if arena == "textarena":
-        raise ValueError("TextArena play is not wired into the web app yet.")
-    raise ValueError(f"Unknown arena: {arena}")
-
-
-def _run_bridge_bg(sid: str, arena: str, game: str, creature_path: str):
-    """Background worker: a creature plays one game in a bridged external arena
-    (D-089). Runs EPHEMERAL (D-090 — the live creature is never mutated) and
-    streams each turn (reasoning + move) into a BridgeField for the observe view."""
-    sess = field_sessions[sid]
-    try:
-        from ludex.core.integrity import ephemeral_creature
-        from ludex.bridges.creature_player import play_episode
-        name0 = os.path.basename(str(creature_path).rstrip("/\\"))
-        sess["building"] = name0
-        bf = BridgeField(); sess["field"] = bf
-        with ephemeral_creature(creature_path) as cfg:
-            org = cfg.build()
-            name = getattr(org, "name", None) or name0
-            bf.participant_names = [name]; sess["entered"].append(name); sess["building"] = ""
-            bridge = _make_bridge(arena, game)
-
-            def on_turn(rec):
-                if sess.get("stop"):
-                    raise _StopField()
-                sess["thinking"] = name
-                state = rec.get("state") or {}
-                bf.add_turn(rec["turn"], name, rec.get("action", ""),
-                            {"reward": rec.get("reward"), "terminal": rec.get("terminal"),
-                             "board": state.get("readable"), "game": state.get("game")})
-
-            sess["status"] = "running"; sess["thinking"] = name
-            prefix = (f"You are {name}, playing {game} in the {arena} arena against an opponent. "
-                      f"Read the game state below and make your move exactly as instructed.\n\n")
-            result = play_episode(org, bridge, max_steps=60, consolidate=False,
-                                  prompt_prefix=prefix, on_turn=on_turn)
-            bf.reward = result.get("reward")
-        sess["status"] = "done"
-    except _StopField:
-        sess["status"] = "stopped"
-    except Exception as e:
-        sess["status"] = "error"; sess["error"] = str(e)
-    finally:
-        sess["thinking"] = ""; sess["building"] = ""
-        _save_field_session(sess)
-
-
 class FieldStartRequest(BaseModel):
     field: str = "council"
     dilemma: str = ""
     creatures: list = []   # habitat paths
     mediator: str = ""     # optional: name of the creature to seat as mediator
     ticks: int = 10        # wilderness only: how long the world runs
-    arena: str = ""        # bridge fields only: which external arena (kaggle_ga…)
-    game: str = ""         # bridge fields only: which game in that arena
 
 
 class FieldVerdictRequest(BaseModel):
@@ -1127,33 +1032,13 @@ class FieldVerdictRequest(BaseModel):
 
 @app.get("/api/fields")
 async def fields_registry():
-    """The field taxonomy the Field tab renders — internal fields + bridged arenas
-    (each with its games). Declarative; add a game by editing FIELD_REGISTRY."""
+    """The field taxonomy the Field tab renders — the internal fields.
+    Declarative; add a field by editing FIELD_REGISTRY."""
     return FIELD_REGISTRY
 
 
 @app.post("/api/field/start")
 async def field_start(req: FieldStartRequest):
-    if req.field == "bridge":
-        arenas = {a["id"]: a for a in FIELD_REGISTRY["bridge"]}
-        a = arenas.get(req.arena)
-        if not a or not (a.get("impl") and a["impl"] is not False):
-            return {"error": f"Arena '{req.arena}' is not playable."}
-        if req.arena != "kaggle_ga":
-            return {"error": "Only Kaggle Game Arena play is wired so far — more arenas soon."}
-        if req.game not in {g["id"] for g in a.get("games", [])}:
-            return {"error": f"Game '{req.game}' is not in {a['name']}."}
-        if len(req.creatures) != 1:
-            return {"error": "Admit exactly one creature to an arena game."}
-        import threading
-        sid = f"f{int(time.time() * 1000) % 1000000}"
-        field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "",
-                               "field_kind": "bridge", "dilemma": f"{a['name']} · {req.game}",
-                               "entered": [], "building": "", "thinking": "", "stop": False,
-                               "started": time.time(), "mediator": "", "aftermath": "", "tick": "",
-                               "arena": req.arena, "game": req.game}
-        threading.Thread(target=_run_bridge_bg, args=(sid, req.arena, req.game, req.creatures[0]), daemon=True).start()
-        return {"session_id": sid, "status": "starting"}
     if req.field not in ("council", "forum", "wilderness"):
         return {"error": f"Field '{req.field}' is not supported yet."}
     ticks = max(3, min(int(req.ticks or 10), 30))
@@ -1176,20 +1061,6 @@ async def field_start(req: FieldStartRequest):
     return {"session_id": sid, "status": "starting"}
 
 
-def _bridge_game(rec):
-    """The arena game id for a session — the explicit `game` field, else parsed
-    from the 'Arena · game' dilemma (back-compat for bridge sessions saved before
-    `game` was stored)."""
-    g = rec.get("game")
-    if g:
-        return g
-    if rec.get("field_kind") == "bridge":
-        d = rec.get("dilemma") or ""
-        if " · " in d:
-            return d.split(" · ")[-1].strip()
-    return ""
-
-
 @app.get("/api/field/sessions")
 async def field_sessions_list():
     """All sessions — live (in-memory) + finished (on disk), newest first."""
@@ -1203,7 +1074,7 @@ async def field_sessions_list():
                     d = json.load(f)
                 out[d.get("sid", fn[:-5])] = {
                     "sid": d.get("sid", fn[:-5]), "status": d.get("status"), "dilemma": d.get("dilemma", ""),
-                    "field": d.get("field_kind", "council"), "game": _bridge_game(d),
+                    "field": d.get("field_kind", "council"),
                     "participants": d.get("participants", []), "started": d.get("started", 0), "live": False,
                     "turns": _count_turns(d.get("transcript", []))}
             except Exception:
@@ -1214,7 +1085,7 @@ async def field_sessions_list():
         try:
             field = sess.get("field")
             out[sid] = {"sid": sid, "status": sess.get("status"), "dilemma": sess.get("dilemma", ""),
-                        "field": sess.get("field_kind", "council"), "game": _bridge_game(sess),
+                        "field": sess.get("field_kind", "council"),
                         "participants": _field_participant_names(field) or sess.get("entered", []),
                         "started": sess.get("started", 0), "live": True,
                         "turns": _count_turns(_session_transcript_records(field))}
