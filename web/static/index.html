@@ -965,7 +965,7 @@ function bvRender() {
     _bvRenderer.render(state, _bvTurn, null);
     if (_bvTurn === _bvBoards.length - 1 && _bvRenderer.renderResult) _bvRenderer.renderResult({}, state);
   } else if (host) {
-    host.innerHTML = `<pre style="white-space:pre;font-family:ui-monospace,Menlo,monospace;font-size:24px;text-align:center;margin:0;padding:26px;color:#dfe6f0">${_esc(board)}</pre>`;
+    host.innerHTML = bvFallbackHTML(board, _bvGame);
   }
   const tEl = document.getElementById('bvTurn');
   if (tEl) tEl.textContent = `${_llang === 'ko' ? '턴' : 'Turn'} ${_bvTurn + 1} / ${_bvBoards.length}`;
@@ -977,6 +977,35 @@ function bvStep(delta) {
   _bvTurn = Math.max(0, Math.min(_bvBoards.length - 1, _bvTurn + delta));
   if (_bvTurn >= _bvBoards.length - 1) _bvLive = true;          // back at the end → resume live-follow
   bvRender();
+}
+function bvFallbackHTML(board, game) {
+  if (game === 'universal_poker') return bvPokerHTML(board);
+  return `<pre style="white-space:pre;font-family:ui-monospace,Menlo,monospace;font-size:22px;text-align:center;margin:0;padding:26px;color:#dfe6f0">${_esc(board || '')}</pre>`;
+}
+function _bvCard(c) {
+  const m = String(c).match(/^([2-9TJQKA])([shdc])$/i);
+  if (!m) return '';
+  const suit = { s: '♠', h: '♥', d: '♦', c: '♣' }[m[2].toLowerCase()];
+  const red = 'hd'.includes(m[2].toLowerCase());
+  return `<span style="display:inline-block;background:#f4f6fb;color:${red ? '#c0392b' : '#1a1f2b'};border-radius:6px;padding:6px 10px;margin:3px;font-weight:700;font-size:19px;box-shadow:0 1px 3px rgba(0,0,0,.3)">${m[1]}${suit}</span>`;
+}
+function _bvCards(str) {
+  const cards = (String(str || '').match(/[2-9TJQKA][shdc]/gi)) || [];
+  return cards.length ? cards.map(_bvCard).join('') : '<span style="color:#5a6473;font-size:18px">—</span>';
+}
+function bvPokerHTML(board) {
+  const g = re => ((board || '').match(re) || [])[1] || '';
+  const hole = g(/P\d Cards:\s*([^\n]*)/), boardc = g(/BoardCards\s*([^\n]*)/);
+  const spent = g(/Spent:\s*\[([^\]]*)\]/), round = g(/Round:\s*(\d+)/);
+  const pot = [...spent.matchAll(/:\s*(\d+)/g)].reduce((a, m) => a + (+m[1]), 0);
+  const streets = ['Pre-flop', 'Flop', 'Turn', 'River'];
+  return `<div style="padding:22px;text-align:center">
+    <div style="font-size:12px;color:#7a8494;text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px">${_esc(streets[+round] || ('Round ' + round))} · ${_llang === 'ko' ? '팟' : 'Pot'} ${pot}</div>
+    <div style="font-size:11px;color:#6a7484;margin-bottom:6px">${_llang === 'ko' ? '보드' : 'Board'}</div>
+    <div style="margin-bottom:18px">${_bvCards(boardc)}</div>
+    <div style="font-size:11px;color:#6a7484;margin-bottom:6px">${_llang === 'ko' ? '내 패' : 'Your hand'}</div>
+    <div>${_bvCards(hole)}</div>
+  </div>`;
 }
 function bvBoardToState(readable, game) {
   if (game === 'tic_tac_toe' || game === 'tictactoe') {
