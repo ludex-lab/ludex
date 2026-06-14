@@ -102,7 +102,8 @@ def play_episode(organism, bridge, *, max_steps: int = 100,
         if on_turn is not None:        # per-turn trace hook (move/score capture for experiments)
             try:
                 on_turn({"turn": turn, "saw": saw, "action": action,
-                         "result": obs.text, "reward": obs.reward, "terminal": obs.terminal})
+                         "result": obs.text, "reward": obs.reward, "terminal": obs.terminal,
+                         "state": dict(obs.state or {})})
             except Exception as e:
                 logger.debug(f"on_turn hook failed at turn {turn}: {e}")
 

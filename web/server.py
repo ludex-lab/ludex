@@ -1088,8 +1088,10 @@ def _run_bridge_bg(sid: str, arena: str, game: str, creature_path: str):
                 if sess.get("stop"):
                     raise _StopField()
                 sess["thinking"] = name
+                state = rec.get("state") or {}
                 bf.add_turn(rec["turn"], name, rec.get("action", ""),
-                            {"reward": rec.get("reward"), "terminal": rec.get("terminal")})
+                            {"reward": rec.get("reward"), "terminal": rec.get("terminal"),
+                             "board": state.get("readable"), "game": state.get("game")})
 
             sess["status"] = "running"; sess["thinking"] = name
             prefix = (f"You are {name}, playing {game} in the {arena} arena against an opponent. "

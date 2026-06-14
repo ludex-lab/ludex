@@ -1013,6 +1013,13 @@ async function fieldPoll() {
         const badge = [a.action, (a.energy != null ? '⚡' + a.energy : ''), a.emotion].filter(Boolean).join(' · ');
         html += `<div class="ft-turn"><div class="ft-who">${_esc(rec.participant)}${badge ? ` <span class="ft-badge">${_esc(badge)}</span>` : ''}</div><div class="ft-text">${_esc(rec.content)}</div></div>`;
       });
+    } else if (d.field === 'bridge') {
+      const boards = tx.map(r => (r.attributes || {}).board).filter(Boolean);
+      const latest = boards.length ? boards[boards.length - 1] : '';
+      if (latest) html += `<div style="white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:26px;line-height:1.55;text-align:center;background:#0f1420;border:1px solid #2a3550;border-radius:12px;padding:20px;margin-bottom:14px;color:#dfe6f0">${_esc(latest)}</div>`;
+      tx.forEach(rec => {
+        html += `<div class="ft-turn"><div class="ft-who">🎮 ${_esc(rec.participant)} · ${_esc(ph['move'] || 'move')} ${(rec.round || 0) + 1}</div><div class="ft-text">${_esc(rec.content)}</div></div>`;
+      });
     } else tx.forEach(rec => {
       if (rec.phase === 'dilemma_posed' || rec.phase === 'claim') { html += `<div class="ft-dilemma">${rec.phase === 'claim' ? '📋' : '⚖️'} ${_esc(rec.content)}</div>`; lp = rec.phase; return; }
       if (rec.phase !== lp) { html += `<div class="ft-phase">${_esc(ph[rec.phase] || rec.phase)}</div>`; lp = rec.phase; }

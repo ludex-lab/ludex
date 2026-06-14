@@ -100,6 +100,9 @@ class GameArenaBridge:
         if st.is_terminal():
             return Observation(environment_id=self.environment, text="",
                                reward=float(st.returns()[self._seat]), terminal=True,
+                               state={"readable": self._tu.convert_to_readable_state(
+                                          game_short_name=self._game_name, state_str=st.to_string(),
+                                          current_player=self._seat), "game": self._game_name},
                                info={"forfeits": self._forfeits})
         subs = {
             "readable_state_str": self._tu.convert_to_readable_state(
@@ -112,8 +115,11 @@ class GameArenaBridge:
         }
         prompt = self._pg.generate_prompt_with_text_only(
             prompt_template=self._template, game_short_name=self._game_name, **subs)
+        # expose the readable board so a viewer can DRAW the game (not just the move text)
         return Observation(environment_id=self.environment, text=prompt.prompt_text,
-                           present_agents=(self._opp_name,))
+                           present_agents=(self._opp_name,),
+                           state={"readable": subs["readable_state_str"], "game": self._game_name,
+                                  "history": subs["move_history"], "to_move": self._notation["player_map"][st.current_player()]})
 
     def _parse(self, action_text):
         st = self._state
