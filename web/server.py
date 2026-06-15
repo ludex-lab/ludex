@@ -897,6 +897,40 @@ class LxMField:
             "attributes": {"move": move, "readable": rec.get("readable")}})
 
 
+_LXM_GAME_NAMES = {"trustgame": "Trust Game", "tictactoe": "Tic-Tac-Toe"}
+
+
+def _lxm_aftermath(sess, creature_path, game, field):
+    """published only — the creature remembers + reflects on the encounter, like an
+    internal field (Council/Forum): a reflection (→ SELF.md) written to the LIVE creature.
+    Only this DISTILLED trace crosses over; the raw match was played on an ephemeral copy
+    (D-090), and nothing raw is written here. Reuses selfhood.reflect — the same call the
+    internal-field aftermath makes — so an LxM encounter is remembered the way a Council
+    is. A bond is NOT written toward the scripted house bot (see below)."""
+    from ludex.core import selfhood
+    me = field.participant_names[0]
+    opp = field.participant_names[1] if len(field.participant_names) > 1 else "an opponent"
+    gname = _LXM_GAME_NAMES.get(game, game)
+    summary = field.result.get("summary", "") if isinstance(field.result, dict) else ""
+    moves = "\n".join(f"  [{r.get('round')}] {r.get('participant')}: {r.get('content')}"
+                      for r in field.transcript_records)
+    context = (f"On Ludus ex Machina — a cross-machine arena where you meet minds from other "
+               f"habitats — you played a {gname} against {opp}.\n{summary}\n\nMove by move:\n{moves}")
+    sess["status"] = "reflecting"
+    org = _build_creature_org(creature_path)        # the LIVE creature, writable — intended accumulation, as in Council
+    engine = org.get_block("engine")
+    sess["aftermath"] = f"reflect:{me}"
+    try:
+        selfhood.reflect(org, "ludus_ex_machina", engine, context)
+    except Exception as e:
+        print(f"lxm reflect failed: {e}")
+    # No bond toward the scripted house bot — a bond is a verified memory of another
+    # MIND (a creature), not a script (JJ, 2026-06-14): the reflection already remembers
+    # the encounter. When real creature-vs-creature matches land (B1/Stage B
+    # re-recognition), the bond is written here toward the actual creature opponent.
+    sess["aftermath"] = ""
+
+
 def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
     """Background worker: a creature plays a cross-machine match on the hosted LxM
     arena (D-089 §5). Runs EPHEMERAL (D-090 — live creature never mutated); streams
@@ -927,7 +961,12 @@ def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
         sess["result"] = result.get("result")
         sess["viewer_url"] = result.get("viewer_url")
         sess["scores"] = (result.get("result") or {}).get("scores")
-        sess["status"] = "stopped" if sess.get("stop") else "done"
+        if sess.get("stop"):
+            sess["status"] = "stopped"
+        else:
+            if kind == "published":      # the encounter counts: remember + reflect on the LIVE creature (S1b)
+                _lxm_aftermath(sess, creature_path, game, field)
+            sess["status"] = "done"
     except Exception as e:
         sess["status"] = "error"; sess["error"] = str(e)
     finally:
