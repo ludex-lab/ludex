@@ -22,6 +22,9 @@ import time
 
 logger = logging.getLogger(__name__)
 
+_RETRY_NUDGE = ("\n\n[Your last reply could not be read as a move. Reply with ONLY "
+                "the move, inline in your response, exactly as instructed — nothing else.]")
+
 
 def _engage_perception(organism, obs) -> None:
     """Organs that READ the environment before the creature acts.
@@ -57,7 +60,7 @@ def _engage_perception(organism, obs) -> None:
 
 def play_episode(organism, bridge, *, max_steps: int = 100,
                  consolidate: bool = True, prompt_prefix: str = "",
-                 on_turn=None) -> dict:
+                 on_turn=None, action_retries: int = 0) -> dict:
     """Run one episode of `organism` in `bridge`'s environment.
 
     Returns a result dict: {field, reward, turns, present_agents}.
@@ -88,16 +91,25 @@ def play_episode(organism, bridge, *, max_steps: int = 100,
     while not obs.terminal and turn < max_steps:
         _engage_perception(organism, obs)
         saw = obs.text
-        prompt = (prompt_prefix + obs.text) if prompt_prefix else obs.text
-        try:
-            result = engine.handle_submit(prompt)
-            action = (getattr(result, "response", "") or "").strip()
-        except Exception as e:
-            logger.warning(f"engine.handle_submit failed at turn {turn}: {e}")
-            action = ""
-
+        base_prompt = (prompt_prefix + obs.text) if prompt_prefix else obs.text
         prev_state = dict(obs.state)
-        obs = bridge.step(action)
+        for _attempt in range(action_retries + 1):   # re-prompt if the bridge rejects the action
+            prompt = base_prompt if _attempt == 0 else base_prompt + _RETRY_NUDGE
+            try:
+                result = engine.handle_submit(prompt)
+                action = (getattr(result, "response", "") or "").strip()
+            except Exception as e:
+                logger.warning(f"engine.handle_submit failed at turn {turn}: {e}")
+                action = ""
+            try:
+                obs = bridge.step(action)
+                break
+            except Exception as e:
+                if _attempt < action_retries:
+                    logger.info(f"bridge rejected action at turn {turn} ({e}); "
+                                f"re-prompting {_attempt + 1}/{action_retries}")
+                    continue
+                raise
         total_reward = obs.reward      # bridge reports the latest cumulative seat reward
         if on_turn is not None:        # per-turn trace hook (move/score capture for experiments)
             try:

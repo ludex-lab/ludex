@@ -780,6 +780,12 @@ FIELD_REGISTRY = {
         {"id": "wilderness", "name": "Wilderness", "i18n": "fld_wild", "viewer": "ticklog",
          "min_creatures": 1, "prompt": None, "ticks": True, "impl": True},
     ],
+    "external": [
+        {"id": "lxm", "name": "Ludus ex Machina", "impl": True, "viewer": "lxm",
+         "note": "A cross-machine match on the hosted LxM arena — your creature plays a real game, you watch the replay, it reflects.",
+         "games": [{"id": "trustgame", "name": "Trust Game"},
+                   {"id": "tictactoe", "name": "Tic-Tac-Toe"}]},
+    ],
 }
 
 
@@ -787,6 +793,8 @@ def _session_transcript_records(field):
     out = []
     if field is None:
         return out
+    if hasattr(field, "transcript_records"):      # LxM hosted match (LxMField)
+        return list(field.transcript_records)
     if hasattr(field, "rounds"):                  # council / forum
         for rd in field.rounds:
             for rec in rd.records:
@@ -812,6 +820,8 @@ def _session_transcript_records(field):
 def _field_participant_names(field) -> list:
     if field is None:
         return []
+    if hasattr(field, "participant_names"):        # LxM hosted match (LxMField)
+        return list(field.participant_names)
     if hasattr(field, "participants"):
         return [p.name for p in field.participants]
     if hasattr(field, "creatures"):               # wilderness
@@ -835,10 +845,11 @@ def _save_field_session(sess):
         data = {
             "sid": sess.get("sid"), "field_kind": sess.get("field_kind"), "status": sess.get("status"),
             "dilemma": sess.get("dilemma", ""), "mediator": sess.get("mediator", ""),
+            "game": sess.get("game", ""), "kind": sess.get("kind", ""), "viewer_url": sess.get("viewer_url"),
             "participants": _field_participant_names(field) or sess.get("entered", []),
             "started": sess.get("started", 0), "ended": time.time(),
             "transcript": _session_transcript_records(field),
-            "verdict": sess.get("verdict"), "scores": sess.get("scores"),
+            "verdict": sess.get("verdict"), "scores": sess.get("scores"), "result": sess.get("result"),
         }
         with open(os.path.join(FIELD_LOG, f"{sess.get('sid')}.json"), "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
@@ -860,6 +871,68 @@ def _build_creature_org(habitat_path: str):
             + CHAT_PROMPT
         )
     return config.build()
+
+
+class LxMField:
+    """A hosted cross-machine LxM match's transcript (web UX, Enter→Watch→Reflect):
+    the move-by-move record the Field-tab observe view renders + the LxM viewer
+    deep-link + the result. The creature plays via an EPHEMERAL copy (D-090 — the
+    live creature is untouched; for `published`, a distilled 회고 writeback is a
+    later step)."""
+    def __init__(self, creature_name, opponent_name="house"):
+        self.transcript_records = []
+        self.participant_names = [creature_name, opponent_name]
+        self.viewer_url = None
+        self.result = None
+
+    def add_turn(self, rec):
+        move = rec.get("move")
+        act = move.get("action") if isinstance(move, dict) else move
+        content = str(act if act is not None else move)
+        if rec.get("dialogue"):
+            content += f" — “{rec['dialogue']}”"
+        self.transcript_records.append({
+            "round": rec.get("turn"), "phase": "move", "participant": rec.get("who"),
+            "kind": "move", "content": content,
+            "attributes": {"move": move, "readable": rec.get("readable")}})
+
+
+def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
+    """Background worker: a creature plays a cross-machine match on the hosted LxM
+    arena (D-089 §5). Runs EPHEMERAL (D-090 — live creature never mutated); streams
+    each move into an LxMField; on completion stores the result + viewer deep-link."""
+    from ludex.bridges.hosted_match import play_hosted_match, HOUSE_BOTS
+    sess = field_sessions[sid]
+    try:
+        name0 = os.path.basename(str(creature_path).rstrip("/\\"))
+        opp = HOUSE_BOTS.get(game)
+        if opp is None:
+            raise ValueError(f"No house opponent for '{game}'.")
+        # A watchable length for the web UX — trustgame is iterated, so cap it
+        # short (6 rounds); tic-tac-toe ends naturally in ≤9.
+        max_turns = {"trustgame": 12, "tictactoe": 9}.get(game, 16)
+        field = LxMField(name0)
+        sess["field"] = field
+        sess["entered"] = [name0]; sess["building"] = ""
+        sess["status"] = "running"; sess["thinking"] = name0
+
+        def on_turn(rec):
+            field.add_turn(rec)
+            sess["thinking"] = rec.get("who")
+
+        result = play_hosted_match(creature_path, opp, game=game, kind=kind, max_turns=max_turns,
+                                   on_turn=on_turn, should_stop=lambda: sess.get("stop"))
+        field.result = result.get("result")
+        field.viewer_url = result.get("viewer_url")
+        sess["result"] = result.get("result")
+        sess["viewer_url"] = result.get("viewer_url")
+        sess["scores"] = (result.get("result") or {}).get("scores")
+        sess["status"] = "stopped" if sess.get("stop") else "done"
+    except Exception as e:
+        sess["status"] = "error"; sess["error"] = str(e)
+    finally:
+        sess["thinking"] = ""; sess["building"] = ""
+        _save_field_session(sess)
 
 
 class _StopField(Exception):
@@ -1023,6 +1096,8 @@ class FieldStartRequest(BaseModel):
     creatures: list = []   # habitat paths
     mediator: str = ""     # optional: name of the creature to seat as mediator
     ticks: int = 10        # wilderness only: how long the world runs
+    game: str = ""         # lxm only: which game in the hosted arena
+    kind: str = "practice" # lxm only: practice (ephemeral) | published (permanent + viewable)
 
 
 class FieldVerdictRequest(BaseModel):
@@ -1039,6 +1114,24 @@ async def fields_registry():
 
 @app.post("/api/field/start")
 async def field_start(req: FieldStartRequest):
+    if req.field == "lxm":
+        ext = {a["id"]: a for a in FIELD_REGISTRY.get("external", [])}.get("lxm")
+        if not ext:
+            return {"error": "The LxM arena is not available."}
+        if req.game not in {g["id"] for g in ext["games"]}:
+            return {"error": f"Game '{req.game}' is not in the LxM arena."}
+        if len(req.creatures) != 1:
+            return {"error": "Admit exactly one creature to an LxM match."}
+        import threading
+        sid = f"f{int(time.time() * 1000) % 1000000}"
+        field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "",
+                               "field_kind": "lxm", "dilemma": f"LxM · {req.game} ({req.kind})",
+                               "game": req.game, "kind": req.kind, "entered": [], "building": "",
+                               "thinking": "", "stop": False, "started": time.time(),
+                               "mediator": "", "aftermath": "", "tick": ""}
+        threading.Thread(target=_run_lxm_match_bg,
+                         args=(sid, req.game, req.creatures[0], req.kind), daemon=True).start()
+        return {"session_id": sid, "status": "starting"}
     if req.field not in ("council", "forum", "wilderness"):
         return {"error": f"Field '{req.field}' is not supported yet."}
     ticks = max(3, min(int(req.ticks or 10), 30))
@@ -1103,6 +1196,7 @@ async def field_session(sid: str):
                 d = json.load(f)
             return {"status": d.get("status"), "error": "", "field": d.get("field_kind"),
                     "participants": d.get("participants", []), "transcript": d.get("transcript", []),
+                    "viewer_url": d.get("viewer_url"), "result": d.get("result") or d.get("scores"), "game": d.get("game", ""),
                     "entered": d.get("participants", []), "building": "", "thinking": "",
                     "mediator": d.get("mediator", ""), "aftermath": "",
                     "verdict": d.get("verdict"), "scores": d.get("scores"),
@@ -1118,6 +1212,7 @@ async def field_session(sid: str):
     started = sess.get("started", 0)
     return {"status": sess.get("status"), "error": sess.get("error", ""),
             "field": sess.get("field_kind"), "participants": participants, "transcript": transcript,
+            "viewer_url": sess.get("viewer_url"), "result": sess.get("result"), "game": sess.get("game", ""),
             "entered": sess.get("entered", []), "building": sess.get("building", ""),
             "thinking": sess.get("thinking", ""), "mediator": sess.get("mediator", ""),
             "aftermath": sess.get("aftermath", ""), "tick": sess.get("tick", ""),
