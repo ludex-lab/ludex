@@ -897,6 +897,19 @@ class LxMField:
             "attributes": {"move": move, "readable": rec.get("readable")}})
 
 
+def _lxm_friendly_error(exc):
+    """Turn a raw match exception into a calm, user-facing message + a kind the UI can act
+    on. The common failure is the hosted arena being asleep/unreachable (it idles when no
+    one is playing), which is transient — say so and invite a retry, rather than surface an
+    HTTP traceback that reads like the user broke something."""
+    code = getattr(exc, "code", "") or ""
+    if code in ("network", "poll_timeout") or code.startswith("http_5"):
+        return ("The Ludus ex Machina arena couldn't be reached just now — it may be waking "
+                "up (it sleeps when no one is playing). Give it a moment and try again.",
+                "unreachable")
+    return ("Something interrupted the match on the arena. Please try again in a moment.", "error")
+
+
 _LXM_GAME_NAMES = {"trustgame": "Trust Game", "tictactoe": "Tic-Tac-Toe"}
 
 
@@ -968,7 +981,8 @@ def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
                 _lxm_aftermath(sess, creature_path, game, field)
             sess["status"] = "done"
     except Exception as e:
-        sess["status"] = "error"; sess["error"] = str(e)
+        sess["status"] = "error"
+        sess["error"], sess["error_kind"] = _lxm_friendly_error(e); sess["error_detail"] = str(e)
     finally:
         sess["thinking"] = ""; sess["building"] = ""
         _save_field_session(sess)
@@ -1022,7 +1036,8 @@ def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str
                 sess["aftermath"] = ""
             sess["status"] = "done"
     except Exception as e:
-        sess["status"] = "error"; sess["error"] = str(e)
+        sess["status"] = "error"
+        sess["error"], sess["error_kind"] = _lxm_friendly_error(e); sess["error_detail"] = str(e)
     finally:
         sess["thinking"] = ""; sess["building"] = ""
         _save_field_session(sess)
@@ -1311,6 +1326,7 @@ async def field_session(sid: str):
     return {"status": sess.get("status"), "error": sess.get("error", ""),
             "field": sess.get("field_kind"), "participants": participants, "transcript": transcript,
             "viewer_url": sess.get("viewer_url"), "result": sess.get("result"), "game": sess.get("game", ""),
+            "error_kind": sess.get("error_kind", ""),
             "entered": sess.get("entered", []), "building": sess.get("building", ""),
             "thinking": sess.get("thinking", ""), "mediator": sess.get("mediator", ""),
             "aftermath": sess.get("aftermath", ""), "tick": sess.get("tick", ""),
