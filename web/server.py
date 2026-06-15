@@ -974,6 +974,60 @@ def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
         _save_field_session(sess)
 
 
+def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str):
+    """Two creatures MEET on the hosted LxM arena (D-089 §5, B1). Each plays on an
+    ephemeral copy (D-090); on a `published` encounter BOTH remember it — a reflection
+    + a bond toward the other keyed on its stable creature_id (re-recognition on a
+    re-meeting). This is the cross-machine encounter the field exists for."""
+    import time as _time
+    from ludex.bridges.hosted_match import play_creature_match, record_encounter, recognize
+    sess = field_sessions[sid]
+    pa, pb = creature_paths[0], creature_paths[1]
+    na = os.path.basename(str(pa).rstrip("/\\"))
+    nb = os.path.basename(str(pb).rstrip("/\\"))
+    try:
+        max_turns = {"trustgame": 12, "tictactoe": 9}.get(game, 16)
+        field = LxMField(na, nb)
+        sess["field"] = field
+        sess["entered"] = [na, nb]; sess["building"] = ""
+        sess["status"] = "running"; sess["thinking"] = na
+
+        def on_turn(rec):
+            field.add_turn({"turn": rec.get("turn"), "who": rec.get("name"),
+                            "move": rec.get("move"), "dialogue": rec.get("dialogue")})
+            sess["thinking"] = rec.get("name")
+
+        result = play_creature_match(pa, pb, game=game, kind=kind, max_turns=max_turns,
+                                     on_turn=on_turn, should_stop=lambda: sess.get("stop"))
+        field.result = result.get("result")
+        field.viewer_url = result.get("viewer_url")
+        sess["result"] = result.get("result")
+        sess["viewer_url"] = result.get("viewer_url")
+        sess["scores"] = (result.get("result") or {}).get("scores")
+        if sess.get("stop"):
+            sess["status"] = "stopped"
+        else:
+            if kind == "published":      # both remember the encounter (reflection + B1 re-recognition bond)
+                creatures = result.get("creatures", {})
+                summary = (result.get("result") or {}).get("summary", "")
+                when = _time.strftime("%Y-%m-%d")
+                sess["status"] = "reflecting"
+                for path, name in ((pa, na), (pb, nb)):
+                    c = creatures.get(name, {})
+                    oppid, oppname = c.get("opponent_id"), c.get("opponent")
+                    sess["aftermath"] = f"reflect:{name}"
+                    prior = recognize(path, oppid) if oppid else None
+                    sess["aftermath"] = f"bond:{name}->{oppname}"
+                    record_encounter(path, oppname, oppid, summary, game, when, prior=prior)
+                sess["aftermath"] = ""
+            sess["status"] = "done"
+    except Exception as e:
+        sess["status"] = "error"; sess["error"] = str(e)
+    finally:
+        sess["thinking"] = ""; sess["building"] = ""
+        _save_field_session(sess)
+
+
 class _StopField(Exception):
     """Raised inside response_fn when the user asks to stop — aborts the run at the
     next turn boundary (a brain call already in flight still has to return first)."""
@@ -1159,17 +1213,22 @@ async def field_start(req: FieldStartRequest):
             return {"error": "The LxM arena is not available."}
         if req.game not in {g["id"] for g in ext["games"]}:
             return {"error": f"Game '{req.game}' is not in the LxM arena."}
-        if len(req.creatures) != 1:
-            return {"error": "Admit exactly one creature to an LxM match."}
+        if len(req.creatures) not in (1, 2):
+            return {"error": "Admit one creature (vs the house) or two (to meet each other)."}
         import threading
         sid = f"f{int(time.time() * 1000) % 1000000}"
+        names = " vs ".join(os.path.basename(str(p).rstrip("/\\")) for p in req.creatures)
         field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "",
-                               "field_kind": "lxm", "dilemma": f"LxM · {req.game} ({req.kind})",
+                               "field_kind": "lxm", "dilemma": f"LxM · {req.game} · {names} ({req.kind})",
                                "game": req.game, "kind": req.kind, "entered": [], "building": "",
                                "thinking": "", "stop": False, "started": time.time(),
                                "mediator": "", "aftermath": "", "tick": ""}
-        threading.Thread(target=_run_lxm_match_bg,
-                         args=(sid, req.game, req.creatures[0], req.kind), daemon=True).start()
+        if len(req.creatures) == 2:
+            threading.Thread(target=_run_lxm_creature_match,
+                             args=(sid, req.game, req.creatures, req.kind), daemon=True).start()
+        else:
+            threading.Thread(target=_run_lxm_match_bg,
+                             args=(sid, req.game, req.creatures[0], req.kind), daemon=True).start()
         return {"session_id": sid, "status": "starting"}
     if req.field not in ("council", "forum", "wilderness"):
         return {"error": f"Field '{req.field}' is not supported yet."}
