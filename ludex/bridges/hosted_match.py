@@ -183,7 +183,8 @@ def get_or_register_lxm_id(creature_path, transport, display_name=None):
 
 
 def play_creature_match(path_a, path_b, *, game, base_url=ONRENDER, kind="published",
-                        on_turn=None, on_start=None, action_retries=2, max_turns=12, should_stop=None):
+                        on_turn=None, on_start=None, action_retries=2, max_turns=12, should_stop=None,
+                        shuffle_seats=True):
     """Two REAL creatures meet in a hosted cross-machine match — each plays via its own
     brain + organs (on an ephemeral copy, D-090), each carrying its stable B1 creature_id
     so it can be re-recognized on a re-meeting. The deployed server is all-remote, so this
@@ -191,6 +192,9 @@ def play_creature_match(path_a, path_b, *, game, base_url=ONRENDER, kind="publis
     (humoral/immune) react to the OTHER. Returns the result, the viewer link, and each
     side's opponent creature_id (for the bond writeback)."""
     t = _UrllibTransport(base_url, timeout=120)
+    if shuffle_seats:
+        import random
+        _pair = [path_a, path_b]; random.shuffle(_pair); path_a, path_b = _pair   # fair seating (e.g. chess white/black)
     # B1 identities come from the LIVE creatures (stable across matches); play on copies.
     id_a = get_or_register_lxm_id(path_a, t)
     id_b = get_or_register_lxm_id(path_b, t)
@@ -325,7 +329,7 @@ def record_encounter(creature_path, opponent_name, opponent_creature_id, match_s
 
 def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="published",
                               on_turn=None, on_start=None, action_retries=2, max_turns=80,
-                              should_stop=None):
+                              should_stop=None, shuffle_seats=True):
     """N REAL creatures meet in a hosted cross-machine match — the N-seat generalization of
     play_creature_match (avalon 5–10, codenames 4, blockworld, deduction-solo, or any LxM
     game). The arena is always ONE seat per step (no simultaneous submit — avalon votes are
@@ -338,9 +342,12 @@ def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="
     skipped and the server's lazy reaper (H2) advances that seat off the other seats' polling.
     Returns result + viewer + each creature's co-participants (for the multi-party writeback)."""
     import contextlib
+    import random
     import time
     t = _UrllibTransport(base_url, timeout=120)
     paths = list(creature_paths)
+    if shuffle_seats:
+        random.shuffle(paths)            # randomize seating so roles/teams aren't fixed by selection order
     names = [os.path.basename(str(p).rstrip("/\\")) for p in paths]
     handles = [n.lower() for n in names]
     ids = [get_or_register_lxm_id(p, t) for p in paths]
