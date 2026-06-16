@@ -190,6 +190,7 @@
   .lxm-game.sel { border-color: #2f81f7; background: #182338; }
   .lxm-game .lg-icon { font-size: 24px; line-height: 1; }
   .lxm-game .lg-name { font-size: 12px; color: #e6edf3; text-align: center; }
+  .lxm-game .lg-players { font-size: 10px; color: #8b94a3; }
   .lxm-kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
   .lxm-kind { display: flex; align-items: center; gap: 7px; background: #161b22; border: 1px solid #2a2f3a; border-radius: 8px; padding: 9px 12px; cursor: pointer; color: #e6edf3; font-size: 13px; margin: 0; }
   .fieldcard:hover { border-color: #64aa88; }
@@ -716,7 +717,7 @@ function renderEcoGraph(creatures, edges) {
 }
 
 // ---- Field (admit creatures → run a Council → observe) ----
-let _fieldSid = null, _fieldTimer = null, _fieldLastTurns = -1, _fieldKind = 'council', _fieldReg = null, _lastLxmStart = null, _lxmGame = '';
+let _fieldSid = null, _fieldTimer = null, _fieldLastTurns = -1, _fieldKind = 'council', _fieldReg = null, _lastLxmStart = null, _lxmGame = '', _lxmGames = [], _lxmRange = null;
 const FIELD_PHASES = {
   council: ['dilemma_posed', 'first_position', 'argument', 'concession_or_hold', 'resolution'],
   forum: ['claim', 'confidence', 'evidence', 'challenge', 'update'],
@@ -730,6 +731,7 @@ function _applyFieldKind() {
   const lx = document.getElementById('fieldLxmRow'); if (lx) lx.classList.toggle('hidden', !lxm);
   const sub = document.getElementById('fieldSetupSub'); if (sub) sub.textContent = t(lxm ? 'fld_lxm_sub' : wild ? 'fld_wild_sub' : forum ? 'fld_forum_sub' : 'fld_sub');
   const al = document.querySelector('#fieldSetup label[data-i18n="fld_admit"]'); if (al) al.textContent = t(lxm ? 'fld_lxm_admit' : wild ? 'fld_admit_one' : 'fld_admit');
+  if (lxm && typeof _lxmUpdateAdmitHint === 'function') _lxmUpdateAdmitHint();
   const mr = document.getElementById('fieldMediatorRow'); if (mr) mr.style.display = (forum || wild || lxm) ? 'none' : '';
 }
 const _fmtElapsed = s => { const m = Math.floor(s/60), ss = s%60; return m ? `${m}:${String(ss).padStart(2,'0')}` : `${ss}s`; };
@@ -933,11 +935,22 @@ async function fieldPick(field) {
   _applyFieldKind();
   await _loadFieldSetup();
 }
-const _LXM_GAME_ICONS = {trustgame:'🤝', tictactoe:'⭕', prisoners_dilemma:'⚖️', pd:'⚖️', poker:'🃏', avalon:'🗡️', blockworld:'🧱', chess:'♟️'};
+const _LXM_GAME_ICONS = {trustgame:'🤝', tictactoe:'⭕', prisoners_dilemma:'⚖️', pd:'⚖️', poker:'🃏', avalon:'🗡️', blockworld:'🧱', chess:'♟️', codenames:'🕵️', deduction:'🔍'};
 function lxmPickGame(id, el) {
   _lxmGame = id;
+  _lxmRange = _lxmGames.find(g => g.id === id) || null;
   document.querySelectorAll('#fieldLxmGames .lxm-game').forEach(c => c.classList.remove('sel'));
   if (el) el.classList.add('sel');
+  _lxmUpdateAdmitHint();
+}
+function _lxmUpdateAdmitHint() {
+  if (_fieldKind !== 'lxm' || !_lxmRange) return;
+  const al = document.querySelector('#fieldSetup label[data-i18n="fld_admit"]');
+  if (!al) return;
+  const g = _lxmRange, range = g.min === g.max ? `${g.min}` : `${g.min}–${g.max}`;
+  al.textContent = (_llang === 'ko')
+    ? `크리처 입장 — ${g.name}: ${range}명${g.house ? ' (또는 하우스와 1명)' : ''}`
+    : `Admit creatures — ${g.name}: ${range}${g.house ? ' (or 1 vs the house)' : ''}`;
 }
 async function _loadFieldSetup() {
   const startBtn = document.getElementById('fieldStartBtn');
@@ -952,12 +965,17 @@ async function _loadFieldSetup() {
     document.getElementById('fieldMediator').innerHTML =
       `<option value="">${t('fld_none')}</option>` + cs.map(c => `<option value="${_esc(c.name)}">${_esc(c.name)}</option>`).join('');
     if (_fieldKind === 'lxm') {
-      const ext = ((_fieldReg && _fieldReg.external) || []).find(f => f.id === 'lxm');
-      const games = (ext && ext.games) || [];
-      _lxmGame = games.length ? games[0].id : '';
-      document.getElementById('fieldLxmGames').innerHTML = games.map((g, i) =>
-        `<div class="lxm-game${i === 0 ? ' sel' : ''}" onclick="lxmPickGame('${_esc(g.id)}', this)">`
-        + `<div class="lg-icon">${_LXM_GAME_ICONS[g.id] || '🎮'}</div><div class="lg-name">${_esc(g.name)}</div></div>`).join('');
+      try { _lxmGames = (await (await fetch('/api/lxm/games')).json()).games || []; }
+      catch (e) { _lxmGames = []; }
+      _lxmGame = _lxmGames.length ? _lxmGames[0].id : '';
+      _lxmRange = _lxmGames[0] || null;
+      document.getElementById('fieldLxmGames').innerHTML = _lxmGames.map((g, i) => {
+        const range = g.min === g.max ? `${g.min}` : `${g.min}–${g.max}`;
+        return `<div class="lxm-game${i === 0 ? ' sel' : ''}" onclick="lxmPickGame('${_esc(g.id)}', this)">`
+          + `<div class="lg-icon">${_LXM_GAME_ICONS[g.id] || '🎮'}</div><div class="lg-name">${_esc(g.name)}</div>`
+          + `<div class="lg-players">${range} 👥</div></div>`;
+      }).join('');
+      _lxmUpdateAdmitHint();
     }
   } catch (e) { roster.innerHTML = `<span class="field-status">${t('eco_fail')}</span>`; }
   // Past sessions (live + finished, from disk)
@@ -992,7 +1010,14 @@ async function fieldStart() {
   const paths = [...document.querySelectorAll('#fieldRoster input:checked')].map(i => i.value);
   const mediator = document.getElementById('fieldMediator').value;
   if (lxm) {
-    if (paths.length < 1 || paths.length > 2) { alert(t('fld_lxm_need')); return; }
+    const g = _lxmRange;
+    if (!g) { alert(t('fld_lxm_need')); return; }
+    const lo = g.house ? 1 : g.min;
+    if (paths.length < lo || paths.length > g.max) {
+      const range = g.min === g.max ? `${g.min}` : `${g.min}–${g.max}`;
+      alert(`${g.name}: ${range}${g.house ? ' (or 1 vs house)' : ''} — you picked ${paths.length}.`);
+      return;
+    }
   } else {
     if (!wild && !dilemma) { alert(t('fld_need_dilemma')); return; }
     if (paths.length < (wild ? 1 : 2)) { alert(t(wild ? 'fld_need_one' : 'fld_need_two')); return; }

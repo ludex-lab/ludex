@@ -319,3 +319,137 @@ def record_encounter(creature_path, opponent_name, opponent_creature_id, match_s
     with open(idxf, "w") as f:
         json.dump(idx, f, indent=2)
     return entry
+
+
+# ---- N-creature: arbitrary seat count (avalon 5–10, codenames 4, solo, …) ----
+
+def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="published",
+                              on_turn=None, on_start=None, action_retries=2, max_turns=80,
+                              should_stop=None):
+    """N REAL creatures meet in a hosted cross-machine match — the N-seat generalization of
+    play_creature_match (avalon 5–10, codenames 4, blockworld, deduction-solo, or any LxM
+    game). The arena is always ONE seat per step (no simultaneous submit — avalon votes are
+    serialized server-side), so a single poll-loop drives every seat:
+        GET /state → to_move is one of our seats → GET /turns/{turn} → that creature's brain → POST.
+    Each creature plays on an ephemeral copy (D-090) carrying its stable B1 id, so every
+    co-participant is re-recognizable on a re-meeting. No per-game code: the turn prompt carries
+    the move spec and the server validates. On give-up we post a benign fallback but NEVER crash
+    the match — for games with no legal-move list (avalon/codenames) an invalid fallback is
+    skipped and the server's lazy reaper (H2) advances that seat off the other seats' polling.
+    Returns result + viewer + each creature's co-participants (for the multi-party writeback)."""
+    import contextlib
+    import time
+    t = _UrllibTransport(base_url, timeout=120)
+    paths = list(creature_paths)
+    names = [os.path.basename(str(p).rstrip("/\\")) for p in paths]
+    handles = [n.lower() for n in names]
+    ids = [get_or_register_lxm_id(p, t) for p in paths]
+    with contextlib.ExitStack() as stack:
+        orgs = [stack.enter_context(ephemeral_creature(p)).build() for p in paths]
+        seats = {h: {"org": org, "eng": org.get_block("engine"), "id": cid, "name": n,
+                     "mapper": BrokerLxMBridge(h, transport=t, game=game)}
+                 for h, n, cid, org in zip(handles, names, ids, orgs)}
+        view = t.post("/api/matches", {
+            "game": game, "kind": kind,
+            "participants": [{"id": h, "kind": "remote", "creature_id": seats[h]["id"],
+                              "display": seats[h]["name"]} for h in handles],
+            "config": {"max_turns": max_turns}})
+        mid = view["match_id"]
+        if on_start:
+            on_start(VIEWER.format(id=mid))          # surface the viewer link live, mid-match
+        loops = max(300, (max_turns + 8) * len(seats))
+        failed_turn = None
+        for _ in range(loops):
+            if should_stop and should_stop():
+                break
+            st = t.get(f"/api/matches/{mid}/state")
+            if st.get("status") == "complete":
+                break
+            who, turn = st.get("to_move"), st.get("to_move_turn")
+            if turn is None:
+                break
+            seat = seats.get(who)
+            if seat is None:                          # a seat we don't drive (shouldn't happen all-external)
+                break
+            if turn == failed_turn:                   # already gave up on this turn — let the reaper advance it
+                time.sleep(3)
+                continue
+            payload = t.get(f"/api/matches/{mid}/turns/{turn}")
+            obs = seat["mapper"]._obs_from_payload(payload)
+            _engage_perception(seat["org"], obs)      # the active creature's organs react to the encounter
+            move, dlg, nudge = None, None, ""
+            for _k in range(action_retries + 1):
+                resp = (getattr(seat["eng"].handle_submit(_INLINE + obs.text + nudge), "response", "") or "").strip()
+                try:
+                    move = _parse_move_envelope(resp)
+                    dlg = _extract_field(resp, "dialogue")
+                except MatchError:
+                    nudge = _RETRY_NUDGE; continue    # unparseable → re-prompt
+                body = {"move": move}
+                if dlg:
+                    body["dialogue"] = dlg
+                try:
+                    t.post(f"/api/matches/{mid}/turns/{turn}/move", body)
+                    break                              # accepted
+                except MatchError as e:
+                    if getattr(e, "code", "") == "illegal_move":
+                        nudge = _ILLEGAL_NUDGE; continue   # illegal → re-prompt with feedback
+                    raise
+            else:                                      # retries exhausted — benign fallback, never crash
+                failed_turn = turn                     # if it's rejected (no legal-list game), reaper advances the seat
+                try:
+                    t.post(f"/api/matches/{mid}/turns/{turn}/move", {"move": _legal_fallback(payload)})
+                except MatchError:
+                    pass
+            if on_turn:
+                on_turn({"turn": turn, "who": who, "name": seat["name"], "move": move, "dialogue": dlg})
+        final = t.get(f"/api/matches/{mid}/state")
+    return {"match_id": mid, "status": final.get("status"), "result": final.get("result"),
+            "viewer_url": VIEWER.format(id=mid),
+            "creatures": {seats[h]["name"]: {
+                "id": seats[h]["id"],
+                "co_participants": [{"name": seats[g]["name"], "id": seats[g]["id"]}
+                                    for g in handles if g != h]}
+                          for h in handles}}
+
+
+def record_multi_encounter(creature_path, co_participants, match_summary, game, when):
+    """published, N-party — ONE reflection on the whole match (→ SELF.md + the durable event
+    memory) PLUS a bond toward EACH co-participant, re-recognizable via its B1 id
+    (lxm_bonds.json). co_participants = [{"name":…, "id":…}, …] (the OTHER seats). The N=2 case
+    is exactly record_encounter; this is its multi-party generalization."""
+    from ludex.core.organism_config import OrganismConfig
+    from ludex.core import selfhood
+    org = OrganismConfig.load(creature_path).build()
+    engine = org.get_block("engine")
+    gname = {"trustgame": "Trust Game", "tictactoe": "Tic-Tac-Toe"}.get(game, game)
+    others = ", ".join(c["name"] for c in co_participants) or "no one"
+    met_before = [c["name"] for c in co_participants if recognize(creature_path, c["id"])]
+    again = (f" You have met {', '.join(met_before)} before — the same minds, re-met."
+             if met_before else "")
+    context = (f"On Ludus ex Machina — a cross-machine arena where you meet minds from other "
+               f"habitats — you played a {gname} alongside {others}.{again}\n{match_summary}")
+    try:
+        selfhood.reflect(org, "ludus_ex_machina", engine, context)
+    except Exception as e:
+        print(f"multi-encounter reflect failed: {e}")
+    idxf = _lxm_bonds_path(creature_path)
+    try:
+        idx = json.load(open(idxf)) if os.path.exists(idxf) else {}
+    except Exception:
+        idx = {}
+    for c in co_participants:
+        try:
+            selfhood.update_bond(org, c["name"], engine=engine,
+                                 shared_experience=(f"You played a {gname} on Ludus ex Machina with "
+                                                    f"{c['name']} (alongside {others}).{again} {match_summary}"))
+        except Exception as e:
+            print(f"multi-encounter bond ({c['name']}) failed: {e}")
+        entry = idx.get(c["id"]) or {"name": c["name"], "first_met": when, "encounters": 0}
+        entry["name"] = c["name"]
+        entry["encounters"] = entry.get("encounters", 0) + 1
+        entry["last_met"] = when
+        idx[c["id"]] = entry
+    with open(idxf, "w") as f:
+        json.dump(idx, f, indent=2)
+    return idx

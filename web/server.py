@@ -1000,7 +1000,41 @@ def _lxm_friendly_error(exc):
     return ("Something interrupted the match on the arena. Please try again in a moment.", "error")
 
 
-_LXM_GAME_NAMES = {"trustgame": "Trust Game", "tictactoe": "Tic-Tac-Toe"}
+_LXM_GAME_NAMES = {"trustgame": "Trust Game", "tictactoe": "Tic-Tac-Toe", "chess": "Chess",
+                   "poker": "Poker", "avalon": "Avalon", "codenames": "Codenames",
+                   "blockworld": "Blockworld", "deduction": "Deduction"}
+
+# The arena's game roster with player ranges — fetched live (GET /api/games),
+# cached, with a static fallback so the Field still works on a cold start.
+_LXM_FALLBACK_GAMES = [
+    {"id": "tictactoe", "min_players": 2, "max_players": 2},
+    {"id": "chess", "min_players": 2, "max_players": 2},
+    {"id": "trustgame", "min_players": 2, "max_players": 2},
+    {"id": "poker", "min_players": 2, "max_players": 6},
+    {"id": "codenames", "min_players": 4, "max_players": 4},
+    {"id": "avalon", "min_players": 5, "max_players": 10},
+    {"id": "deduction", "min_players": 1, "max_players": 1},
+    {"id": "blockworld", "min_players": 1, "max_players": 8},
+]
+_LXM_GAMES_CACHE = {"at": 0.0, "games": None}
+
+
+def _lxm_games():
+    """The LxM arena's playable games + player ranges — [{id, min_players, max_players}].
+    Cached 5 min; falls back to the static set when the arena is unreachable (cold start)."""
+    import urllib.request
+    from ludex.bridges.hosted_match import ONRENDER
+    if _LXM_GAMES_CACHE["games"] and time.time() - _LXM_GAMES_CACHE["at"] < 300:
+        return _LXM_GAMES_CACHE["games"]
+    try:
+        with urllib.request.urlopen(ONRENDER + "/api/games", timeout=20) as r:
+            games = json.loads(r.read().decode())
+        if isinstance(games, list) and games:
+            _LXM_GAMES_CACHE.update(at=time.time(), games=games)
+            return games
+    except Exception:
+        pass
+    return _LXM_GAMES_CACHE["games"] or _LXM_FALLBACK_GAMES
 
 
 def _lxm_aftermath(sess, creature_path, game, field):
@@ -1292,6 +1326,58 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
         _save_field_session(sess)   # persist for history (survives restart)
 
 
+def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str):
+    """N creatures meet on the hosted LxM arena (D-089 §5, B1) — the N-seat generalization of
+    _run_lxm_creature_match (avalon, codenames, blockworld, deduction-solo, …). Each plays on
+    an ephemeral copy (D-090); on a `published` match each remembers it (a reflection + a bond
+    toward every co-participant, re-recognizable via its stable B1 id)."""
+    import time as _time
+    from ludex.bridges.hosted_match import play_multi_creature_match, record_multi_encounter
+    sess = field_sessions[sid]
+    names = [os.path.basename(str(p).rstrip("/\\")) for p in creature_paths]
+    try:
+        max_turns = {"avalon": 120, "codenames": 60, "blockworld": 40}.get(game, 30)
+        field = LxMField(names[0]); field.participant_names = list(names)
+        sess["field"] = field
+        sess["entered"] = list(names); sess["building"] = ""
+        sess["status"] = "running"; sess["building"] = "the Ludus ex Machina arena"; sess["thinking"] = ""
+
+        def on_turn(rec):
+            field.add_turn({"turn": rec.get("turn"), "who": rec.get("name"),
+                            "move": rec.get("move"), "dialogue": rec.get("dialogue")})
+            sess["thinking"] = rec.get("name")
+
+        result = play_multi_creature_match(creature_paths, game=game, kind=kind, max_turns=max_turns,
+                                           on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u, building=""),
+                                           should_stop=lambda: sess.get("stop"))
+        field.result = result.get("result")
+        field.viewer_url = result.get("viewer_url")
+        sess["result"] = result.get("result")
+        sess["viewer_url"] = result.get("viewer_url")
+        sess["scores"] = (result.get("result") or {}).get("scores")
+        if sess.get("stop"):
+            sess["status"] = "stopped"
+        else:
+            if kind == "published":      # each creature remembers the match (reflection + per-peer B1 bond)
+                creatures = result.get("creatures", {})
+                summary = (result.get("result") or {}).get("summary", "")
+                when = _time.strftime("%Y-%m-%d")
+                sess["status"] = "reflecting"
+                for path, name in zip(creature_paths, names):
+                    co = creatures.get(name, {}).get("co_participants", [])
+                    sess["aftermath"] = f"reflect:{name}"
+                    record_multi_encounter(path, co, summary, game, when)
+                sess["aftermath"] = ""
+            sess["status"] = "done"
+    except Exception as e:
+        sess["status"] = "error"
+        sess["error"], sess["error_kind"] = _lxm_friendly_error(e); sess["error_detail"] = str(e)
+        print(f"[lxm] multi match error: {e}")
+    finally:
+        sess["thinking"] = ""; sess["building"] = ""
+        _save_field_session(sess)
+
+
 class FieldStartRequest(BaseModel):
     field: str = "council"
     dilemma: str = ""
@@ -1332,19 +1418,33 @@ async def lxm_warm():
     return {"ok": True}
 
 
+@app.get("/api/lxm/games")
+async def lxm_games():
+    """The arena's playable games + player ranges (live, cached) for the Field roster.
+    Each: {id, name, min, max} — the frontend renders a card per game and validates the
+    admitted-creature count against [min, max]."""
+    from ludex.bridges.hosted_match import HOUSE_BOTS
+    return {"games": [{"id": g["id"], "name": _LXM_GAME_NAMES.get(g["id"], g["id"]),
+                       "min": g.get("min_players", 2), "max": g.get("max_players", 2),
+                       "house": g["id"] in HOUSE_BOTS}
+                      for g in _lxm_games()]}
+
+
 @app.post("/api/field/start")
 async def field_start(req: FieldStartRequest):
     if req.field == "lxm":
-        ext = {a["id"]: a for a in FIELD_REGISTRY.get("external", [])}.get("lxm")
-        if not ext:
-            return {"error": "The LxM arena is not available."}
-        if req.game not in {g["id"] for g in ext["games"]}:
+        from ludex.bridges.hosted_match import HOUSE_BOTS   # games with a scripted house opponent
+        ranges = {g["id"]: (g.get("min_players", 2), g.get("max_players", 2)) for g in _lxm_games()}
+        if req.game not in ranges:
             return {"error": f"Game '{req.game}' is not in the LxM arena."}
-        if len(req.creatures) not in (1, 2):
-            return {"error": "Admit one creature (vs the house) or two (to meet each other)."}
-        from ludex.bridges.hosted_match import HOUSE_BOTS   # the games with a house opponent
-        if len(req.creatures) == 1 and req.game not in HOUSE_BOTS:
-            return {"error": "This game needs two creatures — there's no house opponent for it yet. Admit a second creature."}
+        gmin, gmax = ranges[req.game]
+        n = len(req.creatures)
+        has_house = req.game in HOUSE_BOTS
+        allow_min = 1 if has_house else gmin     # a house-bot game can be played solo vs the house
+        if n < allow_min or n > gmax:
+            need = f"{gmin}" if gmin == gmax else f"{gmin}–{gmax}"
+            extra = " (or 1 vs the house)" if has_house else ""
+            return {"error": f"'{req.game}' needs {need} creatures{extra} — you admitted {n}."}
         import threading
         sid = f"f{int(time.time() * 1000) % 1000000}"
         names = " vs ".join(os.path.basename(str(p).rstrip("/\\")) for p in req.creatures)
@@ -1353,12 +1453,15 @@ async def field_start(req: FieldStartRequest):
                                "game": req.game, "kind": req.kind, "entered": [], "building": "",
                                "thinking": "", "stop": False, "started": time.time(),
                                "mediator": "", "aftermath": "", "tick": ""}
-        if len(req.creatures) == 2:
+        if n == 1 and has_house:
+            threading.Thread(target=_run_lxm_match_bg,
+                             args=(sid, req.game, req.creatures[0], req.kind), daemon=True).start()
+        elif n == 2:
             threading.Thread(target=_run_lxm_creature_match,
                              args=(sid, req.game, req.creatures, req.kind), daemon=True).start()
         else:
-            threading.Thread(target=_run_lxm_match_bg,
-                             args=(sid, req.game, req.creatures[0], req.kind), daemon=True).start()
+            threading.Thread(target=_run_lxm_multi_match_bg,
+                             args=(sid, req.game, req.creatures, req.kind), daemon=True).start()
         return {"session_id": sid, "status": "starting"}
     if req.field not in ("council", "forum", "wilderness"):
         return {"error": f"Field '{req.field}' is not supported yet."}
