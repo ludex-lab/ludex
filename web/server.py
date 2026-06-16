@@ -860,9 +860,7 @@ FIELD_REGISTRY = {
         {"id": "lxm", "name": "Ludus ex Machina", "impl": True, "viewer": "lxm",
          "note": "A cross-machine match on the hosted LxM arena — your creature plays a real game, you watch the replay, it reflects.",
          "games": [{"id": "trustgame", "name": "Trust Game"},
-                   {"id": "tictactoe", "name": "Tic-Tac-Toe"},
-                   {"id": "chess", "name": "Chess"},
-                   {"id": "poker", "name": "Poker (heads-up)"}]},
+                   {"id": "tictactoe", "name": "Tic-Tac-Toe"}]},
     ],
 }
 
@@ -1062,6 +1060,7 @@ def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
     except Exception as e:
         sess["status"] = "error"
         sess["error"], sess["error_kind"] = _lxm_friendly_error(e); sess["error_detail"] = str(e)
+        print(f"[lxm] match error: {e}")
     finally:
         sess["thinking"] = ""; sess["building"] = ""
         _save_field_session(sess)
@@ -1118,6 +1117,7 @@ def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str
     except Exception as e:
         sess["status"] = "error"
         sess["error"], sess["error_kind"] = _lxm_friendly_error(e); sess["error_detail"] = str(e)
+        print(f"[lxm] match error: {e}")
     finally:
         sess["thinking"] = ""; sess["building"] = ""
         _save_field_session(sess)
