@@ -1046,7 +1046,8 @@ def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
             sess["thinking"] = rec.get("who")
 
         result = play_hosted_match(creature_path, opp, game=game, kind=kind, max_turns=max_turns,
-                                   on_turn=on_turn, should_stop=lambda: sess.get("stop"))
+                                   on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u),
+                                   should_stop=lambda: sess.get("stop"))
         field.result = result.get("result")
         field.viewer_url = result.get("viewer_url")
         sess["result"] = result.get("result")
@@ -1090,7 +1091,8 @@ def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str
             sess["thinking"] = rec.get("name")
 
         result = play_creature_match(pa, pb, game=game, kind=kind, max_turns=max_turns,
-                                     on_turn=on_turn, should_stop=lambda: sess.get("stop"))
+                                     on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u),
+                                     should_stop=lambda: sess.get("stop"))
         field.result = result.get("result")
         field.viewer_url = result.get("viewer_url")
         sess["result"] = result.get("result")

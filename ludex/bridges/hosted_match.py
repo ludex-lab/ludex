@@ -34,7 +34,7 @@ _INLINE = "Reply with ONLY your move JSON inline in your response. Do not write 
 
 def play_hosted_match(creature_path, opponent_move, *, game, base_url=ONRENDER,
                       kind="practice", my_id=None, opp_id="house",
-                      on_turn=None, action_retries=2, max_turns=60, should_stop=None):
+                      on_turn=None, on_start=None, action_retries=2, max_turns=60, should_stop=None):
     """Drive `creature_path` (ephemeral) vs `opponent_move` in a hosted `game`
     match on `base_url`. `opponent_move(payload) -> move dict` is the opponent's
     policy. Returns the result envelope + the viewer deep-link."""
@@ -52,6 +52,8 @@ def play_hosted_match(creature_path, opponent_move, *, game, base_url=ONRENDER,
                              {"id": opp_id, "kind": "remote", "display": opp_id.title()}],
             "config": {"max_turns": max_turns}})
         mid = view["match_id"]
+        if on_start:
+            on_start(VIEWER.format(id=mid))      # surface the viewer link live, mid-match
         turns = 0
         for _ in range(max_turns * 2 + 8):
             if should_stop and should_stop():
@@ -179,7 +181,7 @@ def get_or_register_lxm_id(creature_path, transport, display_name=None):
 
 
 def play_creature_match(path_a, path_b, *, game, base_url=ONRENDER, kind="published",
-                        on_turn=None, action_retries=2, max_turns=12, should_stop=None):
+                        on_turn=None, on_start=None, action_retries=2, max_turns=12, should_stop=None):
     """Two REAL creatures meet in a hosted cross-machine match — each plays via its own
     brain + organs (on an ephemeral copy, D-090), each carrying its stable B1 creature_id
     so it can be re-recognized on a re-meeting. The deployed server is all-remote, so this
@@ -208,6 +210,8 @@ def play_creature_match(path_a, path_b, *, game, base_url=ONRENDER, kind="publis
                 {"id": hb, "kind": "remote", "creature_id": id_b, "display": name_b}],
             "config": {"max_turns": max_turns}})
         mid = view["match_id"]
+        if on_start:
+            on_start(VIEWER.format(id=mid))      # surface the viewer link live, mid-match
         for _ in range(max_turns * 2 + 8):
             if should_stop and should_stop():
                 break
