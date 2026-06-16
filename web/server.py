@@ -925,8 +925,8 @@ def _count_turns(records) -> int:
 
 def _save_field_session(sess):
     """Persist a finished session to disk so it survives server restarts (history)."""
-    if sess.get("status") == "error":
-        return   # don't keep failed matches — they clutter the list and break the view on click
+    if sess.get("status") in ("error", "stopped"):
+        return   # don't keep failed/aborted matches — incomplete sessions clutter the list and break the view on click
     if sess.get("field_kind") == "lxm" and sess.get("kind") == "practice":
         return   # practice = ephemeral, nothing kept — only published matches reach the history
     try:
@@ -1496,6 +1496,8 @@ async def field_sessions_list():
             try:
                 with open(os.path.join(FIELD_LOG, fn), encoding="utf-8") as f:
                     d = json.load(f)
+                if d.get("status") in ("error", "stopped"):
+                    continue                          # incomplete — never list an aborted session
                 out[d.get("sid", fn[:-5])] = {
                     "sid": d.get("sid", fn[:-5]), "status": d.get("status"), "dilemma": d.get("dilemma", ""),
                     "field": d.get("field_kind", "council"),
@@ -1506,6 +1508,8 @@ async def field_sessions_list():
     except FileNotFoundError:
         pass
     for sid, sess in field_sessions.items():    # live overrides disk
+        if sess.get("status") in ("error", "stopped"):
+            continue                                  # aborted/incomplete — don't surface in history
         try:
             field = sess.get("field")
             out[sid] = {"sid": sid, "status": sess.get("status"), "dilemma": sess.get("dilemma", ""),
@@ -1683,8 +1687,12 @@ async def field_stop(sid: str):
     if not sess:
         return {"error": "Session not found"}
     sess["stop"] = True
-    if sess.get("status") in ("starting", "running"):
-        sess["status"] = "stopping"
+    # Mark terminal IMMEDIATELY — don't leave the user staring at "stopping" while a
+    # possibly-hung brain call returns. The background daemon thread sees `stop` at its next
+    # boundary and exits (or dies on server restart); it plays on ephemeral copies and writes
+    # nothing for a stopped match (the writeback is gated on `stop`), so abandoning it is safe.
+    if sess.get("status") in ("starting", "running", "stopping", "reflecting"):
+        sess["status"] = "stopped"
     return {"status": sess.get("status")}
 
 

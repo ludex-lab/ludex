@@ -372,6 +372,8 @@ def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="
             if seat is None:                          # a seat we don't drive (shouldn't happen all-external)
                 break
             if turn == failed_turn:                   # already gave up on this turn — let the reaper advance it
+                if should_stop and should_stop():
+                    break
                 time.sleep(3)
                 continue
             payload = t.get(f"/api/matches/{mid}/turns/{turn}")
@@ -379,6 +381,8 @@ def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="
             _engage_perception(seat["org"], obs)      # the active creature's organs react to the encounter
             move, dlg, nudge = None, None, ""
             for _k in range(action_retries + 1):
+                if should_stop and should_stop():
+                    break                              # honor Stop between brain retries, not only between turns
                 resp = (getattr(seat["eng"].handle_submit(_INLINE + obs.text + nudge), "response", "") or "").strip()
                 try:
                     move = _parse_move_envelope(resp)
@@ -401,6 +405,8 @@ def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="
                     t.post(f"/api/matches/{mid}/turns/{turn}/move", {"move": _legal_fallback(payload)})
                 except MatchError:
                     pass
+            if should_stop and should_stop():
+                break                                  # Stop pressed mid-turn → exit promptly, skip the rest
             if on_turn:
                 on_turn({"turn": turn, "who": who, "name": seat["name"], "move": move, "dialogue": dlg})
         final = t.get(f"/api/matches/{mid}/state")
