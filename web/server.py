@@ -915,6 +915,8 @@ def _count_turns(records) -> int:
 
 def _save_field_session(sess):
     """Persist a finished session to disk so it survives server restarts (history)."""
+    if sess.get("status") == "error":
+        return   # don't keep failed matches — they clutter the list and break the view on click
     try:
         os.makedirs(FIELD_LOG, exist_ok=True)
         field = sess.get("field")
