@@ -30,6 +30,8 @@ ONRENDER = "https://lxm-api.onrender.com"
 VIEWER = "https://jihoonjeong.github.io/ludus-ex-machina/viewer/#/match/{id}"
 
 _INLINE = "Reply with ONLY your move JSON inline in your response. Do not write files.\n\n"
+_ILLEGAL_NUDGE = ("\n\nYour previous move was REJECTED as illegal. Choose a DIFFERENT move that is "
+                  "strictly legal in the current position (use the legal options listed above).")
 
 
 def play_hosted_match(creature_path, opponent_move, *, game, base_url=ONRENDER,
@@ -227,22 +229,27 @@ def play_creature_match(path_a, path_b, *, game, base_url=ONRENDER, kind="publis
                 break
             obs = seat["mapper"]._obs_from_payload(payload)
             _engage_perception(seat["org"], obs)        # BOTH creatures' organs fire on the encounter
-            move, dlg = None, None
+            move, dlg, nudge = None, None, ""
             for k in range(action_retries + 1):
-                prompt = obs.text if k == 0 else obs.text + _RETRY_NUDGE
-                resp = (getattr(seat["eng"].handle_submit(_INLINE + prompt), "response", "") or "").strip()
+                resp = (getattr(seat["eng"].handle_submit(_INLINE + obs.text + nudge), "response", "") or "").strip()
                 try:
                     move = _parse_move_envelope(resp)
                     dlg = _extract_field(resp, "dialogue")
-                    break
                 except MatchError:
-                    continue
-            if move is None:
+                    nudge = _RETRY_NUDGE; continue            # unparseable → re-prompt
+                body = {"move": move}
+                if dlg:
+                    body["dialogue"] = dlg
+                try:
+                    t.post(f"/api/matches/{mid}/turns/{turn}/move", body)
+                    break                                      # accepted
+                except MatchError as e:
+                    if getattr(e, "code", "") == "illegal_move":
+                        nudge = _ILLEGAL_NUDGE; continue       # illegal → re-prompt with feedback
+                    raise
+            else:                                              # all retries failed → safe legal fallback
                 move = _legal_fallback(payload)
-            body = {"move": move}
-            if dlg:
-                body["dialogue"] = dlg
-            t.post(f"/api/matches/{mid}/turns/{turn}/move", body)
+                t.post(f"/api/matches/{mid}/turns/{turn}/move", {"move": move})
             if on_turn:
                 on_turn({"turn": turn, "who": who, "name": seat["name"], "move": move, "dialogue": dlg})
         final = t.get(f"/api/matches/{mid}/state")

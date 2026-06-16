@@ -860,7 +860,9 @@ FIELD_REGISTRY = {
         {"id": "lxm", "name": "Ludus ex Machina", "impl": True, "viewer": "lxm",
          "note": "A cross-machine match on the hosted LxM arena — your creature plays a real game, you watch the replay, it reflects.",
          "games": [{"id": "trustgame", "name": "Trust Game"},
-                   {"id": "tictactoe", "name": "Tic-Tac-Toe"}]},
+                   {"id": "tictactoe", "name": "Tic-Tac-Toe"},
+                   {"id": "chess", "name": "Chess"},
+                   {"id": "poker", "name": "Poker (heads-up)"}]},
     ],
 }
 
