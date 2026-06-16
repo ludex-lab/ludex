@@ -860,7 +860,9 @@ FIELD_REGISTRY = {
         {"id": "lxm", "name": "Ludus ex Machina", "impl": True, "viewer": "lxm",
          "note": "A cross-machine match on the hosted LxM arena — your creature plays a real game, you watch the replay, it reflects.",
          "games": [{"id": "trustgame", "name": "Trust Game"},
-                   {"id": "tictactoe", "name": "Tic-Tac-Toe"}]},
+                   {"id": "tictactoe", "name": "Tic-Tac-Toe"},
+                   {"id": "chess", "name": "Chess"},
+                   {"id": "poker", "name": "Poker (heads-up)"}]},
     ],
 }
 
@@ -1306,6 +1308,9 @@ async def field_start(req: FieldStartRequest):
             return {"error": f"Game '{req.game}' is not in the LxM arena."}
         if len(req.creatures) not in (1, 2):
             return {"error": "Admit one creature (vs the house) or two (to meet each other)."}
+        from ludex.bridges.hosted_match import HOUSE_BOTS   # the games with a house opponent
+        if len(req.creatures) == 1 and req.game not in HOUSE_BOTS:
+            return {"error": "This game needs two creatures — there's no house opponent for it yet. Admit a second creature."}
         import threading
         sid = f"f{int(time.time() * 1000) % 1000000}"
         names = " vs ".join(os.path.basename(str(p).rstrip("/\\")) for p in req.creatures)
