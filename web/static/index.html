@@ -925,6 +925,8 @@ async function renderFieldPicker() {
 }
 async function fieldPick(field) {
   _fieldKind = (field === 'forum' || field === 'wilderness' || field === 'lxm') ? field : 'council';
+  if (_fieldKind === 'lxm') fetch('/api/lxm/warm', { method: 'POST' }).catch(() => {});   // pre-warm the arena while they set up
+
   _fieldShow('setup');
   _applyFieldKind();
   await _loadFieldSetup();

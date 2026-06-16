@@ -1039,14 +1039,14 @@ def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
         field = LxMField(name0)
         sess["field"] = field
         sess["entered"] = [name0]; sess["building"] = ""
-        sess["status"] = "running"; sess["thinking"] = name0
+        sess["status"] = "running"; sess["building"] = "the Ludus ex Machina arena"; sess["thinking"] = ""
 
         def on_turn(rec):
             field.add_turn(rec)
             sess["thinking"] = rec.get("who")
 
         result = play_hosted_match(creature_path, opp, game=game, kind=kind, max_turns=max_turns,
-                                   on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u),
+                                   on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u, building=""),
                                    should_stop=lambda: sess.get("stop"))
         field.result = result.get("result")
         field.viewer_url = result.get("viewer_url")
@@ -1083,7 +1083,7 @@ def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str
         field = LxMField(na, nb)
         sess["field"] = field
         sess["entered"] = [na, nb]; sess["building"] = ""
-        sess["status"] = "running"; sess["thinking"] = na
+        sess["status"] = "running"; sess["building"] = "the Ludus ex Machina arena"; sess["thinking"] = ""
 
         def on_turn(rec):
             field.add_turn({"turn": rec.get("turn"), "who": rec.get("name"),
@@ -1091,7 +1091,7 @@ def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str
             sess["thinking"] = rec.get("name")
 
         result = play_creature_match(pa, pb, game=game, kind=kind, max_turns=max_turns,
-                                     on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u),
+                                     on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u, building=""),
                                      should_stop=lambda: sess.get("stop"))
         field.result = result.get("result")
         field.viewer_url = result.get("viewer_url")
@@ -1298,6 +1298,24 @@ async def fields_registry():
     """The field taxonomy the Field tab renders — the internal fields.
     Declarative; add a field by editing FIELD_REGISTRY."""
     return FIELD_REGISTRY
+
+
+@app.post("/api/lxm/warm")
+async def lxm_warm():
+    """Wake the hosted LxM arena in the background (Render free idles when quiet) so a match
+    the user is about to start doesn't wait ~30s for a cold start. Fired when the Field LxM
+    setup opens — by the time they pick a game + creatures, the arena is warm."""
+    import threading
+    import urllib.request
+    from ludex.bridges.hosted_match import ONRENDER
+
+    def _ping():
+        try:
+            urllib.request.urlopen(ONRENDER + "/api/games", timeout=60)
+        except Exception:
+            pass
+    threading.Thread(target=_ping, daemon=True).start()
+    return {"ok": True}
 
 
 @app.post("/api/field/start")
