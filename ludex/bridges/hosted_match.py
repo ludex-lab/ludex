@@ -296,9 +296,9 @@ def record_encounter(creature_path, opponent_name, opponent_creature_id, match_s
     gname = {"trustgame": "Trust Game", "tictactoe": "Tic-Tac-Toe"}.get(game, game)
     again = (f" You have met {opponent_name} before ({prior.get('encounters')}x) — this is the "
              f"SAME mind, re-met." if prior else "")
-    context = (f"On Ludus ex Machina — a cross-machine arena where you meet minds from other "
-               f"habitats — you played a {gname} against {opponent_name}, another creature."
-               f"{again}\n{match_summary}")
+    context = (f"You played a {gname} against {opponent_name} (another creature) on Ludus ex Machina. "
+               f"{match_summary}{again} "
+               f"(Ludus ex Machina is a cross-machine arena where you meet minds from other habitats.)")
     try:
         selfhood.reflect(org, "ludus_ex_machina", engine, context)
     except Exception as e:
@@ -440,8 +440,11 @@ def record_multi_encounter(creature_path, co_participants, match_summary, game, 
     met_before = [c["name"] for c in co_participants if recognize(creature_path, c["id"])]
     again = (f" You have met {', '.join(met_before)} before — the same minds, re-met."
              if met_before else "")
-    context = (f"On Ludus ex Machina — a cross-machine arena where you meet minds from other "
-               f"habitats — you played a {gname} alongside {others}.{again}\n{match_summary}")
+    # Fact FIRST (game · who · outcome · re-meeting), framing LAST — so the durable event
+    # memory survives a small-tier recall truncation (recall_chars=120–150) with its
+    # specifics intact, not just the boilerplate preamble. (B-1, 2026-06-16.)
+    context = (f"You played a {gname} with {others} on Ludus ex Machina. {match_summary}{again} "
+               f"(Ludus ex Machina is a cross-machine arena where you meet minds from other habitats.)")
     try:
         selfhood.reflect(org, "ludus_ex_machina", engine, context)
     except Exception as e:

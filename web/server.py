@@ -1051,8 +1051,8 @@ def _lxm_aftermath(sess, creature_path, game, field):
     summary = field.result.get("summary", "") if isinstance(field.result, dict) else ""
     moves = "\n".join(f"  [{r.get('round')}] {r.get('participant')}: {r.get('content')}"
                       for r in field.transcript_records)
-    context = (f"On Ludus ex Machina — a cross-machine arena where you meet minds from other "
-               f"habitats — you played a {gname} against {opp}.\n{summary}\n\nMove by move:\n{moves}")
+    context = (f"You played a {gname} against {opp} on Ludus ex Machina. {summary} "
+               f"(A cross-machine arena where you meet minds from other habitats.)\n\nMove by move:\n{moves}")
     sess["status"] = "reflecting"
     org = _build_creature_org(creature_path)        # the LIVE creature, writable — intended accumulation, as in Council
     engine = org.get_block("engine")
