@@ -236,6 +236,14 @@ async def version():
     return {"sha": (sha or "")[:7], "started": _START_TS}
 
 
+@app.get("/api/health")
+async def health():
+    """Liveness ping for the web header's connection light. Cheap, no side
+    effects — the frontend polls this on a heartbeat so the user sees red the
+    moment the local server goes down."""
+    return {"ok": True}
+
+
 @app.get("/api/update-check")
 async def update_check(force: bool = False):
     """Is this clone behind main? Compares local HEAD to ludex-lab/ludex via the

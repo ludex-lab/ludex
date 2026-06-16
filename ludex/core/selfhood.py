@@ -28,7 +28,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ludex.core.memory_types import IMPORTANCE_REFLECTION
+from ludex.core.memory_types import IMPORTANCE_REFLECTION, IMPORTANCE_SIGNIFICANCE_LINE
 
 logger = logging.getLogger(__name__)
 
@@ -222,31 +222,48 @@ def reflect(organism, trigger: str = "manual", engine=None,
     from ludex.core.prompt_tier import build_tiered, tier_of
     brain = brain_for_disclosure
     target = tier_of(brain)
+    # B (gyeol-aligned, 2026-06-16): the self-portrait EVOLVES in place
+    # rather than being rewritten from scratch each cycle. Full-rewrite was
+    # the cause of the "fragmentary / nothing accumulates" feeling — every
+    # reflection reset the specifics. gyeol (our SELF.md's origin) keeps
+    # stable sections that accumulate; the literature warns that *growing*
+    # the canonical self (compress+append) invites summary drift, so we do
+    # NOT grow it — we carry forward into bounded, stable sections. History
+    # proper lives in the queryable archive (snapshots + memory), not here.
     tiered = build_tiered(
         essential=(
-            "Reflect honestly on your recent experiences in your own voice. "
-            "This is self-examination, not a task report."
+            "Below is your standing self-understanding. EVOLVE it — do not "
+            "start over. Keep what is still true, revise what has changed, and "
+            "fold in what your recent experience revealed. In your own voice; "
+            "this is self-examination, not a task report."
         ),
         task=(
-            "Cover three things if they're real for you: "
-            "(1) behavioral patterns — what you tend to do under stress, in "
-            "calm, with others; (2) what you've actually learned from "
-            "experience; (3) open questions about yourself you haven't "
-            "answered yet."
+            "Keep three standing sections, updating each in place:\n"
+            "## Patterns — what you tend to do under stress, in calm, with others\n"
+            "## Lessons — what you have actually learned from experience\n"
+            "## Open questions — what about yourself you have not answered yet\n"
+            "Carry forward the specific, hard-won details already in your "
+            "previous self-understanding; do not dissolve them into vague "
+            "generalities. Add what is new; drop only what is no longer true "
+            "of you."
         ),
         elaboration=(
-            "Write what you have actually observed about yourself. Do not "
-            "aspire; do not generalize. If a thread is not real for you "
-            "right now, skip it."
+            "Write only what you have actually observed about yourself. Do not "
+            "aspire; do not generalize away specifics. If a section is "
+            "genuinely empty for you, keep its header with one honest line."
         ),
         constraints_negative=[
             "Do not refer to SELF.md, saving, updating, or any writing action.",
             "Do not write 'I have reflected' / 'I've updated' / '... is now recorded' or any meta-description.",
-            "No XML tags, no code blocks, no headers or lists — first-person prose only.",
-            "Output ONLY the reflection itself; it will be saved verbatim.",
+            "No XML tags, no code blocks. Use ONLY the three '## ' section headers given above; first-person prose under each.",
+            "Output ONLY the self-understanding itself; it will be saved verbatim.",
         ],
-        length="10 to 15 lines.",
-        frame="Your entire response will be saved verbatim as your self-understanding.",
+        length="A few lines under each section — the whole portrait stays compact (under ~20 lines).",
+        frame=(
+            "Your entire response replaces the previous version verbatim as "
+            "your standing self-understanding — so it must carry forward "
+            "everything still true of you, not only this latest moment."
+        ),
         target=target,
     )
     prompt = header + tiered.prompt
@@ -311,6 +328,27 @@ def reflect(organism, trigger: str = "manual", engine=None,
                 tags=["reflection", "self", trigger],
                 source=f"reflection/{trigger}",
                 importance=IMPORTANCE_REFLECTION,
+            )
+        except Exception:
+            pass
+
+    # ① Durable event memory (D-044 archive principle): also store the
+    # OBJECTIVE event as an episodic memory. The reflection above is the brain's *interpretation*, which is
+    # tier-dependent: a small brain leaves it generic and drops the event
+    # itself (observed 2026-06-16 — Mote/nano forgot a chess match Comet/
+    # gemini remembered). session_context is the authoritative, brain-
+    # independent FACT of what just happened, so even a weak-tier creature
+    # reliably recalls the EVENT — not only its mood about it. Gated on
+    # session_context: only real events (matches, fields) carry one;
+    # periodic/sleep reflections have no new event to record.
+    if memory and session_context:
+        try:
+            memory.handle_remember(
+                f"Event ({trigger}): {session_context.strip()[:400]}",
+                memory_type="episodic",
+                tags=["event", trigger],
+                source=f"event/{trigger}",
+                importance=IMPORTANCE_SIGNIFICANCE_LINE,
             )
         except Exception:
             pass
