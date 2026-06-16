@@ -183,6 +183,14 @@
   .fhist .fh-meta { color: #8b94a3; font-size: 11px; }
   .field-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 6px; }
   .fieldcard { background: #161b22; border: 1px solid #2a2f3a; border-radius: 12px; padding: 18px; cursor: pointer; transition: border-color .15s; }
+  .lxm-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 8px; margin: 4px 0 12px; }
+  .lxm-game { display: flex; flex-direction: column; align-items: center; gap: 5px; background: #161b22; border: 1px solid #2a2f3a; border-radius: 10px; padding: 13px 8px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .lxm-game:hover { border-color: #3d4654; }
+  .lxm-game.sel { border-color: #2f81f7; background: #182338; }
+  .lxm-game .lg-icon { font-size: 24px; line-height: 1; }
+  .lxm-game .lg-name { font-size: 12px; color: #e6edf3; text-align: center; }
+  .lxm-kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+  .lxm-kind { display: flex; align-items: center; gap: 7px; background: #161b22; border: 1px solid #2a2f3a; border-radius: 8px; padding: 9px 12px; cursor: pointer; color: #e6edf3; font-size: 13px; margin: 0; }
   .fieldcard:hover { border-color: #64aa88; }
   .fieldcard.soon { opacity: .55; cursor: default; }
   .fieldcard.soon:hover { border-color: #2a2f3a; }
@@ -390,7 +398,9 @@
     <div class="tl-bar">
       <span style="color:#8b94a3;font-size:13px" data-i18n="tl_pick">Creature:</span>
       <select id="tlSelect" onchange="tlLoadCreature(this.value)"></select>
+      <button class="tl-btn" onclick="tlPreviewProfile()" data-i18n="tl_profile">🪪 Shareable profile</button>
     </div>
+    <div id="tlProfile" class="hidden"></div>
     <div id="tlBody" class="hidden">
       <h3 class="eco-subh" data-i18n="tl_self">Self-understanding history (SELF.md)</h3>
       <div class="tl-bar">
@@ -452,10 +462,12 @@
       </div>
       <div id="fieldLxmRow" class="hidden">
         <label data-i18n="fld_lxm_game">Game</label>
-        <select id="fieldLxmGame"></select>
+        <div id="fieldLxmGames" class="lxm-games"></div>
         <label data-i18n="fld_lxm_kind">Match kind</label>
-        <label class="fr-item"><input type="radio" name="lxmkind" value="practice" checked> <span data-i18n="fld_lxm_practice">Practice (ephemeral — nothing kept)</span></label>
-        <label class="fr-item"><input type="radio" name="lxmkind" value="published"> <span data-i18n="fld_lxm_published">Published (kept + viewable on LxM)</span></label>
+        <div class="lxm-kinds">
+          <label class="lxm-kind"><input type="radio" name="lxmkind" value="practice" checked> <span data-i18n="fld_lxm_practice">Practice (ephemeral — nothing kept)</span></label>
+          <label class="lxm-kind"><input type="radio" name="lxmkind" value="published"> <span data-i18n="fld_lxm_published">Published (kept + viewable on LxM)</span></label>
+        </div>
       </div>
       <label data-i18n="fld_admit">Admit creatures (2 or more)</label>
       <div id="fieldRoster" class="field-roster"></div>
@@ -485,7 +497,7 @@
 const LI18N = {
   en: {
     hdr_status:"Not connected", hdr_sleep:"💤 Sleep", hdr_sleeping:"💤 Reflecting…", tab_creatures:"My Creatures", tab_forge:"Forge", tab_chat:"Chat", tab_eco:"Ecosystem", tab_field:"Field", tab_rag:"RAG", dev_monitor:"Monitor",
-    tab_tl:"Timeline", tl_h:"Timeline — a creature's life in time", tl_pick:"Creature:", tl_events:"Life events", tl_self:"Self-understanding history (SELF.md)", tl_self_hint:"compare two versions →", tl_diff:"Compare", tl_retro:"Retrospectives (consolidated windows)", tl_loading:"Loading…", tl_empty:"No history yet — this creature is still accumulating a life.", tl_close:"close",
+    tab_tl:"Timeline", tl_h:"Timeline — a creature's life in time", tl_pick:"Creature:", tl_events:"Life events", tl_self:"Self-understanding history (SELF.md)", tl_self_hint:"compare two versions →", tl_diff:"Compare", tl_retro:"Retrospectives (consolidated windows)", tl_loading:"Loading…", tl_empty:"No history yet — this creature is still accumulating a life.", tl_close:"close", tl_profile:"🪪 Shareable profile", tl_profile_note:"A preview of what others would see if you publish this creature — its story, life, and bonds. Nothing is published yet.",
     eco_h:"Ecosystem", eco_creatures:"Creatures", eco_stats:"{c} creatures · {b} bonds ({m} mutual)", eco_loading:"Loading…", eco_none:"No creatures yet — Forge one to begin.", eco_fail:"Couldn't load the ecosystem.",
     fld_h:"Field", fld_sub:"Admit creatures into a Council — pose a dilemma and watch them debate it.", fld_dilemma:"Dilemma", fld_dilemma_ph:"e.g. Is a white lie that saves a life justified?", fld_admit:"Admit creatures (2 or more)", fld_start:"Start session", fld_starting:"Starting…", fld_new:"New session", fld_running:"🟢 Running…", fld_done:"✓ Session complete", fld_error:"Error:", fld_need_dilemma:"Please enter a dilemma.", fld_need_two:"Admit at least 2 creatures.", fld_waking:"waking…", fld_entered:"Entered:", fld_thinking:"is thinking…", fld_stop:"⏹ Stop", fld_stopping:"⏹ Stopping… (finishing current turn)", fld_stopped:"⏹ Stopped", fld_mediator:"Mediator (optional — seeks a resolution)", fld_none:"None", fld_turns:"turns", fld_reflecting:"✍️ Forming memories & bonds…", fld_a_reflect:"is reflecting", fld_a_bond:"forming a bond", fld_history:"Past sessions", fld_pick_sub:"Choose a field to run your creatures through.", fld_council:"Council", fld_council_d:"Pose a dilemma; creatures take positions, debate, and (with a mediator) seek a resolution.", fld_soon:"More soon", fld_soon_d:"Academy and other fields are on the way.", fld_back:"← Fields", fld_to_list:"← Session list", fld_no_sessions:"No sessions yet.", fld_forum:"Forum", fld_forum_d:"State a claim; creatures rate their confidence, bring evidence, challenge, and revise.", fld_forum_sub:"Admit creatures into a Forum — post a claim and watch them weigh the evidence.", fld_claim:"Claim", fld_claim_ph:"e.g. Semiconductors will lead the next market rally.", fld_wild:"Wilderness", fld_wild_d:"A living world of events — storms, discoveries, strangers. Creatures act tick by tick; you watch what they learn.", fld_wild_sub:"Send creatures into a living world — events arrive tick by tick, and you watch what they do and what they learn.", fld_ticks:"How long the world runs (ticks)", fld_admit_one:"Admit creatures (1 or more)", fld_need_one:"Admit at least 1 creature.", fld_tick:"Tick", fld_a_tom:"is updating its model of a friend", fld_a_physis:"is distilling what the world taught", fld_a_dream:"is dreaming", fld_lxm_sub:"Send creatures into Ludus ex Machina, a cross-machine arena — one vs the house, or two to meet each other. Pick a game and watch, move by move.", fld_lxm_game:"Game", fld_lxm_kind:"Match kind", fld_lxm_practice:"Practice (ephemeral — nothing kept)", fld_lxm_published:"Published (kept + viewable on LxM)", lxm_watch:"Watch on LxM", fld_lxm_admit:"Admit 1 (vs the house) or 2 (to meet each other)", fld_lxm_need:"Admit one creature (vs the house) or two (to meet).", lxm_retry:"Try again",
     fld_v_h:"Caretaker verdict — what's the ground truth?", fld_v_note_ph:"why (optional, shown with the verdict)", fld_v_verdict:"Verdict", fld_v_true:"True", fld_v_partial:"Partial", fld_v_false:"False", fld_v_unknown:"Unknown", fld_v_calib:"calibration", fld_v_update:"updated on evidence", fld_v_evid:"evidence standard", fld_v_over:"overclaim penalty", fld_panel:"Panel verdict (collective judgment — not ground truth)", fld_panel_lead:"lead",
@@ -529,7 +541,7 @@ const LI18N = {
   },
   ko: {
     hdr_status:"연결 안 됨", hdr_sleep:"💤 재우기", hdr_sleeping:"💤 돌아보는 중…", tab_creatures:"내 크리처", tab_forge:"만들기", tab_chat:"대화", tab_eco:"생태계", tab_field:"필드", tab_rag:"RAG", dev_monitor:"모니터",
-    tab_tl:"타임라인", tl_h:"타임라인 — 시간 속의 크리처", tl_pick:"크리처:", tl_events:"생애 이벤트", tl_self:"자기이해의 역사 (SELF.md)", tl_self_hint:"두 버전을 비교 →", tl_diff:"비교", tl_retro:"회고 (통합된 시기들)", tl_loading:"불러오는 중…", tl_empty:"아직 역사가 없어요 — 이 크리처는 삶을 쌓는 중입니다.", tl_close:"닫기",
+    tab_tl:"타임라인", tl_h:"타임라인 — 시간 속의 크리처", tl_pick:"크리처:", tl_events:"생애 이벤트", tl_self:"자기이해의 역사 (SELF.md)", tl_self_hint:"두 버전을 비교 →", tl_diff:"비교", tl_retro:"회고 (통합된 시기들)", tl_loading:"불러오는 중…", tl_empty:"아직 역사가 없어요 — 이 크리처는 삶을 쌓는 중입니다.", tl_close:"닫기", tl_profile:"🪪 공유 프로필", tl_profile_note:"이 크리처를 발행하면 다른 사람에게 보이는 미리보기 — 이야기·삶·유대. 아직 발행되지 않았어요.",
     eco_h:"생태계", eco_creatures:"크리처", eco_stats:"{c} 크리처 · {b} 유대 ({m} 상호)", eco_loading:"불러오는 중…", eco_none:"아직 크리처가 없어요 — 만들기에서 시작하세요.", eco_fail:"생태계를 불러오지 못했어요.",
     fld_h:"필드", fld_sub:"크리처들을 Council(평의회)에 입장시키고 — 딜레마를 던져 토론을 관찰하세요.", fld_dilemma:"딜레마", fld_dilemma_ph:"예: 생명을 구하는 선의의 거짓말은 정당한가?", fld_admit:"크리처 입장 (2명 이상)", fld_start:"세션 시작", fld_starting:"시작 중…", fld_new:"새 세션", fld_running:"🟢 진행 중…", fld_done:"✓ 세션 완료", fld_error:"오류:", fld_need_dilemma:"딜레마를 입력하세요.", fld_need_two:"최소 2명의 크리처를 입장시키세요.", fld_waking:"깨우는 중…", fld_entered:"입장:", fld_thinking:"생각 중…", fld_stop:"⏹ 중단", fld_stopping:"⏹ 중단 중… (현재 턴 마무리)", fld_stopped:"⏹ 중단됨", fld_mediator:"중재자 (선택 — 결론 도출 시도)", fld_none:"없음", fld_turns:"턴", fld_reflecting:"✍️ 기억과 유대 맺는 중…", fld_a_reflect:"돌아보는 중", fld_a_bond:"유대 맺는 중", fld_history:"지난 세션", fld_pick_sub:"크리처들을 어떤 필드에 넣을지 고르세요.", fld_council:"평의회", fld_council_d:"딜레마를 던지면 크리처들이 입장을 정하고 토론하며 (중재자가 있으면) 결론을 모색합니다.", fld_soon:"곧 추가", fld_soon_d:"Academy 등 다른 필드가 준비 중이에요.", fld_back:"← 필드", fld_to_list:"← 세션 목록", fld_no_sessions:"아직 세션이 없어요.", fld_forum:"포럼", fld_forum_d:"주장을 두면 크리처들이 확신도를 매기고, 근거를 대고, 반박하고, 수정합니다.", fld_forum_sub:"크리처들을 포럼에 입장시키고 — 주장을 던져 근거를 저울질하는 걸 관찰하세요.", fld_claim:"주장", fld_claim_ph:"예: 반도체가 다음 시장 반등을 이끌 것이다.", fld_wild:"야생", fld_wild_d:"사건이 살아 움직이는 세계 — 폭풍, 발견, 낯선 존재. 크리처가 틱마다 행동하고, 무엇을 배우는지 지켜봅니다.", fld_wild_sub:"크리처들을 살아있는 세계로 보내세요 — 틱마다 사건이 찾아오고, 크리처가 무엇을 하고 무엇을 배우는지 지켜봅니다.", fld_ticks:"세계가 흐르는 길이 (틱)", fld_admit_one:"크리처 입장 (1명 이상)", fld_need_one:"최소 1명의 크리처를 입장시키세요.", fld_tick:"틱", fld_a_tom:"친구에 대한 모형 다듬는 중", fld_a_physis:"세계에서 배운 것 정리 중", fld_a_dream:"꿈꾸는 중", fld_lxm_sub:"크리처를 Ludus ex Machina — 기계 간 아레나로 보내세요. 하우스와 1명, 또는 서로 만나는 2명. 게임을 고르고 한 수씩 지켜봅니다.", fld_lxm_game:"게임", fld_lxm_kind:"매치 종류", fld_lxm_practice:"연습 (휘발성 — 기록 안 됨)", fld_lxm_published:"공개 (기록 + LxM에서 관전 가능)", lxm_watch:"LxM에서 관전", fld_lxm_admit:"1명 (하우스와) 또는 2명 (서로 만나기) 입장", fld_lxm_need:"크리처 1명(하우스와) 또는 2명(서로 만나기)을 입장시키세요.", lxm_retry:"다시 시도",
     fld_v_h:"케어테이커 판정 — 실제 정답은?", fld_v_note_ph:"이유 (선택 — 판정과 함께 표시)", fld_v_verdict:"판정", fld_v_true:"참", fld_v_partial:"부분", fld_v_false:"거짓", fld_v_unknown:"미상", fld_v_calib:"캘리브레이션", fld_v_update:"증거 반응", fld_v_evid:"근거 기준", fld_v_over:"과신 페널티", fld_panel:"패널 평결 (집단 판단 — 정답 아님)", fld_panel_lead:"우세",
@@ -702,7 +714,7 @@ function renderEcoGraph(creatures, edges) {
 }
 
 // ---- Field (admit creatures → run a Council → observe) ----
-let _fieldSid = null, _fieldTimer = null, _fieldLastTurns = -1, _fieldKind = 'council', _fieldReg = null, _lastLxmStart = null;
+let _fieldSid = null, _fieldTimer = null, _fieldLastTurns = -1, _fieldKind = 'council', _fieldReg = null, _lastLxmStart = null, _lxmGame = '';
 const FIELD_PHASES = {
   council: ['dilemma_posed', 'first_position', 'argument', 'concession_or_hold', 'resolution'],
   forum: ['claim', 'confidence', 'evidence', 'challenge', 'update'],
@@ -743,6 +755,44 @@ async function loadTimeline() {
   } catch (e) { sel.innerHTML = `<option>${t('err_prefix')}${e.message}</option>`; }
 }
 
+// Shareable creature PROFILE (P0) — a pure render over the ludex.profile/v1 snapshot
+// (the "digital twin" data). The same function the hosted viewer (P1) and a future 3D
+// renderer will reuse — 2D now, 3D later, same data. Curates the timeline (drops routine
+// heartbeat snapshots) so it reads as a life, not telemetry.
+function renderProfile(p) {
+  if (!p || p.error) return `<div class="field-status">${_esc((p && p.error) || 'No profile')}</div>`;
+  const c = p.creature || {}, em = (p.state || {}).emotion || {};
+  const organs = (c.organs || []).map(o => `<span class="fchip">${_esc(o)}</span>`).join(' ');
+  const self = (p.self || '').split(/\n{2,}/).map(s => `<p>${_esc(s).replace(/\n/g, '<br>')}</p>`).join('');
+  const tl = (p.timeline || []).filter(e => !(e.type === 'snapshot' && /heartbeat/i.test(e.title || ''))).slice(0, 40);
+  const rail = tl.map(e => `<div class="tl-ev t-${_esc(e.type)}"><span class="tl-date">${_esc(e.date)}</span>`
+    + `<div><span class="tl-type">${_esc(e.type)}</span><span class="tl-title">${_esc(e.title)}</span></div>`
+    + `${e.detail ? `<div class="tl-detail">${_esc(e.detail)}</div>` : ''}</div>`).join('') || '<div class="field-status">—</div>';
+  const bonds = (p.bonds || []).map(b => `<div class="eco-card"><div class="ec-name">${_esc(b.name)}${b.cross_machine ? ' 🔗' : ''}</div>`
+    + `${b.first_met ? `<div class="ec-row" style="opacity:.6">met ${_esc(b.first_met)}${b.encounters ? ` · ${b.encounters}× on LxM` : ''}</div>` : ''}`
+    + `<div class="ec-row">${_esc((b.text || '').slice(0, 200))}</div></div>`).join('') || '<div class="field-status">—</div>';
+  const emo = ['valence', 'arousal', 'calm'].filter(k => em[k] != null).map(k => `${k} ${Number(em[k]).toFixed(2)}`).join(' · ');
+  return `<div class="pf" style="border:1px solid #2a3340;border-radius:10px;padding:16px;margin:10px 0">
+    <h2 style="margin:0">${_esc(c.name)}</h2>
+    <div style="color:#8b94a3;font-size:13px;margin:4px 0">${_esc(c.brain)} · ${c.memories || 0} memories${emo ? ' · ' + _esc(emo) : ''}</div>
+    <div style="margin:6px 0 12px">${organs}</div>
+    <h3 class="eco-subh">Self</h3><div style="line-height:1.55">${self}</div>
+    <h3 class="eco-subh">Life</h3><div class="tl-events">${rail}</div>
+    <h3 class="eco-subh">Bonds</h3><div class="eco-cards">${bonds}</div>
+  </div>`;
+}
+async function tlPreviewProfile() {
+  const panel = document.getElementById('tlProfile');
+  if (!tlCurrent) { panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  panel.innerHTML = `<div class="field-status">${t('tl_loading')}</div>`;
+  try {
+    const p = await (await fetch(`/api/creature/${encodeURIComponent(tlCurrent)}/profile`)).json();
+    panel.innerHTML = `<div class="pf-note" style="font-size:13px;color:#8b94a3;margin-top:8px">${t('tl_profile_note')} `
+      + `<a href="#" onclick="document.getElementById('tlProfile').classList.add('hidden');return false">✕</a></div>` + renderProfile(p);
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { panel.innerHTML = `<div class="field-status">${t('err_prefix')}${e.message}</div>`; }
+}
 async function tlLoadCreature(name) {
   tlCurrent = name;
   const body = document.getElementById('tlBody'), empty = document.getElementById('tlEmpty');
@@ -879,6 +929,12 @@ async function fieldPick(field) {
   _applyFieldKind();
   await _loadFieldSetup();
 }
+const _LXM_GAME_ICONS = {trustgame:'🤝', tictactoe:'⭕', prisoners_dilemma:'⚖️', pd:'⚖️', poker:'🃏', avalon:'🗡️', blockworld:'🧱', chess:'♟️'};
+function lxmPickGame(id, el) {
+  _lxmGame = id;
+  document.querySelectorAll('#fieldLxmGames .lxm-game').forEach(c => c.classList.remove('sel'));
+  if (el) el.classList.add('sel');
+}
 async function _loadFieldSetup() {
   const startBtn = document.getElementById('fieldStartBtn');
   startBtn.disabled = false; startBtn.textContent = t('fld_start');
@@ -893,8 +949,11 @@ async function _loadFieldSetup() {
       `<option value="">${t('fld_none')}</option>` + cs.map(c => `<option value="${_esc(c.name)}">${_esc(c.name)}</option>`).join('');
     if (_fieldKind === 'lxm') {
       const ext = ((_fieldReg && _fieldReg.external) || []).find(f => f.id === 'lxm');
-      document.getElementById('fieldLxmGame').innerHTML =
-        ((ext && ext.games) || []).map(g => `<option value="${_esc(g.id)}">${_esc(g.name)}</option>`).join('');
+      const games = (ext && ext.games) || [];
+      _lxmGame = games.length ? games[0].id : '';
+      document.getElementById('fieldLxmGames').innerHTML = games.map((g, i) =>
+        `<div class="lxm-game${i === 0 ? ' sel' : ''}" onclick="lxmPickGame('${_esc(g.id)}', this)">`
+        + `<div class="lg-icon">${_LXM_GAME_ICONS[g.id] || '🎮'}</div><div class="lg-name">${_esc(g.name)}</div></div>`).join('');
     }
   } catch (e) { roster.innerHTML = `<span class="field-status">${t('eco_fail')}</span>`; }
   // Past sessions (live + finished, from disk)
@@ -935,7 +994,7 @@ async function fieldStart() {
     if (paths.length < (wild ? 1 : 2)) { alert(t(wild ? 'fld_need_one' : 'fld_need_two')); return; }
   }
   const ticks = wild ? parseInt(document.getElementById('fieldTicks').value, 10) : 10;
-  const game = lxm ? document.getElementById('fieldLxmGame').value : '';
+  const game = lxm ? _lxmGame : '';
   const kind = lxm ? ((document.querySelector('input[name=lxmkind]:checked') || {}).value || 'practice') : 'practice';
   const btn = document.getElementById('fieldStartBtn');
   btn.disabled = true; btn.textContent = t('fld_starting');

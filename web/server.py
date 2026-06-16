@@ -700,6 +700,82 @@ async def creature_timeline(name: str, dir: str = "creatures"):
     return {"name": name, "events": events}
 
 
+def _read_bond(path):
+    """Parse a bonds/<peer>.md — a '# Bond: x / First met: .. / Brain: ..' header, then
+    the narrative body after the first blank line."""
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except OSError:
+        return {"first_met": "", "text": ""}
+    first_met, body_at = "", 0
+    for i, ln in enumerate(lines):
+        if ln.lower().startswith("first met:"):
+            first_met = ln.split(":", 1)[1].strip()
+        if i > 0 and not ln.strip():
+            body_at = i + 1
+            break
+    return {"first_met": first_met, "text": "\n".join(lines[body_at:]).strip()}
+
+
+def _build_creature_profile(name, dir, events):
+    """Assemble a creature's shareable PROFILE SNAPSHOT (ludex.profile/v1) — the structured
+    'digital twin' data a viewer renders (2D now, a 3D avatar/habitat/virtual-city later;
+    3D is a renderer over THIS data, not a rewrite). Only distilled, shareable narrative —
+    identity, SELF, timeline, bonds, emotional state — never raw spans (D-044)."""
+    cdir = _safe_creature_dir(name, dir)
+    if cdir is None:
+        return None
+    base = os.path.abspath(os.path.expanduser(dir))
+    info = next((c for c in _scan_creatures(base) if c["name"] == name), {"name": name})
+    self_md = ""
+    sp = os.path.join(cdir, "SELF.md")
+    if os.path.isfile(sp):
+        self_md = open(sp, encoding="utf-8").read()
+    # cross-machine re-recognition index (B1): peer name -> {creature_id, encounters}
+    lxm_idx = {}
+    lp = os.path.join(cdir, "lxm_bonds.json")
+    if os.path.isfile(lp):
+        try:
+            for cid, e in json.loads(open(lp, encoding="utf-8").read()).items():
+                lxm_idx[str(e.get("name", "")).lower()] = {"creature_id": cid, "encounters": e.get("encounters")}
+        except Exception:
+            pass
+    bonds = []
+    bdir = os.path.join(cdir, "bonds")
+    if os.path.isdir(bdir):
+        for f in sorted(os.listdir(bdir)):
+            if not f.endswith(".md"):
+                continue
+            peer = os.path.splitext(f)[0]
+            b = {"name": peer, **_read_bond(os.path.join(bdir, f))}
+            x = lxm_idx.get(peer.lower())
+            if x:
+                b["creature_id"] = x["creature_id"]; b["encounters"] = x["encounters"]; b["cross_machine"] = True
+            bonds.append(b)
+    brain = ":".join(p for p in (info.get("provider", ""), info.get("model", "")) if p)
+    return {
+        "format": "ludex.profile/v1",
+        "creature": {"name": info.get("name", name), "brain": brain,
+                     "organs": info.get("organs", []), "memories": info.get("memories", 0)},
+        "state": {"emotion": info.get("emotion")},     # the 3D-visualizable slot
+        "self": self_md,
+        "timeline": events,
+        "bonds": bonds,
+        "habitat": {},          # extensible: P3 ecosystem / a future 3D habitat render
+        "published_at": None,   # stamped at publish (P2)
+    }
+
+
+@app.get("/api/creature/{name}/profile")
+async def creature_profile(name: str, dir: str = "creatures"):
+    """The shareable profile snapshot (ludex.profile/v1) — the structured 'digital twin' a
+    viewer renders. P0: built + previewed locally to lock the format before any hosting
+    (P1 static viewer) or publish service (P2)."""
+    events = (await creature_timeline(name, dir)).get("events", [])
+    prof = _build_creature_profile(name, dir, events)
+    return prof if prof is not None else {"error": "no such creature"}
+
+
 @app.get("/api/creature/{name}/self-history")
 async def creature_self_history(name: str, dir: str = "creatures"):
     """SELF.md version metadata: every snapshot that froze a SELF.md, plus
