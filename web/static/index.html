@@ -87,6 +87,7 @@
   .connect-box { background: transparent; padding: 0; border: none; max-width: 880px; margin: 0; }
   .connect-box h2 { color: #64aa88; margin: 0 0 4px; font-size: 22px; }
   .connect-box .forge-subtitle { color: #8b94a3; font-size: 13px; margin-bottom: 18px; }
+  .forge-warn { color: #d6a04a; font-size: 12px; background: #1d1a12; border: 1px solid #3a3320; border-radius: 7px; padding: 7px 10px; margin: 4px 0 8px; }
   .connect-box label { display: block; color: #8b94a3; font-size: 13px; margin: 12px 0 5px; }
   .connect-box input, .connect-box select { width: 100%; background: #0d1117; border: 1px solid #2a2f3a; color: #e6edf3; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
   .connect-box button.primary { width: 100%; margin-top: 16px; background: #64aa88; color: #08130d; border: none; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
@@ -351,6 +352,7 @@
     <!-- Step 3: HOME -->
     <div class="forge-step">
       <div class="step-header" data-i18n="forge_s3">Step 3: Home</div>
+      <div class="forge-warn" data-i18n="forge_s3_warn">⚠️ This folder becomes the creature — its memory, bonds, and self live here. Deleting it is permanent death. Keep it backed up.</div>
       <select id="habitatSelect" onchange="onHabitatChange()">
         <option value="temporary" data-i18n="hab_temp">Temporary (this session only)</option>
         <option value="local" data-i18n="hab_local">Local folder (persistent)</option>
@@ -527,7 +529,7 @@ const LI18N = {
     prov_gemini_cli:"Gemini CLI (Google auth — retires 2026-06-18)", prov_agy_cli:"agy CLI (Google auth — partial support)",
     prov_claude_sdk:"Claude Code SDK (experimental, server timeout)",
     forge_model:"Model", forge_loading:"Loading models...", forge_model_ph:"Or type model name",
-    forge_s2:"Step 2: Organs", forge_s3:"Step 3: Home",
+    forge_s2:"Step 2: Organs", forge_s3:"Step 3: Home", forge_s3_warn:"⚠️ This folder becomes the creature — its memory, bonds, and self live here. Deleting it is permanent death. Keep it backed up.",
     hab_temp:"Temporary (this session only)", hab_local:"Local folder (persistent)", hab_portable:"Portable (USB / external drive)",
     hab_note:"Folder will be created if it doesn't exist. Memories, immune state, and logs persist here.",
     forge_load_h:"Or: Load Existing Creature", forge_wake:"Wake Up", forge_s4:"Step 4: Awaken",
@@ -571,7 +573,7 @@ const LI18N = {
     prov_gemini_cli:"Gemini CLI (Google 인증 — 2026-06-18 종료)", prov_agy_cli:"agy CLI (Google 인증 — 부분 지원)",
     prov_claude_sdk:"Claude Code SDK (실험적, 서버 타임아웃)",
     forge_model:"모델", forge_loading:"모델 불러오는 중...", forge_model_ph:"또는 모델 이름 입력",
-    forge_s2:"2단계: 기관", forge_s3:"3단계: 서식지",
+    forge_s2:"2단계: 기관", forge_s3:"3단계: 서식지", forge_s3_warn:"⚠️ 이 폴더가 곧 크리처예요 — 기억·유대·자아가 여기 살아요. 삭제하면 영구적 죽음입니다. 백업해 두세요.",
     hab_temp:"임시 (이 세션만)", hab_local:"로컬 폴더 (지속)", hab_portable:"휴대용 (USB / 외장 드라이브)",
     hab_note:"폴더가 없으면 생성됩니다. 기억·면역 상태·로그가 여기 지속됩니다.",
     forge_load_h:"또는: 기존 크리처 불러오기", forge_wake:"깨우기", forge_s4:"4단계: 깨우기",

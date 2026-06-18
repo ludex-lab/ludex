@@ -1792,6 +1792,14 @@ async def forge_assemble(req: ForgeAssembleRequest):
     else:
         habitat = HabitatConfig.temporary()
 
+    # mortality: mark a persistent habitat so a human browsing the folder knows deleting
+    # it = irreversible death (creature_mortality_principle). No-op for temporary habitats.
+    try:
+        from ludex.core.habitat import write_living_creature_marker
+        write_living_creature_marker(getattr(habitat, "home_dir", None), req.name)
+    except Exception:
+        pass
+
     # Build OrganismConfig
     config = OrganismConfig(
         name=req.name,
