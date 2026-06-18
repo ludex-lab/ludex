@@ -1114,7 +1114,7 @@ def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
         _save_field_session(sess)
 
 
-def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str):
+def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str, shuffle_seats: bool = True):
     """Two creatures MEET on the hosted LxM arena (D-089 §5, B1). Each plays on an
     ephemeral copy (D-090); on a `published` encounter BOTH remember it — a reflection
     + a bond toward the other keyed on its stable creature_id (re-recognition on a
@@ -1138,6 +1138,7 @@ def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str
             sess["thinking"] = rec.get("name")
 
         result = play_creature_match(pa, pb, game=game, kind=kind, max_turns=max_turns,
+                                     shuffle_seats=shuffle_seats,
                                      on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u, building=""),
                                      should_stop=lambda: sess.get("stop"))
         field.result = result.get("result")
@@ -1326,7 +1327,7 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
         _save_field_session(sess)   # persist for history (survives restart)
 
 
-def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str):
+def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str, shuffle_seats: bool = True):
     """N creatures meet on the hosted LxM arena (D-089 §5, B1) — the N-seat generalization of
     _run_lxm_creature_match (avalon, codenames, blockworld, deduction-solo, …). Each plays on
     an ephemeral copy (D-090); on a `published` match each remembers it (a reflection + a bond
@@ -1348,6 +1349,7 @@ def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str
             sess["thinking"] = rec.get("name")
 
         result = play_multi_creature_match(creature_paths, game=game, kind=kind, max_turns=max_turns,
+                                           shuffle_seats=shuffle_seats,
                                            on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u, building=""),
                                            should_stop=lambda: sess.get("stop"))
         field.result = result.get("result")
@@ -1386,6 +1388,7 @@ class FieldStartRequest(BaseModel):
     ticks: int = 10        # wilderness only: how long the world runs
     game: str = ""         # lxm only: which game in the hosted arena
     kind: str = "practice" # lxm only: practice (ephemeral) | published (permanent + viewable)
+    shuffle_seats: bool = True  # lxm only: True = random seats (fair); False = play in the given creature order (assign roles/teams)
 
 
 class FieldVerdictRequest(BaseModel):
@@ -1458,10 +1461,10 @@ async def field_start(req: FieldStartRequest):
                              args=(sid, req.game, req.creatures[0], req.kind), daemon=True).start()
         elif n == 2:
             threading.Thread(target=_run_lxm_creature_match,
-                             args=(sid, req.game, req.creatures, req.kind), daemon=True).start()
+                             args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats), daemon=True).start()
         else:
             threading.Thread(target=_run_lxm_multi_match_bg,
-                             args=(sid, req.game, req.creatures, req.kind), daemon=True).start()
+                             args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats), daemon=True).start()
         return {"session_id": sid, "status": "starting"}
     if req.field not in ("council", "forum", "wilderness"):
         return {"error": f"Field '{req.field}' is not supported yet."}
