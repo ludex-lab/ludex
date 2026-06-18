@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 
 ALIVE = "ALIVE"          # brain responded
@@ -45,27 +46,55 @@ def _classify(err: str) -> str:
     return UNKNOWN
 
 
+# The underlying CLI binary per CLI-provider — captured to track version drift /
+# detect a vanished binary (a deprecation like gemini-cli → agy shows up here).
+_CLI_BINARY = {"claude_cli": "claude", "codex_cli": "codex", "gemini_cli": "gemini",
+               "agy_cli": "agy", "ollama": "ollama"}
+_CLI_VER_CACHE = {}
+
+
+def _cli_version(provider: str) -> str:
+    """`<binary> --version` for a CLI provider (cached per provider). '' for HTTP/SDK
+    providers (no CLI); 'MISSING' if the binary is gone (a strong dormancy signal)."""
+    if provider in _CLI_VER_CACHE:
+        return _CLI_VER_CACHE[provider]
+    binary = _CLI_BINARY.get(provider)
+    v = ""
+    if binary:
+        try:
+            out = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=10)
+            raw = (out.stdout or out.stderr or "").strip()
+            v = raw.splitlines()[0][:36] if raw else "?"
+        except FileNotFoundError:
+            v = "MISSING"
+        except Exception:
+            v = "?"
+    _CLI_VER_CACHE[provider] = v
+    return v
+
+
 def probe(creature_path: str) -> dict:
-    """Invoke the creature's brain once (no mutation) and classify liveness."""
+    """Invoke the creature's brain once (no mutation) and classify liveness; capture CLI version."""
     name = os.path.basename(str(creature_path).rstrip("/\\"))
     from ludex.core.organism_config import OrganismConfig
     try:
         cfg = OrganismConfig.load(creature_path)
         brain = dict(cfg.brain or {})
     except Exception as e:
-        return {"creature": name, "verdict": UNKNOWN, "brain": "?", "detail": f"config load failed: {e}"}
+        return {"creature": name, "verdict": UNKNOWN, "brain": "?", "cli": "", "detail": f"config load failed: {e}"}
     label = f"{brain.get('provider', '?')}/{brain.get('model', '?')}"
+    cli = _cli_version(brain.get("provider", ""))
     try:
         eng = cfg.build().get_block("engine")
         if eng is None:
-            return {"creature": name, "verdict": UNKNOWN, "brain": label, "detail": "no engine block"}
+            return {"creature": name, "verdict": UNKNOWN, "brain": label, "cli": cli, "detail": "no engine block"}
         res = eng.handle_submit(_PROBE, bypass_memory=True)
         text = (getattr(res, "response", "") or "").strip()
         if text:
-            return {"creature": name, "verdict": ALIVE, "brain": label, "detail": text[:40].replace("\n", " ")}
-        return {"creature": name, "verdict": UNKNOWN, "brain": label, "detail": "empty response"}
+            return {"creature": name, "verdict": ALIVE, "brain": label, "cli": cli, "detail": text[:40].replace("\n", " ")}
+        return {"creature": name, "verdict": UNKNOWN, "brain": label, "cli": cli, "detail": "empty response"}
     except Exception as e:
-        return {"creature": name, "verdict": _classify(str(e)), "brain": label, "detail": str(e)[:120].replace("\n", " ")}
+        return {"creature": name, "verdict": _classify(str(e)), "brain": label, "cli": cli, "detail": str(e)[:120].replace("\n", " ")}
 
 
 def main():
@@ -78,14 +107,14 @@ def main():
     else:
         paths = [os.path.join(args.root, d) for d in sorted(os.listdir(args.root))
                  if os.path.isdir(os.path.join(args.root, d))]
-    print(f"{'creature':14} {'verdict':10} {'brain':30} detail")
-    print("-" * 100)
+    print(f"{'creature':14} {'verdict':10} {'brain':28} {'cli version':24} detail")
+    print("-" * 116)
     counts = {}
     for p in paths:
         r = probe(p)
         counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
-        print(f"{r['creature']:14} {r['verdict']:10} {r['brain']:30} {r['detail']}")
-    print("-" * 100)
+        print(f"{r['creature']:14} {r['verdict']:10} {r['brain']:28} {r.get('cli', ''):24} {r['detail']}")
+    print("-" * 116)
     print("  ".join(f"{k}={v}" for k, v in sorted(counts.items())))
     print("\nDORMANT = substrate gone, body intact → re-brain (continuity) or leave dormant. NOT death.")
 
