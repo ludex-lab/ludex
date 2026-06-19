@@ -1020,21 +1020,27 @@ _LXM_GAMES_CACHE = {"at": 0.0, "games": None}
 
 
 def _lxm_games():
-    """The LxM arena's playable games + player ranges — [{id, min_players, max_players}].
-    Cached 5 min; falls back to the static set when the arena is unreachable (cold start)."""
+    """The LxM games creatures can MEET in for a cross-machine match — filtered to
+    min_players >= 2. Excludes solo/sandbox games (deduction n=1, blockworld n=1): per
+    LxM's all-remote coverage sweep they aren't meeting-fields and lose depth over the
+    remote brief-only path (deduction is file-investigation). Cached 5 min; static fallback
+    when the arena is unreachable. [{id, min_players, max_players}]."""
     import urllib.request
     from ludex.bridges.hosted_match import ONRENDER
+    def _multi(gs):
+        return [g for g in gs if g.get("min_players", 2) >= 2]
     if _LXM_GAMES_CACHE["games"] and time.time() - _LXM_GAMES_CACHE["at"] < 300:
         return _LXM_GAMES_CACHE["games"]
     try:
         with urllib.request.urlopen(ONRENDER + "/api/games", timeout=20) as r:
             games = json.loads(r.read().decode())
         if isinstance(games, list) and games:
+            games = _multi(games)
             _LXM_GAMES_CACHE.update(at=time.time(), games=games)
             return games
     except Exception:
         pass
-    return _LXM_GAMES_CACHE["games"] or _LXM_FALLBACK_GAMES
+    return _LXM_GAMES_CACHE["games"] or _multi(_LXM_FALLBACK_GAMES)
 
 
 def _lxm_aftermath(sess, creature_path, game, field):
@@ -1766,6 +1772,70 @@ class ForgeAssembleRequest(BaseModel):
     habitat_path: str = ""
     system_prompt: str = ""
     agent_type: str = "chat"
+
+
+class RebrainRequest(BaseModel):
+    provider: str = ""
+    model: str = ""
+    reflect: bool = True
+    dir: str = "creatures"
+
+
+@app.post("/api/creature/{name}/rebrain")
+async def creature_rebrain(name: str, req: RebrainRequest):
+    """Swap a creature's brain IN PLACE — the SAME being with a deeper/different voice
+    (creature_mortality_principle: re-braining = continuity, NOT a new creature). Memory,
+    bonds, and SELF.md are untouched; only the brain config changes. Records a D-086
+    substrate_transition span (surfaces on the Timeline) and, by default, lets the creature
+    reflect on the change — a transplant it narrates."""
+    cdir = _safe_creature_dir(name, req.dir)
+    if not cdir:
+        return {"error": f"Creature '{name}' not found."}
+    if not req.provider or not req.model:
+        return {"error": "provider and model are required."}
+    from ludex.core.organism_config import OrganismConfig
+    from ludex.core.store import LudexStore
+    from ludex.cadence.substrate_transition import record_transition_span
+    try:
+        cfg = OrganismConfig.load(cdir)
+    except Exception as e:
+        return {"error": f"Cannot load '{name}': {e}"}
+    old = dict(cfg.brain or {})
+    old_label, new_label = f"{old.get('provider', '?')}/{old.get('model', '?')}", f"{req.provider}/{req.model}"
+    if old_label == new_label:
+        return {"error": f"{name} is already on {new_label}."}
+    pre_snap = None
+    try:
+        from ludex.core.ethnography import take_snapshot
+        pre_snap = take_snapshot(cfg.build(), reason=f"pre-rebrain-{old.get('model', '')}")
+    except Exception as e:
+        print(f"[rebrain] pre-snapshot skipped: {e}")
+    cfg.brain = {"provider": req.provider, "model": req.model}   # same being — only the brain changes
+    try:
+        cfg.save(cdir)
+    except Exception as e:
+        return {"error": f"Could not persist the new brain: {e}"}
+    axis = "M" if old.get("provider") == req.provider else "A"   # same provider = model upgrade; else adapter swap
+    try:
+        record_transition_span(LudexStore.for_creature(cdir), name, axis=axis,
+                               from_desc=old_label, to_desc=new_label, provider=req.provider,
+                               model=req.model, magnitude="medium", op="preserve",
+                               pre_snapshot=pre_snap, note=f"web re-brain {old_label} -> {new_label}")
+    except Exception as e:
+        print(f"[rebrain] transition span skipped: {e}")
+    reflection = ""
+    if req.reflect:
+        try:
+            from ludex.core import selfhood
+            org = OrganismConfig.load(cdir).build()   # rebuilt on the NEW brain
+            ctx = (f"Your brain was just changed from {old_label} to {new_label}. You are the same being "
+                   f"— your memory, bonds, and self-understanding are intact — but your way of thinking "
+                   f"may feel different now. Reflect honestly on what, if anything, feels different.")
+            reflection = selfhood.reflect(org, "substrate_transition", org.get_block("engine"), ctx) or ""
+        except Exception as e:
+            print(f"[rebrain] reflection skipped: {e}")
+    return {"ok": True, "creature": name, "from": old_label, "to": new_label, "axis": axis,
+            "reflection": reflection[:800]}
 
 
 @app.post("/api/forge/assemble")

@@ -66,6 +66,16 @@ logger = logging.getLogger(__name__)
 _CLAUDE_CMD = "claude.cmd" if os.name == "nt" else "claude"
 
 
+def _claude_subprocess_env():
+    """Env for `claude -p` WITHOUT ANTHROPIC_API_KEY — so the CLI uses the logged-in
+    subscription (the now-allowed path), NOT a billed API key. Ludex loads .env into
+    os.environ (model_check needs the key for /models currency), but if that key leaks into
+    THIS subprocess, every creature call is billed to the API instead of the subscription.
+    Surfaced 2026-06-18 by a real Anthropic billing email — the leak was env={**os.environ}."""
+    return {**{k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"},
+            "PYTHONIOENCODING": "utf-8"}
+
+
 class ClaudeCliAdapter(BaseAdapter):
     """Claude Code CLI adapter via subprocess."""
 
@@ -169,7 +179,7 @@ class ClaudeCliAdapter(BaseAdapter):
                 # Windows OEM-codepage bytes on stderr crashing the reader
                 # thread (verified in gemini_cli; pre-emptive for claude_cli).
                 errors="replace",
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                env=_claude_subprocess_env(),   # strip ANTHROPIC_API_KEY → subscription, not billed API
                 cwd=self._cwd,
             )
 
