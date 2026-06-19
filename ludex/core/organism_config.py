@@ -460,6 +460,7 @@ class OrganismConfig:
             cwd=provider_cwd,
             timeout_ms=provider_timeout,
             effort=self.brain.get("effort", ""),
+            auth=self.brain.get("auth", ""),
         ))
 
         # Engine (required)

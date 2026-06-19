@@ -19,6 +19,7 @@ import subprocess
 import logging
 
 from ludex.blocks.adapters.base import BaseAdapter, AdapterResponse
+from ludex.blocks.adapters._cli_env import cli_subprocess_env
 
 
 # D-068 fatigue patterns for Claude subscription substrate.
@@ -66,25 +67,19 @@ logger = logging.getLogger(__name__)
 _CLAUDE_CMD = "claude.cmd" if os.name == "nt" else "claude"
 
 
-def _claude_subprocess_env():
-    """Env for `claude -p` WITHOUT ANTHROPIC_API_KEY — so the CLI uses the logged-in
-    subscription (the now-allowed path), NOT a billed API key. Ludex loads .env into
-    os.environ (model_check needs the key for /models currency), but if that key leaks into
-    THIS subprocess, every creature call is billed to the API instead of the subscription.
-    Surfaced 2026-06-18 by a real Anthropic billing email — the leak was env={**os.environ}."""
-    return {**{k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"},
-            "PYTHONIOENCODING": "utf-8"}
-
-
 class ClaudeCliAdapter(BaseAdapter):
     """Claude Code CLI adapter via subprocess."""
 
     provider_name = "claude_cli"
 
-    def __init__(self, base_url: str = "", timeout_ms: int = 120000, cwd: str = "", **kwargs):
+    def __init__(self, base_url: str = "", timeout_ms: int = 120000, cwd: str = "", auth: str = "", **kwargs):
         super().__init__(base_url=base_url or _CLAUDE_CMD, timeout_ms=timeout_ms, **kwargs)
         self._cmd = base_url or _CLAUDE_CMD
         self._cwd = cwd or None  # None = inherit from parent process
+        # Birth-time auth mode (subscription|api); honored when building the
+        # subprocess env so ANTHROPIC_API_KEY is stripped for subscription
+        # brains and the CLI is never silently billed to the API.
+        self._auth = auth
         # Opt-in conversational multi-turn: when set (e.g. by the web chat), flatten
         # the full message history into the prompt so claude -p has continuity.
         # Default off — single-shot callers (research corpus, CLI) are unchanged.
@@ -179,7 +174,7 @@ class ClaudeCliAdapter(BaseAdapter):
                 # Windows OEM-codepage bytes on stderr crashing the reader
                 # thread (verified in gemini_cli; pre-emptive for claude_cli).
                 errors="replace",
-                env=_claude_subprocess_env(),   # strip ANTHROPIC_API_KEY → subscription, not billed API
+                env=cli_subprocess_env("claude_cli", self._auth),   # brain.auth: subscription strips the key, not billed API
                 cwd=self._cwd,
             )
 

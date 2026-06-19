@@ -115,6 +115,7 @@ class ProviderBlock(Block):
         timeout_ms: int = 30000,
         cwd: str = "",
         effort: str = "",
+        auth: str = "",
     ):
         super().__init__()
 
@@ -129,19 +130,26 @@ class ProviderBlock(Block):
             "timeout_ms": timeout_ms,
             "cwd": cwd,
             "effort": effort,
+            "auth": auth,
         }
 
         # Adapter 생성
         self._adapter: Optional[BaseAdapter] = None
-        self._create_adapter(provider, self._init_config["base_url"], api_key, timeout_ms, cwd)
+        self._create_adapter(provider, self._init_config["base_url"], api_key, timeout_ms, cwd, auth)
 
-    def _create_adapter(self, provider: str, base_url: str, api_key: str, timeout_ms: int, cwd: str = ""):
+    def _create_adapter(self, provider: str, base_url: str, api_key: str, timeout_ms: int, cwd: str = "", auth: str = ""):
         adapter_cls = ADAPTER_REGISTRY.get(provider)
         if adapter_cls:
             # Pass cwd to adapters that support it (claude_cli, claude_sdk, gemini_cli, agy_cli, codex_cli)
             kwargs = {"base_url": base_url, "api_key": api_key, "timeout_ms": timeout_ms}
             if provider in ("claude_cli", "claude_sdk", "gemini_cli", "agy_cli", "codex_cli") and cwd:
                 kwargs["cwd"] = cwd
+            # brain.auth (subscription|api) — birth-time billing decision honored
+            # by the 4 subprocess CLI adapters when building their child env.
+            # claude_sdk is excluded: it's in-process (no subprocess env to strip)
+            # and forwards **kwargs to BaseAdapter, which rejects an `auth` arg.
+            if provider in ("claude_cli", "gemini_cli", "agy_cli", "codex_cli"):
+                kwargs["auth"] = auth
             self._adapter = adapter_cls(**kwargs)
         else:
             # 기본: OpenAI-compatible
@@ -165,6 +173,8 @@ class ProviderBlock(Block):
                 self._cfg("base_url", ""),
                 self._cfg("api_key", ""),
                 self._cfg("timeout_ms", 30000),
+                self._cfg("cwd", ""),
+                self._cfg("auth", ""),
             )
             logger.info(f"Provider adapter switched to: {new}")
         elif key == "timeout_ms" and new is not None and self._adapter:

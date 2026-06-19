@@ -32,6 +32,7 @@ import subprocess
 import logging
 
 from ludex.blocks.adapters.base import BaseAdapter, AdapterResponse
+from ludex.blocks.adapters._cli_env import cli_subprocess_env
 from ludex.blocks.adapters._creature_context import load_creature_context
 
 logger = logging.getLogger(__name__)
@@ -45,10 +46,11 @@ class AgyCliAdapter(BaseAdapter):
 
     provider_name = "agy_cli"
 
-    def __init__(self, base_url: str = "", timeout_ms: int = 120000, cwd: str = "", **kwargs):
+    def __init__(self, base_url: str = "", timeout_ms: int = 120000, cwd: str = "", auth: str = "", **kwargs):
         super().__init__(base_url=base_url or _AGY_CMD, timeout_ms=timeout_ms, **kwargs)
         self._cmd = base_url or _AGY_CMD
         self._cwd = cwd or None
+        self._auth = auth  # birth-time auth mode (subscription|api); see _cli_env
 
     def call(self, model="", prompt="", system="", messages=None,
              temperature=0.7, max_tokens=4096, tools=None, effort=""):
@@ -132,7 +134,7 @@ class AgyCliAdapter(BaseAdapter):
         start = time.time()
         try:
             try:
-                child_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+                child_env = cli_subprocess_env("agy_cli", self._auth)
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
