@@ -861,6 +861,8 @@ FIELD_REGISTRY = {
          "min_creatures": 2, "prompt": "dilemma", "mediator": True, "impl": True},
         {"id": "forum", "name": "Forum", "i18n": "fld_forum", "viewer": "transcript",
          "min_creatures": 2, "prompt": "claim", "impl": True},
+        {"id": "open_council", "name": "Open Council", "i18n": "fld_open_council", "viewer": "transcript",
+         "min_creatures": 2, "prompt": "dilemma", "impl": True},
         {"id": "wilderness", "name": "Wilderness", "i18n": "fld_wild", "viewer": "ticklog",
          "min_creatures": 1, "prompt": None, "ticks": True, "impl": True},
     ],
@@ -1271,6 +1273,10 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
         elif field_kind == "forum":
             from ludex.fields.forum import Forum, ForumClaim
             field = Forum(name=f"web-forum-{sid}", claim=ForumClaim(text=text), verdict=None, auto_trace=False)
+        elif field_kind == "open_council":
+            from ludex.fields.open_council import OpenCouncil
+            from ludex.fields.council import Dilemma
+            field = OpenCouncil(name=f"web-open-council-{sid}", dilemma=Dilemma(text=text), auto_trace=False)
         else:
             from ludex.fields.council import Council, Dilemma
             field = Council(name=f"web-council-{sid}", dilemma=Dilemma(text=text), auto_trace=False)
@@ -1316,7 +1322,7 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
             field.challenge_round(response_fn)
             field.update_round(response_fn)
         else:
-            field.run(response_fn)
+            field.run(response_fn)   # council + open_council: same ConversationField.run(response_fn)
         if field_kind != "wilderness":
             sess["status"] = "reflecting"      # post-session: durable memory + bonds (JJ)
             _field_aftermath(sess, field, field_kind, text)
@@ -1472,7 +1478,7 @@ async def field_start(req: FieldStartRequest):
             threading.Thread(target=_run_lxm_multi_match_bg,
                              args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats), daemon=True).start()
         return {"session_id": sid, "status": "starting"}
-    if req.field not in ("council", "forum", "wilderness"):
+    if req.field not in ("council", "forum", "open_council", "wilderness"):
         return {"error": f"Field '{req.field}' is not supported yet."}
     ticks = max(3, min(int(req.ticks or 10), 30))
     if req.field == "wilderness":
