@@ -285,9 +285,10 @@ def reflect(organism, trigger: str = "manual", engine=None,
     if not reflection_text:
         return ""
 
-    # Validate: reject meta-reports ("I have reflected..." style). Preserve
-    # existing SELF.md rather than overwrite with a degraded response.
-    if _looks_like_meta_report(reflection_text):
+    # Validate: reject meta-reports ("I have reflected..." style) and adapter
+    # error-fallbacks ('[Error: ...]'). Preserve existing SELF.md rather than
+    # overwrite with a degraded response.
+    if _looks_like_meta_report(reflection_text) or _is_error_fallback(reflection_text):
         logger.warning(
             f"Reflection for {organism.name} looked like a meta-report; "
             f"preserving existing SELF.md. Raw response (first 200 chars): "
@@ -448,6 +449,17 @@ _META_REPORT_PATTERNS = (
     r"^\s*(?:My\s+)?(?:bond record|bond|record|reflection)\s+(?:with\s+\S+\s+)?(?:is|has been)\s+(?:now\s+)?(?:recorded|updated|stored|saved)\b",
     r"^\s*(?:Okay|OK|Sure|Done)[,.!]\s+I['’]?ve\s+(?:updated|recorded)\b",
 )
+
+
+def _is_error_fallback(text: str) -> bool:
+    """True if `text` is an adapter error-fallback ('[Error: ...]') rather than real
+    creature output. Every CLI/SDK adapter returns its failure as '[Error: ...]'
+    content; persisting that as a reflection / SELF.md / bond writes garbage into the
+    narrative — surfaced 2026-06-20 when an autonomous-heartbeat consolidation wrote
+    '[Error: Claude CLI timed out]' verbatim into reflections/. Treat it as failure so
+    the caller preserves prior state and the window/events retry on the next clean pass
+    (consume-on-success — the same discipline as the HIATUS marker)."""
+    return (text or "").strip().lower().startswith("[error:")
 
 
 def _looks_like_meta_report(text: str, min_real_chars: int = 80) -> bool:
@@ -629,8 +641,8 @@ def update_bond(
         except Exception:
             bond_text = ""
 
-        # Reject meta-reports; preserve existing bond prose.
-        if bond_text and _looks_like_meta_report(bond_text):
+        # Reject meta-reports + adapter error-fallbacks; preserve existing bond prose.
+        if bond_text and (_looks_like_meta_report(bond_text) or _is_error_fallback(bond_text)):
             logger.warning(
                 f"Bond reflection for {organism.name}→{other_name} looked "
                 f"like a meta-report; preserving existing bond. Raw (first "

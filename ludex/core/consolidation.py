@@ -871,10 +871,10 @@ def synthesize_stage2(organism, payload: dict, creature_dir: Path) -> str:
         logger.error(f"Consolidation stage 2 failed for {creature_dir.name}: {e}")
         return ""
 
-    if not body or selfhood._looks_like_meta_report(body):
+    if not body or selfhood._looks_like_meta_report(body) or selfhood._is_error_fallback(body):
         logger.warning(
-            f"Consolidation for {creature_dir.name} was empty or meta-shaped; "
-            f"not writing. Raw (first 200): {body[:200]!r}"
+            f"Consolidation for {creature_dir.name} was empty, meta-shaped, or an "
+            f"error-fallback; not writing (events retry next pass). Raw (first 200): {body[:200]!r}"
         )
         return ""
     return body

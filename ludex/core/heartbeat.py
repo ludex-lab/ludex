@@ -46,16 +46,8 @@ DEFAULT_CREATURES_DIR = Path(__file__).resolve().parents[2] / "creatures"
 SKIP_DIRS = {"ClaudeCLI1", "ClaudeCode1", "Claude_Spike", "FC_Test",
              "PersistTest", "onboarding"}
 
-# When health grade drops to this or below, trigger reflect
-REFLECT_GRADE_THRESHOLD = "C"
-
 # Bond staleness threshold (days)
 BOND_STALE_DAYS = 7
-
-
-def _grade_at_or_below(grade: str, threshold: str) -> bool:
-    order = {"A": 0, "B": 1, "C": 2, "D": 3}
-    return order.get(grade, 3) >= order.get(threshold, 2)
 
 
 def pulse_creature(
@@ -264,21 +256,20 @@ def pulse_creature(
                 result["model_currency_error"] = str(e)
         result["model_currency"] = cinfo
 
-    # 4. Determine if reflect should trigger
+    # 4. Determine if reflect should trigger.
+    # Metabolism-only (2026-06-20): the autonomous heartbeat reflects ONLY on
+    # substantive, infrequent events — a consolidation, a post-hiatus wake, a model
+    # change. The per-pulse churn triggers (health_grade<=C, stale_bonds) were removed:
+    # the 6-week travel data showed ~90% of heartbeat reflections were those two repeated
+    # themes with no reliable SELF growth. Reflection on health / stale-bonds now belongs
+    # to the deliberate caretaker pass, where real interaction gives real material.
+    # (health + stale_bonds are still computed above and recorded in the span/output.)
     should_reflect = False
     reflect_reasons = []
-
-    if health and _grade_at_or_below(health.grade, REFLECT_GRADE_THRESHOLD):
-        should_reflect = True
-        reflect_reasons.append(f"health_grade={health.grade}")
 
     if consolidated:
         should_reflect = True
         reflect_reasons.append("just_consolidated")
-
-    if stale_bonds:
-        should_reflect = True
-        reflect_reasons.append(f"stale_bonds={stale_bonds}")
 
     if hiatus_marker is not None:
         should_reflect = True
@@ -556,6 +547,16 @@ def main():
     mode = "DRY-RUN" if args.dry_run else "LIVE"
     scope = f" habitat={args.habitat}" if args.habitat else ""
     print(f"\n[heartbeat {mode}{scope}] {creatures_dir}")
+
+    # ① staleness-guard (D-090 Cleaner, 2026-06-20): never pulse on a checkout behind
+    # canonical — a stale-state heartbeat writes stale reflections (and, pre-brain.auth,
+    # risked a billing leak). Live runs only; dry-run is read-only, so it is exempt.
+    if not args.dry_run:
+        from ludex.core.freshness import checkout_is_current
+        fresh_ok, fresh_detail = checkout_is_current(creatures_dir, fetch=True)
+        if not fresh_ok:
+            print(f"[heartbeat] SKIPPED — checkout not current ({fresh_detail}). Pull canonical first.")
+            return
 
     results = pulse_all(
         creatures_dir=creatures_dir,

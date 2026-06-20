@@ -219,13 +219,9 @@ def test_reflect_empty_distinct_outcome_from_maintenance_ran(tmp_path, monkeypat
     but the previous reporting labeled it 'maintenance_ran', hiding
     the no-update fact from caretaker tooling."""
     creature_dir = _write_creature(tmp_path)
-    # No HIATUS.md — trigger reflect via a stale-bonds path. Easiest:
-    # write an old bond file so _check_bond_staleness flags it.
-    bond_path = creature_dir / "bonds" / "someone.md"
-    bond_path.write_text("hi\n", encoding="utf-8")
-    import os
-    old = time.time() - 60 * 86400
-    os.utime(bond_path, (old, old))
+    # Trigger reflect via a post-window hiatus marker (a kept metabolism-only
+    # trigger; stale-bonds no longer auto-triggers as of 2026-06-20).
+    _write_hiatus(creature_dir, "2000-01-01", "2001-01-01")
 
     def empty_reflect(organism, trigger="manual", engine=None,
                       hiatus_marker=None):
@@ -245,11 +241,9 @@ def test_reflect_with_text_keeps_maintenance_ran_outcome(tmp_path, monkeypatch):
     'maintenance_ran' — the empty-text distinction does not regress
     the productive path."""
     creature_dir = _write_creature(tmp_path)
-    bond_path = creature_dir / "bonds" / "someone.md"
-    bond_path.write_text("hi\n", encoding="utf-8")
-    import os
-    old = time.time() - 60 * 86400
-    os.utime(bond_path, (old, old))
+    # Trigger reflect via a post-window hiatus marker (a kept metabolism-only
+    # trigger; stale-bonds no longer auto-triggers as of 2026-06-20).
+    _write_hiatus(creature_dir, "2000-01-01", "2001-01-01")
 
     def good_reflect(organism, trigger="manual", engine=None,
                      hiatus_marker=None):
@@ -262,6 +256,33 @@ def test_reflect_with_text_keeps_maintenance_ran_outcome(tmp_path, monkeypatch):
     assert r["reflected"] is True
     assert r["reflect_len"] > 0
     assert r["outcome"] == "maintenance_ran"
+
+
+def test_metabolism_only_drops_churn_triggers(tmp_path, monkeypatch):
+    """Metabolism-only (2026-06-20): a stale bond no longer AUTO-triggers reflect on the
+    autonomous heartbeat — that per-pulse churn moved to the deliberate caretaker pass.
+    The staleness is still DETECTED and recorded (the signal survives); it just doesn't
+    fire a brain call. (Same applies to low health_grade.)"""
+    creature_dir = _write_creature(tmp_path)
+    bond_path = creature_dir / "bonds" / "someone.md"
+    bond_path.write_text("hi\n", encoding="utf-8")
+    import os
+    old = time.time() - 60 * 86400
+    os.utime(bond_path, (old, old))   # stale bond — formerly a reflect trigger
+
+    called = {"reflect": False}
+
+    def spy_reflect(organism, trigger="manual", engine=None, hiatus_marker=None):
+        called["reflect"] = True
+        return "x"
+
+    import ludex.core.selfhood as selfhood_mod
+    monkeypatch.setattr(selfhood_mod, "reflect", spy_reflect)
+
+    r = pulse_creature(creature_dir, dry_run=False)
+    assert r.get("stale_bonds")                 # detection intact
+    assert called["reflect"] is False           # but no autonomous reflect fired
+    assert "stale_bonds" not in (r.get("reflect_reasons") or [])
 
 
 def test_mid_hiatus_pulse_skips_health_and_consolidation(tmp_path, monkeypatch):
