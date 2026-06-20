@@ -184,7 +184,7 @@ def get_or_register_lxm_id(creature_path, transport, display_name=None):
 
 def play_creature_match(path_a, path_b, *, game, base_url=ONRENDER, kind="published",
                         on_turn=None, on_start=None, action_retries=2, max_turns=12, should_stop=None,
-                        shuffle_seats=True):
+                        shuffle_seats=True, scenario_id=""):
     """Two REAL creatures meet in a hosted cross-machine match — each plays via its own
     brain + organs (on an ephemeral copy, D-090), each carrying its stable B1 creature_id
     so it can be re-recognized on a re-meeting. The deployed server is all-remote, so this
@@ -214,7 +214,7 @@ def play_creature_match(path_a, path_b, *, game, base_url=ONRENDER, kind="publis
             "participants": [
                 {"id": ha, "kind": "remote", "creature_id": id_a, "display": name_a},
                 {"id": hb, "kind": "remote", "creature_id": id_b, "display": name_b}],
-            "config": {"max_turns": max_turns}})
+            "config": {"max_turns": max_turns, **({"scenario_id": scenario_id} if scenario_id else {})}})
         mid = view["match_id"]
         if on_start:
             on_start(VIEWER.format(id=mid))      # surface the viewer link live, mid-match

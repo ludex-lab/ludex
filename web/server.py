@@ -1020,6 +1020,16 @@ _LXM_FALLBACK_GAMES = [
 ]
 _LXM_GAMES_CACHE = {"at": 0.0, "games": None}
 
+# blockworld as a 2-player MEETING field (its multiplayer social-dilemma scenarios) is HELD
+# until the deployed LxM arena honors config.scenario_id on match-create. Verified 2026-06-21
+# (4 reps): every blockworld match defaults to the solo `shelter` scenario regardless of
+# scenario_id (config / top-level / alt-name) — so a user picking "Prisoner's Dilemma" would
+# get a broken shelter match + illegal_move. The full plumbing (scenarios endpoint, scenario_id
+# threading, driver config, frontend picker) is correct and stays wired; only the user-facing
+# roster exposure waits. Flip to True once LxM Cody confirms scenario selection is live (and
+# re-verify our blockworld move handling — _legal_fallback is still trustgame-shaped).
+_BLOCKWORLD_MEETING_ENABLED = False
+
 
 def _lxm_games():
     """The LxM games creatures can MEET in for a cross-machine match — filtered to
@@ -1030,7 +1040,17 @@ def _lxm_games():
     import urllib.request
     from ludex.bridges.hosted_match import ONRENDER
     def _multi(gs):
-        return [g for g in gs if g.get("min_players", 2) >= 2]
+        out = []
+        for g in gs:
+            if g.get("id") == "blockworld" and _BLOCKWORLD_MEETING_ENABLED:
+                # blockworld is a scenario FAMILY: its multiplayer scenarios are all 2-player
+                # social-dilemma / coordination worlds (PD, stag hunt, commons, pure-coord, …).
+                # Expose it as a 2-player meeting game carrying a scenario picker — a whole new
+                # axis (cooperation/defection) the competitive/deduction games don't touch.
+                out.append({**g, "min_players": 2, "max_players": 2, "scenarios": True})
+            elif g.get("min_players", 2) >= 2 and g.get("id") != "blockworld":
+                out.append(g)
+        return out
     if _LXM_GAMES_CACHE["games"] and time.time() - _LXM_GAMES_CACHE["at"] < 300:
         return _LXM_GAMES_CACHE["games"]
     try:
@@ -1122,11 +1142,13 @@ def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
         _save_field_session(sess)
 
 
-def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str, shuffle_seats: bool = True):
+def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str, shuffle_seats: bool = True,
+                            scenario_id: str = ""):
     """Two creatures MEET on the hosted LxM arena (D-089 §5, B1). Each plays on an
     ephemeral copy (D-090); on a `published` encounter BOTH remember it — a reflection
     + a bond toward the other keyed on its stable creature_id (re-recognition on a
-    re-meeting). This is the cross-machine encounter the field exists for."""
+    re-meeting). This is the cross-machine encounter the field exists for. `scenario_id`
+    seats a scenario-family game (blockworld's social-dilemma worlds)."""
     import time as _time
     from ludex.bridges.hosted_match import play_creature_match, record_encounter, recognize
     sess = field_sessions[sid]
@@ -1146,7 +1168,7 @@ def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str
             sess["thinking"] = rec.get("name")
 
         result = play_creature_match(pa, pb, game=game, kind=kind, max_turns=max_turns,
-                                     shuffle_seats=shuffle_seats,
+                                     shuffle_seats=shuffle_seats, scenario_id=scenario_id,
                                      on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u, building=""),
                                      should_stop=lambda: sess.get("stop"))
         field.result = result.get("result")
@@ -1399,6 +1421,7 @@ class FieldStartRequest(BaseModel):
     mediator: str = ""     # optional: name of the creature to seat as mediator
     ticks: int = 10        # wilderness only: how long the world runs
     game: str = ""         # lxm only: which game in the hosted arena
+    scenario_id: str = ""  # lxm only: which scenario for a scenario-family game (blockworld)
     kind: str = "practice" # lxm only: practice (ephemeral) | published (permanent + viewable)
     shuffle_seats: bool = True  # lxm only: True = random seats (fair); False = play in the given creature order (assign roles/teams)
 
@@ -1441,8 +1464,40 @@ async def lxm_games():
     from ludex.bridges.hosted_match import HOUSE_BOTS
     return {"games": [{"id": g["id"], "name": _LXM_GAME_NAMES.get(g["id"], g["id"]),
                        "min": g.get("min_players", 2), "max": g.get("max_players", 2),
-                       "house": g["id"] in HOUSE_BOTS}
+                       "house": g["id"] in HOUSE_BOTS, "scenarios": bool(g.get("scenarios"))}
                       for g in _lxm_games()]}
+
+
+_LXM_SCEN_CACHE = {}  # game -> {"at": ts, "scenarios": [...]}
+
+
+def _lxm_scenarios(game: str):
+    """Multiplayer scenarios for a scenario-family game (blockworld) — the 2-player
+    social-dilemma/coordination worlds creatures can MEET in. Proxies LxM's
+    GET /api/games/{game}/scenarios?category=multiplayer (cached 5 min). [] on failure."""
+    c = _LXM_SCEN_CACHE.get(game)
+    if c and time.time() - c["at"] < 300:
+        return c["scenarios"]
+    import urllib.request
+    from ludex.bridges.hosted_match import ONRENDER
+    try:
+        url = f"{ONRENDER}/api/games/{game}/scenarios?category=multiplayer"
+        with urllib.request.urlopen(url, timeout=20) as r:
+            scen = json.loads(r.read().decode())
+        if isinstance(scen, list):
+            _LXM_SCEN_CACHE[game] = {"at": time.time(), "scenarios": scen}
+            return scen
+    except Exception:
+        pass
+    return (c or {}).get("scenarios", [])
+
+
+@app.get("/api/lxm/scenarios/{game}")
+async def lxm_scenarios(game: str):
+    """Selectable multiplayer scenarios for a scenario-family game (blockworld).
+    Each: {scenario_id, title, mode, difficulty, players}."""
+    return {"scenarios": [{k: s.get(k) for k in ("scenario_id", "title", "mode", "difficulty", "players")}
+                          for s in _lxm_scenarios(game)]}
 
 
 @app.post("/api/field/start")
@@ -1460,12 +1515,21 @@ async def field_start(req: FieldStartRequest):
             need = f"{gmin}" if gmin == gmax else f"{gmin}–{gmax}"
             extra = " (or 1 vs the house)" if has_house else ""
             return {"error": f"'{req.game}' needs {need} creatures{extra} — you admitted {n}."}
+        # Scenario-family games (blockworld) need a scenario to seat the world.
+        scenario_id = (req.scenario_id or "").strip()
+        is_scenario_game = any(g["id"] == req.game and g.get("scenarios") for g in _lxm_games())
+        if is_scenario_game and not scenario_id:
+            return {"error": f"'{req.game}' needs a scenario — pick one."}
+        if scenario_id and not is_scenario_game:
+            scenario_id = ""   # ignore a stray scenario for a non-scenario game
         import threading
         sid = f"f{int(time.time() * 1000) % 1000000}"
         names = " vs ".join(os.path.basename(str(p).rstrip("/\\")) for p in req.creatures)
+        glabel = f"{req.game}/{scenario_id}" if scenario_id else req.game
         field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "",
-                               "field_kind": "lxm", "dilemma": f"LxM · {req.game} · {names} ({req.kind})",
-                               "game": req.game, "kind": req.kind, "entered": [], "building": "",
+                               "field_kind": "lxm", "dilemma": f"LxM · {glabel} · {names} ({req.kind})",
+                               "game": req.game, "scenario_id": scenario_id, "kind": req.kind,
+                               "entered": [], "building": "",
                                "thinking": "", "stop": False, "started": time.time(),
                                "mediator": "", "aftermath": "", "tick": ""}
         if n == 1 and has_house:
@@ -1473,7 +1537,7 @@ async def field_start(req: FieldStartRequest):
                              args=(sid, req.game, req.creatures[0], req.kind), daemon=True).start()
         elif n == 2:
             threading.Thread(target=_run_lxm_creature_match,
-                             args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats), daemon=True).start()
+                             args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats, scenario_id), daemon=True).start()
         else:
             threading.Thread(target=_run_lxm_multi_match_bg,
                              args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats), daemon=True).start()
