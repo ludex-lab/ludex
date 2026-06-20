@@ -50,3 +50,51 @@ def ephemeral_creature(path, *, keep_snapshots=False):
         yield OrganismConfig.load(dst)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+# --- Layer 3 seed: sanctioned-automation leases (D-090 Recognition) -----------
+# Prevention (above) stops tooling from writing the live creature. Recognition asks
+# the complementary question of an *automated writer*: is this scheduler a sanctioned
+# part of the ecosystem, or drift? `is_sanctioned(text)` is the v0 of that — a lease
+# registry the integrity sweep consults so a known heartbeat reads as SELF, not a
+# stray cron. The full write-lease/provenance spine is the later precision layer.
+
+_LEASE_CACHE = None
+
+
+def _lease_registry_path() -> str:
+    # config/ sits at the repo root, a sibling of ludex/ (this file is ludex/core/integrity.py).
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(root, "config", "sanctioned_automation.yaml")
+
+
+def _load_leases():
+    """Sanctioned-automation leases from config/sanctioned_automation.yaml (cached). [] if absent."""
+    global _LEASE_CACHE
+    if _LEASE_CACHE is not None:
+        return _LEASE_CACHE
+    leases = []
+    try:
+        import yaml
+        with open(_lease_registry_path(), encoding="utf-8") as f:
+            leases = (yaml.safe_load(f) or {}).get("leases") or []
+    except Exception:
+        leases = []
+    _LEASE_CACHE = leases
+    return leases
+
+
+def is_sanctioned(text: str) -> bool:
+    """True if `text` — a scheduler's identifier (a cron line, a LaunchAgent label/body, or a
+    Windows task name+command) — matches a lease in config/sanctioned_automation.yaml. The
+    D-090 Recognition primitive: a leased automation is recognized as SELF (a sanctioned
+    writer), so the integrity sweep treats it as known rather than drift. Adding a lease is a
+    deliberate caretaker act — sanctioning a writer is JJ's call, never inferred."""
+    if not text:
+        return False
+    t = text.lower()
+    for lease in _load_leases():
+        for m in (lease.get("match") or []):
+            if m and str(m).lower() in t:
+                return True
+    return False

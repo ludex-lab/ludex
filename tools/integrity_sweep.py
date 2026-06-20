@@ -122,6 +122,25 @@ def check_stale_checkout(repo_root: str) -> list[dict]:
     return findings
 
 
+def _windows_scheduled_tasks() -> list[tuple[str, str, str]]:
+    """(name, command, state) for every Windows scheduled task, via PowerShell — its property
+    names are locale-independent (schtasks CSV headers localize, and this box is Korean). [] on error."""
+    ps = ("Get-ScheduledTask | ForEach-Object { "
+          "$c = ($_.Actions | ForEach-Object { \"$($_.Execute) $($_.Arguments)\" }) -join ' | '; "
+          "[pscustomobject]@{ n=($_.TaskPath+$_.TaskName); c=$c; s=\"$($_.State)\" } } "
+          "| ConvertTo-Json -Compress")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                             capture_output=True, text=True, timeout=30).stdout.strip()
+        data = json.loads(out) if out else []
+    except Exception:
+        return []
+    if isinstance(data, dict):  # ConvertTo-Json emits a bare object for a single task
+        data = [data]
+    return [((d.get("n") or "").strip(), (d.get("c") or "").strip(), (d.get("s") or "").strip())
+            for d in data if isinstance(d, dict)]
+
+
 def check_unsanctioned_automation(repo_root: str) -> list[dict]:
     """Flag schedulers/daemons configured to run ludex on creatures — the stray-cron class.
     Mac side (crontab + LaunchAgents/LaunchDaemons) here; Windows `schtasks` is Ray's half."""
@@ -132,16 +151,22 @@ def check_unsanctioned_automation(repo_root: str) -> list[dict]:
         t = (text or "").lower()
         return any(tok and tok.lower() in t for tok in tokens)
 
+    from ludex.core.integrity import is_sanctioned
+
+    def _drift(text: str) -> bool:
+        """ludex automation that is NOT a sanctioned lease — the thing to flag."""
+        return _hits(text) and not is_sanctioned(text)
+
     if sys.platform == "darwin":
         # user crontab
         try:
             cron = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10).stdout
             for ln in cron.splitlines():
-                if ln.strip() and not ln.strip().startswith("#") and _hits(ln):
+                if ln.strip() and not ln.strip().startswith("#") and _drift(ln):
                     findings.append({"check": "unsanctioned-automation", "target": "crontab",
-                                     "detail": f"cron line references ludex: {ln.strip()[:90]}",
-                                     "recommend": "confirm this is a sanctioned caretaker lease; if a leftover, "
-                                                  "`crontab -e` and remove (auto-wakes write canonical unsupervised)"})
+                                     "detail": f"cron line references ludex (not a sanctioned lease): {ln.strip()[:90]}",
+                                     "recommend": "add a lease to config/sanctioned_automation.yaml if intended; "
+                                                  "else `crontab -e` and remove (auto-wakes write canonical unsupervised)"})
         except Exception:
             pass
         # launchd agents/daemons
@@ -157,18 +182,29 @@ def check_unsanctioned_automation(repo_root: str) -> list[dict]:
                     body = open(p, encoding="utf-8", errors="replace").read()
                 except Exception:
                     continue
-                if _hits(body):
+                if _hits(body) and not (is_sanctioned(f) or is_sanctioned(body)):
                     findings.append({"check": "unsanctioned-automation", "target": p,
-                                     "detail": "LaunchAgent/Daemon plist references ludex",
-                                     "recommend": "confirm it's a sanctioned lease; else `launchctl bootout` + remove the plist"})
+                                     "detail": "LaunchAgent/Daemon plist references ludex (not a sanctioned lease)",
+                                     "recommend": "add a lease to config/sanctioned_automation.yaml if intended; "
+                                                  "else `launchctl bootout` + remove the plist"})
     elif sys.platform.startswith("win"):
-        findings.append({"check": "unsanctioned-automation", "target": "Windows schtasks",
-                         "detail": "Windows scheduled-task scan is Ray's half (he hit the stray heartbeat on his box)",
-                         "recommend": "Ray: enumerate schtasks for ludex-referencing tasks (the LudexRayHabitatHeartbeat class)"})
+        for name, cmd, state in _windows_scheduled_tasks():
+            if _drift(name + " " + cmd):
+                findings.append({"check": "unsanctioned-automation", "target": f"schtasks: {name}",
+                                 "detail": f"scheduled task ({state}) runs ludex (not a sanctioned lease): {cmd[:90]}",
+                                 "recommend": "add a lease to config/sanctioned_automation.yaml if intended; else "
+                                              "disable/remove (`schtasks /Change /TN <name> /DISABLE` or /Delete) — "
+                                              "auto-wakes write canonical unsupervised (the LudexRayHabitatHeartbeat class)"})
     return findings
 
 
 def main():
+    # Windows consoles default to a localized codec (cp949 on this Korean box); the sweep's
+    # box-drawing + ✓/⚠/→ glyphs crash on encode otherwise. Force utf-8 I/O.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser(description="D-090 Cleaner v0 — caretaker integrity sweep (recommend-only).")
     ap.add_argument("--root", default="creatures", help="creatures dir to sweep (default: ./creatures)")
     args = ap.parse_args()

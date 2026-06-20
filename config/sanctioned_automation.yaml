@@ -1,0 +1,34 @@
+# Sanctioned automation leases — D-090 Recognition (ludex/core/integrity.is_sanctioned).
+#
+# The integrity sweep (tools/integrity_sweep.py) recognizes a scheduler whose identifier
+# matches a lease's `match` substrings as SELF — a sanctioned writer — and does NOT flag it
+# as drift. Any ludex-automation NOT matched here is flagged for review. Adding a lease is a
+# DELIBERATE caretaker act (sanctioning a writer is JJ's call), never a default.
+#
+# WAKE-OWNERSHIP = ORIGIN. Each habitat's heartbeat pulses/wakes ONLY its own-origin
+# creatures — enforced structurally by the origin-guard (a foreign-origin persistent build is
+# refused; see ephemeral_creature + the build-time host check). A heartbeat cannot wake another
+# habitat's creatures, and a creature is woken only on the machine it is homed to (its
+# `origin`), regardless of where its brain runs. This is why the 6 Ray-origin HIATUS creatures
+# are Ray's to wake even though four carry cloud-CLI brains.
+
+leases:
+  - name: mac-habitat-heartbeat
+    match: ["com.ludex.macHabitat.heartbeat"]
+    kind: heartbeat
+    host: Mac-habitat
+    note: >-
+      D-051 life-support metabolism (Mac-origin creatures only). Guarded by the ① freshness
+      gate + metabolism-only (cf0ac30). NOTE: Mac also runs a redundant crontab entry for the
+      same heartbeat — the sweep will flag that cron until it is consolidated into this one
+      scheduler (two schedulers = double-fire risk).
+
+  - name: ray-habitat-heartbeat
+    match: ["LudexRayHabitatHeartbeat"]
+    kind: heartbeat
+    host: Ray-habitat
+    note: >-
+      D-051 life-support (Ray-origin creatures only). DISABLED 2026-06-20 until the 6 Ray-origin
+      HIATUS creatures (Anvil/Flint/Hearth/Loom/Quill/Wick) receive their deliberate post-hiatus
+      wake on Windows — else re-enabling auto-fires the post_hiatus trigger on them. Re-enable
+      only after those markers are consumed.
