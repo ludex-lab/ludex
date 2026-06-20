@@ -81,7 +81,7 @@ def play_hosted_match(creature_path, opponent_move, *, game, base_url=ONRENDER,
                     except MatchError:
                         continue
                 if move is None:
-                    move = _legal_fallback(payload)
+                    move = _legal_fallback(payload, game)
                 body = {"move": move}
                 if dlg:
                     body["dialogue"] = dlg
@@ -102,12 +102,14 @@ def play_hosted_match(creature_path, opponent_move, *, game, base_url=ONRENDER,
             "viewer_url": VIEWER.format(id=mid), "turns": turns}
 
 
-def _legal_fallback(payload):
+def _legal_fallback(payload, game=""):
     """A safe move when the creature's reply could not be parsed after retries —
-    the first declared legal move, else a benign game default."""
+    the first declared legal move, else a benign per-game default."""
     legal = payload.get("legal_moves")
     if isinstance(legal, list) and legal:
         return legal[0] if isinstance(legal[0], dict) else {"move": legal[0]}
+    if game == "blockworld":
+        return {"type": "action", "verb": "wait"}                # `wait` is legal in every blockworld scenario (per LxM)
     state = payload.get("state") or {}
     board = (state.get("game", {}).get("current", {}) or state).get("board")
     if isinstance(board, list):                                  # tic-tac-toe etc.
@@ -252,7 +254,7 @@ def play_creature_match(path_a, path_b, *, game, base_url=ONRENDER, kind="publis
                         nudge = _ILLEGAL_NUDGE; continue       # illegal → re-prompt with feedback
                     raise
             else:                                              # all retries failed → safe legal fallback
-                move = _legal_fallback(payload)
+                move = _legal_fallback(payload, game)
                 t.post(f"/api/matches/{mid}/turns/{turn}/move", {"move": move})
             if on_turn:
                 on_turn({"turn": turn, "who": who, "name": seat["name"], "move": move, "dialogue": dlg})
@@ -409,7 +411,7 @@ def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="
             else:                                      # retries exhausted — benign fallback, never crash
                 failed_turn = turn                     # if it's rejected (no legal-list game), reaper advances the seat
                 try:
-                    t.post(f"/api/matches/{mid}/turns/{turn}/move", {"move": _legal_fallback(payload)})
+                    t.post(f"/api/matches/{mid}/turns/{turn}/move", {"move": _legal_fallback(payload, game)})
                 except MatchError:
                     pass
             if should_stop and should_stop():

@@ -1020,15 +1020,13 @@ _LXM_FALLBACK_GAMES = [
 ]
 _LXM_GAMES_CACHE = {"at": 0.0, "games": None}
 
-# blockworld as a 2-player MEETING field (its multiplayer social-dilemma scenarios) is HELD
-# until the deployed LxM arena honors config.scenario_id on match-create. Verified 2026-06-21
-# (4 reps): every blockworld match defaults to the solo `shelter` scenario regardless of
-# scenario_id (config / top-level / alt-name) — so a user picking "Prisoner's Dilemma" would
-# get a broken shelter match + illegal_move. The full plumbing (scenarios endpoint, scenario_id
-# threading, driver config, frontend picker) is correct and stays wired; only the user-facing
-# roster exposure waits. Flip to True once LxM Cody confirms scenario selection is live (and
-# re-verify our blockworld move handling — _legal_fallback is still trustgame-shaped).
-_BLOCKWORLD_MEETING_ENABLED = False
+# blockworld as a 2-player MEETING field (its multiplayer social-dilemma scenarios). The hold
+# is LIFTED (2026-06-21): LxM fixed the two-layer scenario bug (config.scenario_id was dropped
+# on match-create + seat ids hardcoded a/b) in 112c23f — verified deployed (prisoners_dilemma_01
+# now loads PD, not shelter). Our move handling verified clean (valid action-verb moves, 0
+# fallback hits, no crash); blockworld turn cap raised to 40 + _legal_fallback now returns a
+# blockworld-legal `wait` for weaker brains.
+_BLOCKWORLD_MEETING_ENABLED = True
 
 
 def _lxm_games():
@@ -1156,7 +1154,9 @@ def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str
     na = os.path.basename(str(pa).rstrip("/\\"))
     nb = os.path.basename(str(pb).rstrip("/\\"))
     try:
-        max_turns = {"trustgame": 12, "tictactoe": 9}.get(game, 16)
+        # blockworld's spatial social-dilemma scenarios need room to move-then-encounter
+        # (a short cap ends in talk before any cooperate/defect payoff) — match the N-creature path.
+        max_turns = {"trustgame": 12, "tictactoe": 9, "blockworld": 40}.get(game, 16)
         field = LxMField(na, nb)
         sess["field"] = field
         sess["entered"] = [na, nb]; sess["building"] = ""
