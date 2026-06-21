@@ -879,6 +879,9 @@ async function tlLoadCreature(name) {
   const body = document.getElementById('tlBody'), empty = document.getElementById('tlEmpty');
   document.getElementById('tlDiff').classList.add('hidden');
   document.getElementById('tlRetroDoc').classList.add('hidden');
+  // keep an OPEN Shareable-profile panel in sync when the creature dropdown changes
+  const _pf = document.getElementById('tlProfile');
+  if (_pf && !_pf.classList.contains('hidden')) tlPreviewProfile();
   if (!name) { body.classList.add('hidden'); empty.classList.add('hidden'); return; }
   const ev = document.getElementById('tlEvents');
   ev.innerHTML = `<div class="tl-ev"><span class="tl-title">${t('tl_loading')}</span></div>`;
