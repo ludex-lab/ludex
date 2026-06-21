@@ -422,9 +422,8 @@
     <div class="tl-bar">
       <span style="color:#8b94a3;font-size:13px" data-i18n="tl_pick">Creature:</span>
       <select id="tlSelect" onchange="tlLoadCreature(this.value)"></select>
-      <button class="tl-btn" onclick="tlPreviewProfile()" data-i18n="tl_profile">🪪 Shareable profile</button>
+      <button class="tl-btn" onclick="tlPreviewProfile()" data-i18n="tl_profile">🪪 Shareable profile ↗</button>
     </div>
-    <div id="tlProfile" class="hidden"></div>
     <div id="tlBody" class="hidden">
       <h3 class="eco-subh" data-i18n="tl_self">Self-understanding history (SELF.md)</h3>
       <div class="tl-bar">
@@ -831,57 +830,19 @@ async function loadTimeline() {
   } catch (e) { sel.innerHTML = `<option>${t('err_prefix')}${e.message}</option>`; }
 }
 
-// Shareable creature PROFILE — a pure render over the ludex.profile/v2 snapshot (the four-axis
-// "digital twin" data: blueprint / lived / place / portrait). One of two independent renderers of
-// the v2 contract (the other is the standalone twin viewer at /twin) — that pair is the contract's
-// acceptance test. Curates the timeline (drops routine heartbeat snapshots) so it reads as a life.
-function renderProfile(p) {
-  if (!p || p.error) return `<div class="field-status">${_esc((p && p.error) || 'No profile')}</div>`;
-  const bp = p.blueprint || {}, lived = p.lived || {}, place = p.place || {};
-  const br = bp.brain || {}, em = (lived.state || {}).emotion || {};
-  const brain = [br.provider, br.model].filter(Boolean).join('/') + (br.class ? ` · ${br.class}` : '');
-  const organs = (bp.organs || []).map(o => `<span class="fchip">${_esc(o)}</span>`).join(' ');
-  const self = (lived.self || '').split(/\n{2,}/).map(s => `<p>${_esc(s).replace(/\n/g, '<br>')}</p>`).join('');
-  const tl = (lived.timeline || []).filter(e => !(e.type === 'snapshot' && /heartbeat/i.test(e.title || ''))).slice(0, 40);
-  const rail = tl.map(e => `<div class="tl-ev t-${_esc(e.type)}"><span class="tl-date">${_esc(e.date)}</span>`
-    + `<div><span class="tl-type">${_esc(e.type)}</span><span class="tl-title">${_esc(e.title)}</span></div>`
-    + `${e.detail ? `<div class="tl-detail">${_esc(e.detail)}</div>` : ''}</div>`).join('') || '<div class="field-status">—</div>';
-  const bonds = (lived.bonds || []).map(b => `<div class="eco-card"><div class="ec-name">${_esc(b.name)}${b.cross_machine ? ' 🔗' : ''}</div>`
-    + `${b.first_met ? `<div class="ec-row" style="opacity:.6">met ${_esc(b.first_met)}${b.encounters ? ` · ${b.encounters}× on LxM` : ''}</div>` : ''}`
-    + `<div class="ec-row">${_esc((b.text || '').slice(0, 200))}</div></div>`).join('') || '<div class="field-status">—</div>';
-  const emo = ['valence', 'arousal', 'calm'].filter(k => em[k] != null).map(k => `${k} ${Number(em[k]).toFixed(2)}`).join(' · ');
-  const town = (place.town || {}).label || (place.town || {}).town_id || '';
-  const life = lived.lifecycle === 'dormant' ? '💤 dormant' : '● alive';
-  return `<div class="pf" style="border:1px solid var(--c-border);border-radius:var(--r-md);padding:16px;margin:10px 0">
-    <h2 style="margin:0">${_esc(bp.name)} <span style="font-size:12px;color:var(--c-text-muted);font-weight:400">${life}</span></h2>
-    <div style="color:var(--c-text-muted);font-size:var(--fs-sm);margin:4px 0">${_esc(brain)} · ${lived.memories || 0} memories${emo ? ' · ' + _esc(emo) : ''}</div>
-    <div style="color:var(--c-text-muted);font-size:var(--fs-xs);margin:0 0 6px">${_esc(bp.moniker || '')}${town ? ` · 🏘️ ${_esc(town)}` : ''}</div>
-    <div style="margin:6px 0 12px">${organs}</div>
-    <h3 class="eco-subh">Self</h3><div style="line-height:1.55">${self}</div>
-    <h3 class="eco-subh">Life</h3><div class="tl-events">${rail}</div>
-    <h3 class="eco-subh">Bonds</h3><div class="eco-cards">${bonds}</div>
-  </div>`;
-}
-async function tlPreviewProfile() {
-  const panel = document.getElementById('tlProfile');
-  if (!tlCurrent) { panel.classList.add('hidden'); return; }
-  panel.classList.remove('hidden');
-  panel.innerHTML = `<div class="field-status">${t('tl_loading')}</div>`;
-  try {
-    const p = await (await fetch(`/api/creature/${encodeURIComponent(tlCurrent)}/profile`)).json();
-    panel.innerHTML = `<div class="pf-note" style="font-size:13px;color:#8b94a3;margin-top:8px">${t('tl_profile_note')} `
-      + `<a href="#" onclick="document.getElementById('tlProfile').classList.add('hidden');return false">✕</a></div>` + renderProfile(p);
-    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (e) { panel.innerHTML = `<div class="field-status">${t('err_prefix')}${e.message}</div>`; }
+// The shareable profile / digital twin lives at the standalone /twin renderer (its own home,
+// github-pages-hostable later). Open it there instead of an inline card — the Timeline tab stays
+// focused on the life-over-time analysis (self-history, retrospectives, events), no duplication.
+// A named window so repeated clicks reuse one twin tab, following the latest creature.
+function tlPreviewProfile() {
+  if (!tlCurrent) return;
+  window.open(`/twin/?name=${encodeURIComponent(tlCurrent)}`, 'ludex_twin');
 }
 async function tlLoadCreature(name) {
   tlCurrent = name;
   const body = document.getElementById('tlBody'), empty = document.getElementById('tlEmpty');
   document.getElementById('tlDiff').classList.add('hidden');
   document.getElementById('tlRetroDoc').classList.add('hidden');
-  // keep an OPEN Shareable-profile panel in sync when the creature dropdown changes
-  const _pf = document.getElementById('tlProfile');
-  if (_pf && !_pf.classList.contains('hidden')) tlPreviewProfile();
   if (!name) { body.classList.add('hidden'); empty.classList.add('hidden'); return; }
   const ev = document.getElementById('tlEvents');
   ev.innerHTML = `<div class="tl-ev"><span class="tl-title">${t('tl_loading')}</span></div>`;
