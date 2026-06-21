@@ -1201,6 +1201,7 @@ def _run_lxm_match_bg(sid: str, game: str, creature_path: str, kind: str):
         else:
             if kind == "published":      # the encounter counts: remember + reflect on the LIVE creature (S1b)
                 _lxm_aftermath(sess, creature_path, game, field)
+                _consolidate_if_due(creature_path)   # activity-end: consolidate a window of life if due
             sess["status"] = "done"
     except Exception as e:
         sess["status"] = "error"
@@ -1262,6 +1263,9 @@ def _run_lxm_creature_match(sid: str, game: str, creature_paths: list, kind: str
                     prior = recognize(path, oppid) if oppid else None
                     sess["aftermath"] = f"bond:{name}->{oppname}"
                     record_encounter(path, oppname, oppid, summary, game, when, prior=prior)
+                for path in (pa, pb):       # activity-end: consolidate a window of life if due
+                    sess["aftermath"] = f"consolidate:{os.path.basename(str(path).rstrip('/'))}"
+                    _consolidate_if_due(path)
                 sess["aftermath"] = ""
             sess["status"] = "done"
     except Exception as e:
@@ -1485,6 +1489,9 @@ def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str
                     co = creatures.get(name, {}).get("co_participants", [])
                     sess["aftermath"] = f"reflect:{name}"
                     record_multi_encounter(path, co, summary, game, when)
+                for path in creature_paths:   # activity-end: consolidate a window of life if due
+                    sess["aftermath"] = f"consolidate:{os.path.basename(str(path).rstrip('/'))}"
+                    _consolidate_if_due(path)
                 sess["aftermath"] = ""
             sess["status"] = "done"
     except Exception as e:
