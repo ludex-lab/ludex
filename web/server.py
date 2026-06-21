@@ -198,6 +198,9 @@ def get_vitals(org: Organism) -> dict:
 
 app = FastAPI(title="Ludex Demo")
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
+# /twin — a standalone, independent renderer of the ludex.profile/v2 contract (the second
+# renderer; the app's Timeline preview is the first). github-pages-hostable on its own later.
+app.mount("/twin", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "twin"), html=True), name="twin")
 
 
 @app.get("/")

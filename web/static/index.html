@@ -831,26 +831,31 @@ async function loadTimeline() {
   } catch (e) { sel.innerHTML = `<option>${t('err_prefix')}${e.message}</option>`; }
 }
 
-// Shareable creature PROFILE (P0) — a pure render over the ludex.profile/v1 snapshot
-// (the "digital twin" data). The same function the hosted viewer (P1) and a future 3D
-// renderer will reuse — 2D now, 3D later, same data. Curates the timeline (drops routine
-// heartbeat snapshots) so it reads as a life, not telemetry.
+// Shareable creature PROFILE — a pure render over the ludex.profile/v2 snapshot (the four-axis
+// "digital twin" data: blueprint / lived / place / portrait). One of two independent renderers of
+// the v2 contract (the other is the standalone twin viewer at /twin) — that pair is the contract's
+// acceptance test. Curates the timeline (drops routine heartbeat snapshots) so it reads as a life.
 function renderProfile(p) {
   if (!p || p.error) return `<div class="field-status">${_esc((p && p.error) || 'No profile')}</div>`;
-  const c = p.creature || {}, em = (p.state || {}).emotion || {};
-  const organs = (c.organs || []).map(o => `<span class="fchip">${_esc(o)}</span>`).join(' ');
-  const self = (p.self || '').split(/\n{2,}/).map(s => `<p>${_esc(s).replace(/\n/g, '<br>')}</p>`).join('');
-  const tl = (p.timeline || []).filter(e => !(e.type === 'snapshot' && /heartbeat/i.test(e.title || ''))).slice(0, 40);
+  const bp = p.blueprint || {}, lived = p.lived || {}, place = p.place || {};
+  const br = bp.brain || {}, em = (lived.state || {}).emotion || {};
+  const brain = [br.provider, br.model].filter(Boolean).join('/') + (br.class ? ` · ${br.class}` : '');
+  const organs = (bp.organs || []).map(o => `<span class="fchip">${_esc(o)}</span>`).join(' ');
+  const self = (lived.self || '').split(/\n{2,}/).map(s => `<p>${_esc(s).replace(/\n/g, '<br>')}</p>`).join('');
+  const tl = (lived.timeline || []).filter(e => !(e.type === 'snapshot' && /heartbeat/i.test(e.title || ''))).slice(0, 40);
   const rail = tl.map(e => `<div class="tl-ev t-${_esc(e.type)}"><span class="tl-date">${_esc(e.date)}</span>`
     + `<div><span class="tl-type">${_esc(e.type)}</span><span class="tl-title">${_esc(e.title)}</span></div>`
     + `${e.detail ? `<div class="tl-detail">${_esc(e.detail)}</div>` : ''}</div>`).join('') || '<div class="field-status">—</div>';
-  const bonds = (p.bonds || []).map(b => `<div class="eco-card"><div class="ec-name">${_esc(b.name)}${b.cross_machine ? ' 🔗' : ''}</div>`
+  const bonds = (lived.bonds || []).map(b => `<div class="eco-card"><div class="ec-name">${_esc(b.name)}${b.cross_machine ? ' 🔗' : ''}</div>`
     + `${b.first_met ? `<div class="ec-row" style="opacity:.6">met ${_esc(b.first_met)}${b.encounters ? ` · ${b.encounters}× on LxM` : ''}</div>` : ''}`
     + `<div class="ec-row">${_esc((b.text || '').slice(0, 200))}</div></div>`).join('') || '<div class="field-status">—</div>';
   const emo = ['valence', 'arousal', 'calm'].filter(k => em[k] != null).map(k => `${k} ${Number(em[k]).toFixed(2)}`).join(' · ');
-  return `<div class="pf" style="border:1px solid #2a3340;border-radius:10px;padding:16px;margin:10px 0">
-    <h2 style="margin:0">${_esc(c.name)}</h2>
-    <div style="color:#8b94a3;font-size:13px;margin:4px 0">${_esc(c.brain)} · ${c.memories || 0} memories${emo ? ' · ' + _esc(emo) : ''}</div>
+  const town = (place.town || {}).label || (place.town || {}).town_id || '';
+  const life = lived.lifecycle === 'dormant' ? '💤 dormant' : '● alive';
+  return `<div class="pf" style="border:1px solid var(--c-border);border-radius:var(--r-md);padding:16px;margin:10px 0">
+    <h2 style="margin:0">${_esc(bp.name)} <span style="font-size:12px;color:var(--c-text-muted);font-weight:400">${life}</span></h2>
+    <div style="color:var(--c-text-muted);font-size:var(--fs-sm);margin:4px 0">${_esc(brain)} · ${lived.memories || 0} memories${emo ? ' · ' + _esc(emo) : ''}</div>
+    <div style="color:var(--c-text-muted);font-size:var(--fs-xs);margin:0 0 6px">${_esc(bp.moniker || '')}${town ? ` · 🏘️ ${_esc(town)}` : ''}</div>
     <div style="margin:6px 0 12px">${organs}</div>
     <h3 class="eco-subh">Self</h3><div style="line-height:1.55">${self}</div>
     <h3 class="eco-subh">Life</h3><div class="tl-events">${rail}</div>

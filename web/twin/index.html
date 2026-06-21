@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Creature Twin — Ludex</title>
+<!-- A SECOND, independent renderer of the ludex.profile/v2 contract (the app's Timeline
+     "Shareable profile" is the first). Two renderers reading one contract = its acceptance
+     test (a single renderer hides assumptions). Standalone + github-pages-hostable (the LxM
+     viewer pattern); the avatar disc is the `portrait` slot where a 3D model-viewer goes later.
+     Reads ONLY /api/creature/{name}/profile — never the app's internals — so it proves the
+     profile is sufficient to render a creature on its own. -->
+<link rel="stylesheet" href="/static/tokens.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--c-bg); color: var(--c-text); font-family: var(--font-sans);
+         padding: 24px; line-height: 1.5; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .pick { display: flex; gap: 8px; align-items: center; margin-bottom: 20px; }
+  .pick select { background: var(--c-surface); color: var(--c-text); border: 1px solid var(--c-border);
+                 border-radius: var(--r-sm); padding: 7px 10px; font-size: var(--fs-sm); font-family: inherit; }
+  .twin { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-md); padding: 22px; }
+  /* header: the portrait slot (a generated avatar disc) + identity */
+  .head { display: flex; gap: 16px; align-items: center; }
+  .disc { width: 72px; height: 72px; border-radius: var(--r-pill); display: grid; place-items: center;
+          font-size: 30px; font-weight: 700; color: #0d1117; flex: none; }   /* 3D model-viewer goes here later */
+  .nm { font-size: var(--fs-xl); margin: 0; }
+  .moniker { font-size: var(--fs-xs); color: var(--c-text-muted); font-family: ui-monospace, monospace; }
+  .badge { display: inline-block; font-size: var(--fs-xs); padding: 2px 8px; border-radius: var(--r-pill);
+           border: 1px solid var(--c-border); color: var(--c-text-muted); margin-right: 6px; }
+  .vitals { display: flex; flex-wrap: wrap; gap: 14px; margin: 16px 0; color: var(--c-text-muted); font-size: var(--fs-sm); }
+  .vitals b { color: var(--c-text); font-weight: 600; }
+  .chips { margin: 10px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--c-surface-2); border: 1px solid var(--c-border); border-radius: var(--r-pill);
+          padding: 3px 10px; font-size: var(--fs-xs); }
+  h3 { font-size: var(--fs-sm); color: var(--c-accent); margin: 20px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+  /* emotion gauge — a VISUAL render of lived.state.emotion (vs the app's numbers) */
+  .gauge { display: grid; grid-template-columns: 64px 1fr; gap: 6px 10px; align-items: center; font-size: var(--fs-xs); }
+  .bar { height: 8px; border-radius: var(--r-pill); background: var(--c-surface-2); overflow: hidden; position: relative; }
+  .bar > i { position: absolute; top: 0; bottom: 0; background: var(--c-accent); border-radius: var(--r-pill); }
+  .self p { margin: 0 0 8px; }
+  .bonds { display: flex; flex-wrap: wrap; gap: 8px; }
+  .bond { background: var(--c-surface-2); border: 1px solid var(--c-border); border-radius: var(--r-sm);
+          padding: 10px 12px; font-size: var(--fs-xs); min-width: 150px; flex: 1; }
+  .bond .bn { color: var(--c-text); font-size: var(--fs-sm); font-weight: 600; }
+  .ribbon { border-left: 2px solid var(--c-border); padding-left: 14px; }
+  .ev { margin-bottom: 10px; }
+  .ev .d { color: var(--c-text-muted); font-size: var(--fs-xs); }
+  .ev .t { font-size: var(--fs-sm); }
+  .muted { color: var(--c-text-muted); }
+  a { color: var(--c-accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="pick">
+    <label class="muted" style="font-size:var(--fs-sm)">Creature:</label>
+    <select id="pick" onchange="load(this.value)"></select>
+    <span class="muted" style="font-size:var(--fs-xs)">— a standalone renderer of ludex.profile/v2</span>
+  </div>
+  <div id="twin"><div class="muted">Loading…</div></div>
+</div>
+<script>
+const esc = s => (s || '').replace(/[<&>]/g, c => ({'<':'&lt;','&':'&amp;','>':'&gt;'}[c]));
+// emotion valence (-1..1) → a hue for the portrait disc (red→amber→green): a renderer's own
+// reading of a named preset (research §2c — names are the contract, pixels are ours).
+function discColor(valence) {
+  const v = Math.max(-1, Math.min(1, Number(valence) || 0));
+  const hue = (v + 1) * 60;                 // -1→0 (red), 0→60 (amber), 1→120 (green)
+  return `hsl(${hue} 55% 62%)`;
+}
+function bar(label, v01) {                   // 0..1 fill
+  const pct = Math.round(Math.max(0, Math.min(1, v01)) * 100);
+  return `<span class="muted">${label}</span><div class="bar"><i style="left:0;width:${pct}%"></i></div>`;
+}
+function age(born) {                         // born_at (epoch s) → "N days"
+  if (!born) return '—';
+  const d = (Date.now() / 1000 - born) / 86400;
+  return d < 1 ? 'today' : `${Math.floor(d)} days`;
+}
+function render(p) {
+  if (!p || p.error) return `<div class="muted">${esc((p && p.error) || 'No profile')}</div>`;
+  const bp = p.blueprint || {}, lived = p.lived || {}, place = p.place || {};
+  const br = bp.brain || {}, em = (lived.state || {}).emotion || {};
+  const town = (place.town || {}).label || (place.town || {}).town_id || '';
+  const realm = (place.realm || {}).realm_id || '';
+  const dormant = lived.lifecycle === 'dormant';
+  const organs = (bp.organs || []).map(o => `<span class="chip">${esc(o)}</span>`).join('');
+  const self = (lived.self || '').split(/\n{2,}/).map(s => `<p>${esc(s).replace(/\n/g, '<br>')}</p>`).join('') || '<p class="muted">—</p>';
+  const tl = (lived.timeline || []).filter(e => !(e.type === 'snapshot' && /heartbeat/i.test(e.title || ''))).slice(0, 12);
+  const ribbon = tl.map(e => `<div class="ev"><div class="d">${esc(e.date)} · ${esc(e.type)}</div><div class="t">${esc(e.title)}</div></div>`).join('') || '<div class="muted">—</div>';
+  const bonds = (lived.bonds || []).map(b => `<div class="bond"><div class="bn">${esc(b.name)}${b.cross_machine ? ' 🔗' : ''}</div>`
+    + `<div class="muted">${b.first_met ? 'met ' + esc(b.first_met) : ''}${b.encounters ? ` · ${b.encounters}× LxM` : ''}</div></div>`).join('') || '<div class="muted">—</div>';
+  // emotion gauge: valence/arousal mapped from (-1..1) to (0..1); calm already 0..1
+  const g = em && (em.valence != null || em.arousal != null || em.calm != null)
+    ? `<div class="gauge">${bar('valence', ((em.valence || 0) + 1) / 2)}${bar('arousal', ((em.arousal || 0) + 1) / 2)}${bar('calm', em.calm || 0)}</div>`
+    : '<div class="muted">no emotional baseline yet</div>';
+  return `<div class="twin">
+    <div class="head">
+      <div class="disc" style="background:${discColor(em.valence)}">${esc((bp.name || '?')[0])}</div>
+      <div>
+        <h2 class="nm">${esc(bp.name)}</h2>
+        <div class="moniker">${esc(bp.moniker || '')}</div>
+        <div style="margin-top:6px">
+          <span class="badge">${dormant ? '💤 dormant' : '● alive'}</span>
+          ${town ? `<span class="badge">🏘️ ${esc(town)}</span>` : ''}
+          ${realm ? `<span class="badge">${esc(realm)}</span>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="vitals">
+      <span>brain <b>${esc([br.provider, br.model].filter(Boolean).join('/'))}</b>${br.class ? ` · ${esc(br.class)}` : ''}</span>
+      <span>age <b>${age(bp.born_at)}</b></span>
+      <span>memories <b>${lived.memories || 0}</b></span>
+      <span>sessions <b>${lived.session_count != null ? lived.session_count : '—'}</b></span>
+    </div>
+    <div class="chips">${organs}</div>
+    <h3>Mood</h3>${g}
+    <h3>Self</h3><div class="self">${self}</div>
+    <h3>Bonds</h3><div class="bonds">${bonds}</div>
+    <h3>Life</h3><div class="ribbon">${ribbon}</div>
+  </div>`;
+}
+async function load(name) {
+  if (!name) return;
+  const el = document.getElementById('twin');
+  el.innerHTML = '<div class="muted">Loading…</div>';
+  try {
+    const p = await (await fetch(`/api/creature/${encodeURIComponent(name)}/profile`)).json();
+    el.innerHTML = render(p);
+    history.replaceState(null, '', `?name=${encodeURIComponent(name)}`);
+  } catch (e) { el.innerHTML = `<div class="muted">Couldn't load: ${esc(e.message)}</div>`; }
+}
+(async function init() {
+  const sel = document.getElementById('pick');
+  let names = [];
+  try { names = ((await (await fetch('/api/creatures')).json()).creatures || []).map(c => c.name); } catch (e) {}
+  const want = new URLSearchParams(location.search).get('name') || names[0] || '';
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}" ${n === want ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  if (want) load(want);
+})();
+</script>
+</body>
+</html>
