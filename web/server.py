@@ -641,7 +641,7 @@ def _read_frontmatter(path: str, max_bytes: int = 800) -> dict:
 # so the timeline reads as a life — the raw reason is kept on the event (field "reason").
 _SNAP_REFLECT_CTX = {
     "ludus_ex_machina": "a Ludus ex Machina match", "open_council": "an Open Council",
-    "council": "a Council", "forum": "a Forum", "wilderness": "the wilderness",
+    "academy": "an Academy", "council": "a Council", "forum": "a Forum", "wilderness": "the wilderness",
     "sleep": "a conversation", "substrate_transition": "a brain change",
     "return_from_quota_pause": "a pause", "reach_complete": "a reach session",
     "validator_test": "a check",
@@ -968,6 +968,8 @@ FIELD_REGISTRY = {
          "min_creatures": 2, "prompt": "claim", "impl": True},
         {"id": "open_council", "name": "Open Council", "i18n": "fld_open_council", "viewer": "transcript",
          "min_creatures": 2, "prompt": "dilemma", "impl": True},
+        {"id": "academy", "name": "Academy", "i18n": "fld_academy", "viewer": "transcript",
+         "min_creatures": 2, "prompt": "theme", "mode": True, "impl": True},
         {"id": "wilderness", "name": "Wilderness", "i18n": "fld_wild", "viewer": "ticklog",
          "min_creatures": 1, "prompt": None, "ticks": True, "impl": True},
     ],
@@ -1332,7 +1334,8 @@ def _field_aftermath(sess, field, field_kind, text):
     from ludex.core import selfhood
     parts = [p for p in field.participants if getattr(p, "organism", None)]
     transcript = _field_transcript_text(field)
-    label = "a Forum on the claim" if field_kind == "forum" else "a Council on the dilemma"
+    label = {"forum": "a Forum on the claim", "academy": "an Academy on the theme",
+             "open_council": "an Open Council on the dilemma"}.get(field_kind, "a Council on the dilemma")
     summary = f'{label}: "{text}"'
     # Progress counters for the observe UI: the aftermath is N reflects +
     # N×(N-1) bond writeups, each a brain call — minutes of work that
@@ -1386,7 +1389,7 @@ def _field_aftermath(sess, field, field_kind, text):
 
 
 def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, mediator: str = "",
-                  ticks: int = 10):
+                  ticks: int = 10, academy_mode: str = "discussion"):
     """Background worker: build the chosen field, admit creatures, run it. Transcript
     accumulates in the field object (polled). Progress (waking/entered/thinking) is
     surfaced so the UI isn't a black box — brain calls (incl. the D-072 probe at first
@@ -1419,6 +1422,11 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
             from ludex.fields.open_council import OpenCouncil
             from ludex.fields.council import Dilemma
             field = OpenCouncil(name=f"web-open-council-{sid}", dilemma=Dilemma(text=text), auto_trace=False)
+        elif field_kind == "academy":
+            from ludex.fields.academy import Academy
+            from ludex.core.syllabus import Syllabus
+            field = Academy(name=f"web-academy-{sid}",
+                            syllabus=Syllabus(theme=text, mode=academy_mode), auto_trace=False)
         else:
             from ludex.fields.council import Council, Dilemma
             field = Council(name=f"web-council-{sid}", dilemma=Dilemma(text=text), auto_trace=False)
@@ -1464,7 +1472,7 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
             field.challenge_round(response_fn)
             field.update_round(response_fn)
         else:
-            field.run(response_fn)   # council + open_council: same ConversationField.run(response_fn)
+            field.run(response_fn)   # council + open_council + academy: same ConversationField.run(response_fn)
         if field_kind != "wilderness":
             sess["status"] = "reflecting"      # post-session: durable memory + bonds (JJ)
             _field_aftermath(sess, field, field_kind, text)
@@ -1542,6 +1550,7 @@ class FieldStartRequest(BaseModel):
     dilemma: str = ""
     creatures: list = []   # habitat paths
     mediator: str = ""     # optional: name of the creature to seat as mediator
+    mode: str = ""         # academy only: syllabus mode (study | discussion | mixed)
     ticks: int = 10        # wilderness only: how long the world runs
     game: str = ""         # lxm only: which game in the hosted arena
     scenario_id: str = ""  # lxm only: which scenario for a scenario-family game (blockworld)
@@ -1665,7 +1674,7 @@ async def field_start(req: FieldStartRequest):
             threading.Thread(target=_run_lxm_multi_match_bg,
                              args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats), daemon=True).start()
         return {"session_id": sid, "status": "starting"}
-    if req.field not in ("council", "forum", "open_council", "wilderness"):
+    if req.field not in ("council", "forum", "open_council", "academy", "wilderness"):
         return {"error": f"Field '{req.field}' is not supported yet."}
     ticks = max(3, min(int(req.ticks or 10), 30))
     if req.field == "wilderness":
@@ -1680,10 +1689,12 @@ async def field_start(req: FieldStartRequest):
         dilemma = req.dilemma
     import threading
     sid = f"f{int(time.time() * 1000) % 1000000}"
+    academy_mode = req.mode if req.mode in ("study", "discussion", "mixed") else "discussion"
+    label = f"Academy · {academy_mode} · {dilemma}" if req.field == "academy" else dilemma
     field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "", "field_kind": req.field,
-                           "dilemma": dilemma, "entered": [], "building": "", "thinking": "", "stop": False,
+                           "dilemma": label, "entered": [], "building": "", "thinking": "", "stop": False,
                            "started": time.time(), "mediator": req.mediator, "aftermath": "", "tick": ""}
-    threading.Thread(target=_run_field_bg, args=(sid, req.field, dilemma, req.creatures, req.mediator, ticks), daemon=True).start()
+    threading.Thread(target=_run_field_bg, args=(sid, req.field, dilemma, req.creatures, req.mediator, ticks, academy_mode), daemon=True).start()
     return {"session_id": sid, "status": "starting"}
 
 
