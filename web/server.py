@@ -635,6 +635,39 @@ def _read_frontmatter(path: str, max_bytes: int = 800) -> dict:
     return out
 
 
+# Snapshot folders are named by their internal trigger (e.g. "reflect-ludus_ex_machina",
+# "new-bond-flare", "reflect-heartbeat:health_grade=C,stale_bonds=[...]"). That jargon looked
+# like a separate "retrospective" to users and read as a wall of labels. Humanize it for display
+# so the timeline reads as a life — the raw reason is kept on the event (field "reason").
+_SNAP_REFLECT_CTX = {
+    "ludus_ex_machina": "a Ludus ex Machina match", "open_council": "an Open Council",
+    "council": "a Council", "forum": "a Forum", "wilderness": "the wilderness",
+    "sleep": "a conversation", "substrate_transition": "a brain change",
+    "return_from_quota_pause": "a pause", "reach_complete": "a reach session",
+    "validator_test": "a check",
+}
+
+
+def _humanize_snapshot(reason: str) -> str:
+    r = (reason or "").strip()
+    if not r:
+        return "A moment"
+    if r.startswith("reflect-heartbeat"):
+        return "Routine self-check"
+    if r.startswith("reflect-substrate_upgrade"):
+        return "Reflected after a brain upgrade"
+    if r.startswith("reflect-"):
+        ctx = r[len("reflect-"):]
+        return f"Reflected after {_SNAP_REFLECT_CTX.get(ctx, ctx.replace('_', ' '))}"
+    if r.startswith("new-bond-"):
+        return f"Formed a bond with {r[len('new-bond-'):].replace('_', ' ').title()}"
+    if r.startswith("field-"):
+        return "A field session"
+    if r.replace("_", "-") in ("retroactive-baseline", "retro-baseline"):
+        return "Birth baseline"
+    return r.replace("_", " ").replace("-", " ")
+
+
 @app.get("/api/creature/{name}/timeline")
 async def creature_timeline(name: str, dir: str = "creatures"):
     """Chronological life events for one creature (newest first)."""
@@ -653,10 +686,11 @@ async def creature_timeline(name: str, dir: str = "creatures"):
                 meta = json.loads(open(meta_p, encoding="utf-8").read())
             except Exception:
                 continue
+            reason = meta.get("reason", snap)
             events.append({
                 "ts": meta.get("timestamp", 0), "type": "snapshot",
-                "title": meta.get("reason", snap), "detail": meta.get("note", ""),
-                "ref": snap,
+                "title": _humanize_snapshot(reason), "reason": reason,   # human label for display; raw reason kept
+                "detail": meta.get("note", ""), "ref": snap,
             })
 
     rdir = os.path.join(cdir, "reflections")
