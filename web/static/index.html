@@ -8,6 +8,12 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+  /* form-control base — every select/input/textarea is dark by default (token-based), so one is
+     never left browser-white (the re-brain dropdowns hit this). Per-context class rules below
+     still override; checkboxes/radios keep their native look. */
+  select, textarea, input:not([type=checkbox]):not([type=radio]) {
+    background: var(--c-bg); color: var(--c-text); border: 1px solid var(--c-border);
+    border-radius: var(--r-sm); font-family: inherit; padding: 8px 10px; }
 
   header { background: #111; padding: 10px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #222; }
   .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
@@ -96,7 +102,7 @@
   .rb-box h3 { color: var(--c-accent); margin: 0 0 6px; font-size: 16px; }
   .rb-box .rb-note { color: var(--c-text-muted); font-size: 12px; margin: 0 0 12px; }
   .rb-box label { display: block; color: var(--c-text-muted); font-size: 12px; margin: 8px 0 3px; }
-  .rb-box input { width: 100%; background: var(--c-bg); border: 1px solid var(--c-border); color: var(--c-text); padding: 8px 10px; border-radius: 7px; }
+  .rb-box input, .rb-box select { width: 100%; background: var(--c-bg); border: 1px solid var(--c-border); color: var(--c-text); padding: 8px 10px; border-radius: 7px; }
   .rb-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   .rb-actions button { background: var(--c-surface-2); border: 1px solid var(--c-border); color: var(--c-text); padding: 7px 14px; border-radius: 7px; cursor: pointer; }
   .rb-actions button.primary { background: var(--c-accent); color: #08130d; border: none; font-weight: 700; }
