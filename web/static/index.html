@@ -877,6 +877,26 @@ async function loadTimeline() {
   } catch (e) { sel.innerHTML = `<option>${t('err_prefix')}${e.message}</option>`; }
 }
 
+// Humanize a snapshot's raw trigger reason in the CURRENT language (the server sends a readable
+// EN title + the raw `reason`; here we localize for the app, so a KO user reads KO). Mirrors the
+// server's _humanize_snapshot. /twin (external, EN-first) keeps the server title.
+function humanizeSnap(reason) {
+  const ko = _llang === 'ko';
+  const r = (reason || '').trim();
+  if (!r) return ko ? '한 순간' : 'A moment';
+  const CTX = ko
+    ? { ludus_ex_machina:'LxM 대국', open_council:'열린 평의회', council:'평의회', forum:'포럼', wilderness:'야생', sleep:'대화', substrate_transition:'브레인 교체', return_from_quota_pause:'잠시 멈춤', reach_complete:'리치 세션', validator_test:'점검' }
+    : { ludus_ex_machina:'a Ludus ex Machina match', open_council:'an Open Council', council:'a Council', forum:'a Forum', wilderness:'the wilderness', sleep:'a conversation', substrate_transition:'a brain change', return_from_quota_pause:'a pause', reach_complete:'a reach session', validator_test:'a check' };
+  if (r.startsWith('reflect-heartbeat')) return ko ? '일상 자기점검' : 'Routine self-check';
+  if (r.startsWith('reflect-substrate_upgrade')) return ko ? '브레인 업그레이드 후 돌아봄' : 'Reflected after a brain upgrade';
+  if (r.startsWith('reflect-')) { const c = r.slice(8), cc = CTX[c] || c.replace(/_/g, ' '); return ko ? `${cc} 후 돌아봄` : `Reflected after ${cc}`; }
+  if (r.startsWith('new-bond-')) { const n = r.slice(9).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); return ko ? `${n}와(과) 유대를 맺음` : `Formed a bond with ${n}`; }
+  if (r.startsWith('field-')) return ko ? '필드 세션' : 'A field session';
+  if (['retroactive-baseline', 'retro-baseline'].includes(r.replace(/_/g, '-'))) return ko ? '탄생 기준점' : 'Birth baseline';
+  return r.replace(/[_-]/g, ' ');
+}
+// a snapshot event's display label: humanize from raw reason (localized); other types keep their title
+function evLabel(e) { return e && e.type === 'snapshot' ? humanizeSnap(e.reason || e.title) : (e ? e.title : ''); }
 // Shareable creature PROFILE — an app-toned render over the ludex.profile/v2 snapshot, shown
 // INLINE in the Timeline tab (the standalone /twin viewer is the same data for external hosting).
 // Toggles with the timeline body so Self/Life never appear twice — you're looking at EITHER the
@@ -888,9 +908,9 @@ function renderProfile(p) {
   const brain = [br.provider, br.model].filter(Boolean).join('/') + (br.class ? ` · ${br.class}` : '');
   const organs = (bp.organs || []).map(o => `<span class="fchip">${_esc(o)}</span>`).join(' ');
   const self = (lived.self || '').split(/\n{2,}/).map(s => `<p>${_esc(s).replace(/\n/g, '<br>')}</p>`).join('');
-  const tl = (lived.timeline || []).filter(e => !(e.type === 'snapshot' && /heartbeat/i.test(e.title || ''))).slice(0, 40);
+  const tl = (lived.timeline || []).filter(e => !(e.type === 'snapshot' && /heartbeat/i.test(e.reason || e.title || ''))).slice(0, 40);
   const rail = tl.map(e => `<div class="tl-ev t-${_esc(e.type)}"><span class="tl-date">${_esc(e.date)}</span>`
-    + `<div><span class="tl-type">${_esc(e.type)}</span><span class="tl-title">${_esc(e.title)}</span></div>`
+    + `<div><span class="tl-type">${_esc(e.type)}</span><span class="tl-title">${_esc(evLabel(e))}</span></div>`
     + `${e.detail ? `<div class="tl-detail">${_esc(e.detail)}</div>` : ''}</div>`).join('') || '<div class="field-status">—</div>';
   const bonds = (lived.bonds || []).map(b => `<div class="eco-card"><div class="ec-name">${_esc(b.name)}${b.cross_machine ? ' 🔗' : ''}</div>`
     + `${b.first_met ? `<div class="ec-row" style="opacity:.6">met ${_esc(b.first_met)}${b.encounters ? ` · ${b.encounters}× on LxM` : ''}</div>` : ''}`
@@ -951,7 +971,7 @@ async function tlLoadCreature(name) {
 
     ev.innerHTML = events.map(e => `<div class="tl-ev t-${e.type}">
       <span class="tl-date">${e.date}</span>
-      <div><span class="tl-type">${e.type}</span><span class="tl-title">${esc(e.title)}</span></div>
+      <div><span class="tl-type">${e.type}</span><span class="tl-title">${esc(evLabel(e))}</span></div>
       ${e.detail ? `<div class="tl-detail">${esc(e.detail)}</div>` : ''}
     </div>`).join('');
 
