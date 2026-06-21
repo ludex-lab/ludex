@@ -867,7 +867,12 @@ function tlCloseProfile() {            // back from the profile card to the time
   document.getElementById('tlProfile').classList.add('hidden');
   if (tlCurrent) tlLoadCreature(tlCurrent);   // (re)load the timeline body fresh for the current creature
 }
-async function tlPreviewProfile() {     // show the shareable card INLINE; hide the timeline body (no duplication)
+function tlPreviewProfile() {           // the button: a TOGGLE — open if closed, close if open
+  const panel = document.getElementById('tlProfile');
+  if (!panel.classList.contains('hidden')) tlCloseProfile();
+  else tlShowProfile();
+}
+async function tlShowProfile() {        // render the shareable card INLINE; hide the timeline body (no duplication)
   const panel = document.getElementById('tlProfile');
   if (!tlCurrent) { panel.classList.add('hidden'); return; }
   document.getElementById('tlBody').classList.add('hidden');
@@ -883,9 +888,9 @@ async function tlLoadCreature(name) {
   const body = document.getElementById('tlBody'), empty = document.getElementById('tlEmpty');
   document.getElementById('tlDiff').classList.add('hidden');
   document.getElementById('tlRetroDoc').classList.add('hidden');
-  // if the shareable-profile card is open, follow the dropdown to the new creature
+  // if the shareable-profile card is open, follow the dropdown to the new creature (refresh, don't toggle)
   const _pf = document.getElementById('tlProfile');
-  if (_pf && !_pf.classList.contains('hidden')) { tlPreviewProfile(); return; }
+  if (_pf && !_pf.classList.contains('hidden')) { tlShowProfile(); return; }
   if (!name) { body.classList.add('hidden'); empty.classList.add('hidden'); return; }
   const ev = document.getElementById('tlEvents');
   ev.innerHTML = `<div class="tl-ev"><span class="tl-title">${t('tl_loading')}</span></div>`;
