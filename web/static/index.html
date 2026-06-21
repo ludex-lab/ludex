@@ -709,21 +709,44 @@ async function loadCreaturesView() {
 function rbOpen(name, provider, model) {
   let m = document.getElementById('rbModal');
   if (!m) { m = document.createElement('div'); m.id = 'rbModal'; m.className = 'rb-modal'; document.body.appendChild(m); }
+  // reuse Forge's provider list (single source — labels + the same set), pre-select the current one
+  const provOpts = (document.getElementById('providerSelect') || {}).innerHTML
+    || `<option value="claude_cli">claude_cli</option><option value="codex_cli">codex_cli</option><option value="gemini_cli">gemini_cli</option><option value="agy_cli">agy_cli</option><option value="ollama">ollama</option>`;
   m.innerHTML = `<div class="rb-box">
     <h3>🧠 ${t('rb_title')} — ${_esc(name)}</h3>
     <p class="rb-note">${t('rb_note')}</p>
-    <label>provider</label><input id="rbProv" value="${_esc(provider || '')}">
-    <label>model</label><input id="rbModel" value="${_esc(model || '')}">
+    <label>provider</label><select id="rbProv" onchange="rbFillModels()">${provOpts}</select>
+    <label>model</label><select id="rbModelSel"></select>
+    <input type="text" id="rbModelManual" placeholder="${t('forge_model_ph') || 'Or type model name'}" style="margin-top:4px">
     <div class="rb-actions"><button onclick="rbClose()">${t('rb_cancel')}</button>
       <button class="primary" onclick="rbGo('${_esc(name)}')">${t('rb_go')}</button></div>
     <div id="rbResult" class="rb-result"></div>
   </div>`;
+  if (provider) document.getElementById('rbProv').value = provider;   // select the creature's current brain
+  rbFillModels(model);                                                 // populate model dropdown, preselect current
   m.classList.remove('hidden');
+}
+// mirror Forge's loadModels(): fill the re-brain model dropdown for the chosen provider (ollama live; else the shared hint catalog)
+async function rbFillModels(current) {
+  const provider = document.getElementById('rbProv').value;
+  const sel = document.getElementById('rbModelSel');
+  let models = [];
+  if (provider === 'ollama') {
+    try { models = (await (await fetch('/api/ollama-models')).json()).models || []; } catch (e) {}
+  } else {
+    const hints = await _modelHints();
+    models = (hints[provider] || []).slice();
+    if (provider === 'claude_cli' || provider === 'claude_sdk') models.unshift('claude-code');
+  }
+  if (current && !models.includes(current)) models.unshift(current);   // keep the creature's current model selectable
+  sel.innerHTML = models.length ? models.map(m => `<option value="${_esc(m)}">${_esc(m)}</option>`).join('')
+    : `<option value="">${t('forge_model_ph') || '—'}</option>`;
+  if (current) sel.value = current;
 }
 function rbClose() { const m = document.getElementById('rbModal'); if (m) m.classList.add('hidden'); }
 async function rbGo(name) {
   const provider = document.getElementById('rbProv').value.trim();
-  const model = document.getElementById('rbModel').value.trim();
+  const model = (document.getElementById('rbModelManual').value.trim() || document.getElementById('rbModelSel').value || '').trim();
   const rr = document.getElementById('rbResult');
   if (!provider || !model) { rr.textContent = t('rb_need'); return; }
   rr.textContent = t('rb_working');
