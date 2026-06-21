@@ -1333,6 +1333,17 @@ def _field_aftermath(sess, field, field_kind, text):
                                      other_brain=qmodel)
             except Exception as e:
                 print(f"field bond writeup failed {p.name}->{q.name}: {e}")
+    # activity-end (field wind-down): each participant consolidates a window of life if due
+    for p in parts:
+        if sess.get("stop"):
+            break
+        try:
+            _cdir = _safe_creature_dir(p.name)
+            if _cdir:
+                sess["aftermath"] = f"consolidate:{p.name}"
+                _consolidate_if_due(_cdir)
+        except Exception as e:
+            print(f"field consolidation skipped for {p.name}: {e}")
     sess["aftermath"] = ""
 
 
@@ -1979,6 +1990,45 @@ async def creature_rebrain(name: str, req: RebrainRequest):
             "reflection": reflection[:800]}
 
 
+def _consolidate_creature(creature_dir, force=False):
+    """Run a consolidation (retrospective) for one creature. `force=True` (the manual 📖 button)
+    bypasses the due-threshold; `force=False` (the activity-end auto path) respects it (14d + 30
+    events, or a 45d timeout) so it only fires when a real window of life has accrued. Consolidation
+    is non-destructive (adds a retrospective; never deletes) + the HARD_FLOOR guards double-firing,
+    so neither path needs consent. Returns the outcome dict; never raises (safe in an aftermath)."""
+    try:
+        from pathlib import Path
+        from ludex.core.consolidation import consolidate
+        return consolidate(Path(creature_dir), force=force)
+    except Exception as e:
+        print(f"[consolidate] failed for {creature_dir}: {e}")
+        return {"outcome": "error", "error": str(e)}
+
+
+def _consolidate_if_due(creature_dir):
+    """Activity-end hook: consolidate only if genuinely due (force=False). Called from field/chat
+    aftermath so a public creature (no heartbeat) still grows retrospectives as it lives."""
+    return _consolidate_creature(creature_dir, force=False)
+
+
+@app.post("/api/creature/{name}/consolidate")
+async def creature_consolidate(name: str, dir: str = "creatures"):
+    """Manual 📖 consolidation — force a retrospective NOW (the explicit, user-initiated path,
+    like re-brain). Bypasses the due-threshold; a brain call synthesizes the window of life into a
+    retrospective written to reflections/."""
+    cdir = _safe_creature_dir(name, dir)
+    if not cdir:
+        return {"error": f"Creature '{name}' not found."}
+    r = await asyncio.to_thread(_consolidate_creature, cdir, True)
+    out = r.get("outcome", "")
+    if out == "consolidated":
+        return {"ok": True, "creature": name, "outcome": out,
+                "reflection_file": r.get("reflection_file", ""), "events": (r.get("payload") or {}).get("events")}
+    if out == "skipped":
+        return {"ok": False, "creature": name, "outcome": out, "reason": r.get("reason", "nothing to consolidate")}
+    return {"ok": False, "creature": name, "outcome": out or "error", "error": r.get("error", "consolidation did not run")}
+
+
 @app.post("/api/forge/assemble")
 async def forge_assemble(req: ForgeAssembleRequest):
     """Assemble a creature using OrganismConfig."""
@@ -2233,6 +2283,13 @@ async def disconnect(session_id: str):
                 from ludex.core import selfhood
                 text = await asyncio.to_thread(selfhood.reflect, org, "sleep", engine, convo)
                 reflected = bool(text)
+                # activity-end (chat wind-down): consolidate a window of life if due (force=False)
+                try:
+                    _cdir = _safe_creature_dir(getattr(org, "name", "") or "")
+                    if _cdir:
+                        await asyncio.to_thread(_consolidate_if_due, _cdir)
+                except Exception as e:
+                    print(f"sleep consolidation skipped: {e}")
         except Exception as e:
             print(f"sleep reflection failed: {e}")
     if session_id in agents:
