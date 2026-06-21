@@ -702,6 +702,11 @@ async def creature_timeline(name: str, dir: str = "creatures"):
             events.append({"ts": os.path.getmtime(p), "type": "journal",
                            "title": os.path.splitext(f)[0], "detail": "", "ref": f})
 
+    for e in events:                     # normalize ts once: a malformed ts (str/None from any source —
+        try:                              # e.g. a snapshot meta.timestamp string) must not crash the
+            e["ts"] = float(e.get("ts", 0))   # sort OR the date format below (surfaced by Wick, 2026-06-21).
+        except (TypeError, ValueError):
+            e["ts"] = 0.0
     events.sort(key=lambda e: e["ts"], reverse=True)
     for e in events:
         e["date"] = time.strftime("%Y-%m-%d", time.localtime(e["ts"])) if e["ts"] else "?"
@@ -725,16 +730,49 @@ def _read_bond(path):
     return {"first_met": first_met, "text": "\n".join(lines[body_at:]).strip()}
 
 
+def _moniker(name, born_at):
+    """A creature's durable LOCAL identity — minted from birth-time data (name + born_at), stable
+    across renames/re-brains (re-brain = same being). The cross-Town identity is the LxM creature_id
+    (B1, in bonds); this is the local one. See docs/ludex-profile-v2-design.md §5."""
+    import hashlib, re
+    slug = re.sub(r"[^a-z0-9]+", "-", (name or "creature").lower()).strip("-") or "creature"
+    h = hashlib.sha256(f"{born_at}:{name}".encode("utf-8")).hexdigest()[:8]
+    return f"{slug}-{h}"
+
+
+def _town_id(origin):
+    """Deterministic town_id from a creature's origin (a Town = an OS account/instance, not hardware;
+    §5b). 'Mac-habitat' → 'town_mac'. The mutable address (IP/machine/path) is PRIVATE, never in the
+    profile. Re-issue like LxM B1 when federation/hosting lands."""
+    import re
+    slug = re.sub(r"[^a-z0-9]+", "_", (origin or "local").lower()).replace("_habitat", "").strip("_") or "local"
+    return f"town_{slug}"
+
+
 def _build_creature_profile(name, dir, events):
-    """Assemble a creature's shareable PROFILE SNAPSHOT (ludex.profile/v1) — the structured
-    'digital twin' data a viewer renders (2D now, a 3D avatar/habitat/virtual-city later;
-    3D is a renderer over THIS data, not a rewrite). Only distilled, shareable narrative —
-    identity, SELF, timeline, bonds, emotional state — never raw spans (D-044)."""
+    """Assemble a creature's shareable PROFILE SNAPSHOT (ludex.profile/v2) — the structured
+    'digital twin' data every renderer reads (2D now; a 3D avatar/habitat/Town later — 3D is a
+    renderer over THIS data, not a rewrite). Four axes: blueprint (what it is) / lived (what it
+    became) / place (where it lives) / portrait (a cached render). Only distilled, SHAREABLE
+    narrative — never raw spans, brain.auth, filesystem paths, or machine address (D-044 + the
+    federation boundary). See docs/ludex-profile-v2-design.md."""
     cdir = _safe_creature_dir(name, dir)
     if cdir is None:
         return None
     base = os.path.abspath(os.path.expanduser(dir))
     info = next((c for c in _scan_creatures(base) if c["name"] == name), {"name": name})
+    # blueprint/place fields the cheap scan doesn't carry — load the config once.
+    cfg = None
+    try:
+        from ludex.core.organism_config import OrganismConfig
+        cfg = OrganismConfig.load(cdir)
+    except Exception:
+        pass
+    born_at = getattr(cfg, "born_at", None) if cfg else None
+    brain_d = (getattr(cfg, "brain", None) or {}) if cfg else {}
+    origin = getattr(getattr(cfg, "habitat", None), "origin", "") if cfg else ""
+    session_count = getattr(cfg, "session_count", None) if cfg else None
+    cname = info.get("name", name)
     self_md = ""
     sp = os.path.join(cdir, "SELF.md")
     if os.path.isfile(sp):
@@ -760,17 +798,41 @@ def _build_creature_profile(name, dir, events):
             if x:
                 b["creature_id"] = x["creature_id"]; b["encounters"] = x["encounters"]; b["cross_machine"] = True
             bonds.append(b)
-    brain = ":".join(p for p in (info.get("provider", ""), info.get("model", "")) if p)
     return {
-        "format": "ludex.profile/v1",
-        "creature": {"name": info.get("name", name), "brain": brain,
-                     "organs": info.get("organs", []), "memories": info.get("memories", 0)},
-        "state": {"emotion": info.get("emotion")},     # the 3D-visualizable slot
-        "self": self_md,
-        "timeline": events,
-        "bonds": bonds,
-        "habitat": {},          # extensible: P3 ecosystem / a future 3D habitat render
-        "published_at": None,   # stamped at publish (P2)
+        "$schema": "https://ludex-lab.github.io/schema/ludex.profile/v2.json",
+        "version": "2.0",
+        "requiredCapabilities": [],                      # R3 — empty by design (core always renders)
+        # ── BLUEPRINT — what it is (definitional, stable) ──
+        "blueprint": {
+            "moniker": _moniker(cname, born_at),
+            "name": cname,
+            "born_at": born_at,
+            "brain": {"provider": brain_d.get("provider", info.get("provider", "")),
+                      "model": brain_d.get("model", info.get("model", "")),
+                      "class": brain_d.get("class", "")},   # NO auth — billing/operational, not narrative
+            "organs": info.get("organs", []),
+            "lineage": {"parents": []},                   # reserved (R1); re-brain ≠ a parent edge
+            "x_ludex_appearance": None,                   # [slot] indices+params, renderer owns art
+        },
+        # ── LIVED-STATE — what it has become (mutable continuity) ──
+        "lived": {
+            "self": self_md,
+            "session_count": session_count,
+            "memories": info.get("memories", 0),          # count; a curated digest is a future [slot]
+            "state": {"emotion": info.get("emotion")},    # the renderable mood preset (interop surface)
+            "lifecycle": "dormant" if os.path.isfile(os.path.join(cdir, "HIATUS.md")) else "alive",
+            "timeline": events,                           # semantic event list, NOT raw spans
+            "bonds": bonds,
+        },
+        # ── PLACE — where it lives (spatial) ──
+        "place": {
+            "habitat": cname,                             # the dwelling id (NOT the filesystem path)
+            "town": {"town_id": _town_id(origin), "label": origin or ""},   # durable id; address is private
+            "realm": {"realm_id": "realm_local"},         # single local realm until federation (B3)
+        },
+        # ── PORTRAIT — a cached render (optional) ──
+        "portrait": None,                                 # [slot] until a renderer caches one
+        "published_at": None,                             # stamped at publish (P2)
     }
 
 
