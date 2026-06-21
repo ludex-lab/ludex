@@ -1,0 +1,47 @@
+/* tokens.css — Ludex design tokens (Phase 1, 2026-06-21).
+ *
+ * The single source of truth for the app's visual language. index.html references these via
+ * var(--…); the design-system gallery (web/design-system/) renders from the same file, so what
+ * you see in claude.ai/design IS what ships. See docs/web-design-system-design.md.
+ *
+ * Phase 1 is a VISUAL NO-OP: every token's value is the exact prior hardcoded value, so wiring a
+ * var() in changes nothing on screen. The ~10-color core below covers ~153 of the app's hex
+ * occurrences; a long tail of one-off state-tint backgrounds is intentionally left as literals
+ * (forcing them onto a token would shift pixels). JS can't read var() from a string — the 14 JS
+ * hex literals mirror these values via a THEME const (Phase 1d), cross-referenced here.
+ */
+:root {
+  /* ---- color: core palette (semantic names, not raw hues) ---- */
+  --c-bg: #0d1117;          /* page background */
+  --c-surface: #161b22;     /* card / panel background */
+  --c-surface-2: #21262d;   /* raised / nested surface */
+  --c-border: #2a2f3a;      /* borders, dividers */
+  --c-text: #e6edf3;        /* primary text */
+  --c-text-muted: #8b94a3;  /* secondary / label text */
+  --c-accent: #64aa88;      /* brand accent (green) */
+  --c-accent-2: #e879a0;    /* secondary accent (pink) */
+  --c-success: #4ade80;     /* success / alive */
+  --c-warn: #fbbf24;        /* warning / caution */
+  --c-danger: #f87171;      /* error / danger */
+
+  /* ---- radius ---- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-pill: 999px;
+
+  /* ---- typography ---- */
+  --font-sans: 'Segoe UI', system-ui, sans-serif;
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 17px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+
+  /* ---- spacing (4px grid) ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+}
