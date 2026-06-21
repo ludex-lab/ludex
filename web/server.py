@@ -792,6 +792,33 @@ def _town_id(origin):
     return f"town_{slug}"
 
 
+def _read_mti(cdir, current_model):
+    """Read a creature's measured-temperament card (<habitat>/mti.json, schema mti/v1) for the
+    profile's lived.x_mti slot — the namespaced trait-preset extension the v2 contract reserved
+    (R5; docs/ludex-profile-v2-design.md §6). The MTI lab (Ray) writes the file; we are a
+    transparent passthrough with ONE added field:
+
+    - OPTIONAL — cohort-outside creatures (claude/codex/gemini/…) have no file → return None →
+      the key is omitted entirely (ignore-unknown, R2): a renderer simply draws no radar.
+    - STALENESS — MTI measures the brain MODEL, so a creature's temperament IS its brain's
+      profile. If it was re-brained since measurement (provenance.brain_model != its current
+      model) we set stale=true so a renderer won't show an old brain's temperament as the new
+      being's (narrative identity persists across re-brain; measured temperament does not)."""
+    mp = os.path.join(cdir, "mti.json")
+    if not os.path.isfile(mp):
+        return None
+    try:
+        mti = json.loads(open(mp, encoding="utf-8").read())
+    except Exception:
+        return None
+    if not isinstance(mti, dict) or not isinstance(mti.get("axes"), dict):
+        return None
+    measured = (mti.get("provenance") or {}).get("brain_model", "")
+    if measured and current_model and measured != current_model:
+        mti["stale"] = True
+    return mti
+
+
 def _build_creature_profile(name, dir, events):
     """Assemble a creature's shareable PROFILE SNAPSHOT (ludex.profile/v2) — the structured
     'digital twin' data every renderer reads (2D now; a 3D avatar/habitat/Town later — 3D is a
@@ -841,6 +868,7 @@ def _build_creature_profile(name, dir, events):
             if x:
                 b["creature_id"] = x["creature_id"]; b["encounters"] = x["encounters"]; b["cross_machine"] = True
             bonds.append(b)
+    mti = _read_mti(cdir, brain_d.get("model", ""))   # measured temperament (Ray's MTI), if any
     return {
         "$schema": "https://ludex-lab.github.io/schema/ludex.profile/v2.json",
         "version": "2.0",
@@ -866,6 +894,7 @@ def _build_creature_profile(name, dir, events):
             "lifecycle": "dormant" if os.path.isfile(os.path.join(cdir, "HIATUS.md")) else "alive",
             "timeline": events,                           # semantic event list, NOT raw spans
             "bonds": bonds,
+            **({"x_mti": mti} if mti else {}),            # [slot] measured temperament; omitted when absent (R2)
         },
         # ── PLACE — where it lives (spatial) ──
         "place": {

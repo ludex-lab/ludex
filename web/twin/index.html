@@ -40,6 +40,13 @@
   .gauge { display: grid; grid-template-columns: 64px 1fr; gap: 6px 10px; align-items: center; font-size: var(--fs-xs); }
   .bar { height: 8px; border-radius: var(--r-pill); background: var(--c-surface-2); overflow: hidden; position: relative; }
   .bar > i { position: absolute; top: 0; bottom: 0; background: var(--c-accent); border-radius: var(--r-pill); }
+  /* temperament radar (lived.x_mti) */
+  .mti-wrap { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .mti-legend { display: grid; gap: 6px; min-width: 180px; }
+  .mti-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; font-size: var(--fs-xs); }
+  .mti-ax { color: var(--c-text); }
+  .mti-pole { background: var(--c-surface-2); border: 1px solid var(--c-border); border-radius: var(--r-pill); padding: 1px 8px; color: var(--c-accent); }
+  .mti-note { font-size: var(--fs-xs); margin-top: 8px; }
   .self p { margin: 0 0 8px; }
   .bonds { display: flex; flex-wrap: wrap; gap: 8px; }
   .bond { background: var(--c-surface-2); border: 1px solid var(--c-border); border-radius: var(--r-sm);
@@ -81,6 +88,46 @@ function age(born) {                         // born_at (epoch s) → "N days"
   const d = (Date.now() / 1000 - born) / 86400;
   return d < 1 ? 'today' : `${Math.floor(d)} days`;
 }
+// Temperament radar — renders lived.x_mti (Ray's MTI, schema mti/v1). The 4 named axes ARE the
+// interop surface (research §2c): this renderer maps score(0-1)→geometry, pole→label, z→tooltip.
+// Omitted when absent (a card simply has no x_mti); dimmed + flagged when measured on a now-replaced
+// brain (stale) — measured temperament is a brain property, unlike narrative identity.
+const _MTI_AX = [['reactivity','Reactivity','Rea'], ['compliance','Compliance','Com'],
+                 ['sociality','Sociality','Soc'], ['resilience','Resilience','Res']];
+function mtiRadar(mti) {
+  if (!mti || !mti.axes) return '';
+  const stale = !!mti.stale, col = stale ? 'var(--c-text-muted)' : 'var(--c-accent)';
+  const cx = 90, cy = 90, R = 64;
+  const ang = i => (-90 + i * 90) * Math.PI / 180;        // top, right, bottom, left
+  const pt = (i, r) => [cx + Math.cos(ang(i)) * R * r, cy + Math.sin(ang(i)) * R * r];
+  const xy = (i, r) => pt(i, r).map(n => n.toFixed(1)).join(',');
+  let grid = '';
+  [0.25, 0.5, 0.75, 1].forEach(r => {
+    grid += `<polygon points="${_MTI_AX.map((_, i) => xy(i, r)).join(' ')}" fill="none" `
+          + `stroke="var(--c-border)" stroke-width="1"${r === 0.5 ? ' stroke-dasharray="2 2"' : ''}/>`;
+  });
+  _MTI_AX.forEach((_, i) => { const [x, y] = pt(i, 1); grid += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--c-border)" stroke-width="1"/>`; });
+  const dp = _MTI_AX.map(([k], i) => { const s = Math.max(0, Math.min(1, (mti.axes[k] || {}).score || 0)); return xy(i, s); }).join(' ');
+  let verts = '', tips = '';
+  _MTI_AX.forEach(([k, full, ab], i) => {
+    const a = mti.axes[k] || {}, s = Math.max(0, Math.min(1, a.score || 0)), [x, y] = pt(i, s);
+    verts += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${col}"><title>${full}: ${esc(a.pole || '')} — score ${(+a.score).toFixed(2)}, z ${(+a.z).toFixed(2)}</title></circle>`;
+    const [lx, ly] = pt(i, 1.14);
+    tips += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="9.5" fill="var(--c-text-muted)">${ab}</text>`;
+  });
+  const legend = _MTI_AX.map(([k, full]) => {
+    const a = mti.axes[k] || {};
+    return `<div class="mti-row"><span class="mti-ax">${full}</span><span class="mti-pole">${esc(a.pole || '')}</span><span class="muted">z&nbsp;${(+a.z).toFixed(2)}</span></div>`;
+  }).join('');
+  const pr = mti.provenance || {};
+  const note = stale
+    ? `<div class="mti-note" style="color:#d98c4a">⚠ measured on ${esc(pr.brain_model || '?')} — re-brained since, not re-measured</div>`
+    : `<div class="mti-note muted">${esc(pr.method || 'mti')} · ${esc(pr.measured_at || '')} · cohort ${esc(pr.cohort || '')} (n=${pr.cohort_n || '?'})</div>`;
+  return `<h3>Temperament${stale ? ' <span class="muted" style="font-size:11px;text-transform:none;letter-spacing:0">· stale</span>' : ''}</h3>`
+    + `<div class="mti-wrap"><svg viewBox="0 0 180 180" width="172" height="172" style="flex:none">`
+    + `${grid}<polygon points="${dp}" fill="${col}" fill-opacity="0.18" stroke="${col}" stroke-width="1.5"/>${verts}${tips}</svg>`
+    + `<div class="mti-legend">${legend}</div></div>${note}`;
+}
 function render(p) {
   if (!p || p.error) return `<div class="muted">${esc((p && p.error) || 'No profile')}</div>`;
   const bp = p.blueprint || {}, lived = p.lived || {}, place = p.place || {};
@@ -119,6 +166,7 @@ function render(p) {
     </div>
     <div class="chips">${organs}</div>
     <h3>Mood</h3>${g}
+    ${mtiRadar(lived.x_mti)}
     <h3>Self</h3><div class="self">${self}</div>
     <h3>Bonds</h3><div class="bonds">${bonds}</div>
     <h3>Life</h3><div class="ribbon">${ribbon}</div>
