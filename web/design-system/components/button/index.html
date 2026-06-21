@@ -1,0 +1,31 @@
+<!-- @dsCard group="Actions" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Button — Ludex</title>
+<style>
+  /* :root mirrors web/static/tokens.css. The app has NO single button component yet — buttons are
+     styled ad-hoc per context (8+ rules). This preview presents the patterns that exist as one
+     family, which is exactly the inconsistency the design system round-trip will help unify. */
+  :root {
+    --c-bg: #0d1117; --c-surface-2: #21262d; --c-border: #2a2f3a;
+    --c-accent: #64aa88; --c-accent-2: #e879a0; --c-text: #e6edf3; --c-text-muted: #8b94a3;
+    --r-sm: 8px; --font-sans: 'Segoe UI', system-ui, sans-serif;
+  }
+  body { background: var(--c-bg); font-family: var(--font-sans); margin: 0; padding: 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .btn { border-radius: var(--r-sm); cursor: pointer; font-weight: 700; padding: 10px 20px; border: none; font-family: inherit; }
+  .btn-primary { background: var(--c-accent); color: #000; }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-accent2 { background: var(--c-accent-2); color: #1a0a12; }
+  .btn-ghost { background: var(--c-surface-2); border: 1px solid var(--c-border); color: var(--c-text); font-weight: 400; padding: 7px 14px; }
+  .btn:disabled { opacity: .6; cursor: default; }
+</style>
+</head>
+<body>
+  <button class="btn btn-primary">Start session</button>
+  <button class="btn btn-accent2">Sleep</button>
+  <button class="btn btn-ghost">Cancel</button>
+  <button class="btn btn-primary" disabled>Starting…</button>
+</body>
+</html>
