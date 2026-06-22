@@ -35,7 +35,7 @@ from ludex.core.store import LudexStore, Span
 
 logger = logging.getLogger(__name__)
 
-AXES = ("M", "A", "P")
+AXES = ("M", "A", "P", "E")   # M model / A access / P provider-auth / E reasoning-effort
 MAGNITUDES = ("tiny", "medium", "large")
 OPS = ("preserve", "fork", "transplant")
 
