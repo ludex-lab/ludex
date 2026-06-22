@@ -16,6 +16,7 @@ import os
 import re
 import time
 import subprocess
+import shutil
 import logging
 
 from ludex.blocks.adapters.base import BaseAdapter, AdapterResponse
@@ -64,7 +65,9 @@ def _detect_claude_fatigue(text: str):
 logger = logging.getLogger(__name__)
 
 # Detect OS for correct CLI command
-_CLAUDE_CMD = "claude.cmd" if os.name == "nt" else "claude"
+# shutil.which resolves the real executable (Windows PATHEXT: claude.cmd from npm or
+# claude.exe — the hardcoded .cmd missed .exe installs). Fall back to the old default.
+_CLAUDE_CMD = shutil.which("claude") or ("claude.cmd" if os.name == "nt" else "claude")
 
 
 class ClaudeCliAdapter(BaseAdapter):

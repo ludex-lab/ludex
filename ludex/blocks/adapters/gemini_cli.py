@@ -30,7 +30,9 @@ from ludex.blocks.adapters._creature_context import load_creature_context
 
 logger = logging.getLogger(__name__)
 
-_GEMINI_CMD = "gemini.cmd" if os.name == "nt" else "gemini"
+# shutil.which resolves the real executable (Windows PATHEXT: gemini.cmd from npm or
+# gemini.exe — the hardcoded .cmd missed .exe installs). Fall back to the old default.
+_GEMINI_CMD = shutil.which("gemini") or ("gemini.cmd" if os.name == "nt" else "gemini")
 
 
 class GeminiCliAdapter(BaseAdapter):

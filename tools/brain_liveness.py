@@ -121,4 +121,10 @@ def main():
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # Load .env like the live paths (web server / heartbeat / cli) so CLI-API brains
+    # (gemini_cli, agy_cli) get GEMINI_API_KEY. Without this they probe as DORMANT for
+    # a missing key alone — a FALSE dormancy signal on a LIVE brain, and precisely the
+    # creatures a deprecation check targets. See the probe_smoke fix (2026-06-22).
+    from ludex.core.dotenv import load_dotenv
+    load_dotenv()
     main()

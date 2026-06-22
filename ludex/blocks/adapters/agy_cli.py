@@ -37,7 +37,10 @@ from ludex.blocks.adapters._creature_context import load_creature_context
 
 logger = logging.getLogger(__name__)
 
-_AGY_CMD = "agy.cmd" if os.name == "nt" else "agy"
+# shutil.which resolves the real executable (Windows PATHEXT: agy.exe from the curl
+# install OR agy.cmd from npm — the hardcoded .cmd missed agy.exe). Fall back to the
+# old default if which finds nothing (e.g. not on PATH at import).
+_AGY_CMD = shutil.which("agy") or ("agy.cmd" if os.name == "nt" else "agy")
 _PINNED_MODEL = "gemini-3.5-flash"
 
 
@@ -137,6 +140,11 @@ class AgyCliAdapter(BaseAdapter):
                 child_env = cli_subprocess_env("agy_cli", self._auth)
                 result = subprocess.run(
                     cmd,
+                    # Headless: never inherit the parent's stdin. agy reads the prompt
+                    # from argv (-p), not stdin; an inherited TTY/console stdin can hang
+                    # the call waiting on interactive input — observed on Windows agy.cmd
+                    # (2026-06-22). DEVNULL gives the child immediate EOF instead.
+                    stdin=subprocess.DEVNULL,
                     capture_output=True,
                     text=True,
                     timeout=self.timeout_ms / 1000,

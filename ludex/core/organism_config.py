@@ -51,6 +51,15 @@ _PROVIDER_ENV_KEYS = {
     "gemini_api": "GEMINI_API_KEY",
 }
 
+# Non-host-coupled baseline reasoning effort by provider (substrate axis E). claude/codex
+# take a fixed level (model default = high, NOT a host's possibly-tuned xhigh); gemini/agy
+# self-modulate (dynamic). Used by forge + re-brain so a creature's effort is its OWN, not
+# silently inherited from the host CLI's settings. See the effort-substrate-axis note.
+DEFAULT_EFFORT = {
+    "claude_cli": "high", "codex_cli": "high",
+    "gemini_cli": "dynamic", "agy_cli": "dynamic",
+}
+
 
 # ============================================================
 # Default organ configs

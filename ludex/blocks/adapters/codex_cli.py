@@ -72,7 +72,9 @@ def _detect_codex_fatigue(text: str):
 
 logger = logging.getLogger(__name__)
 
-_CODEX_CMD = "codex"
+# shutil.which resolves the real executable (Windows PATHEXT finds codex.cmd from npm
+# or codex.exe; bare "codex" misses .cmd under CreateProcess). Full path, no shell=True.
+_CODEX_CMD = shutil.which("codex") or "codex"
 
 
 class CodexCliAdapter(BaseAdapter):
@@ -188,6 +190,11 @@ class CodexCliAdapter(BaseAdapter):
             cmd.append("--full-auto")
         if model and model not in ("codex", "", None):
             cmd.extend(["-m", model])
+        if effort:
+            # Codex reasoning effort is a config override (-c), not a flag. Without this
+            # the creature silently inherits the HOST's ~/.codex/config.toml
+            # model_reasoning_effort; pinning per-creature decouples it (low/medium/high/xhigh).
+            cmd.extend(["-c", f"model_reasoning_effort={effort}"])
         if agentic and self._cwd:
             cmd.extend(["-C", self._cwd])
 

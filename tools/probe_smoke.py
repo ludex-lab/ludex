@@ -11,8 +11,22 @@ os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
 from pathlib import Path
+
+# Run-from-anywhere: put the repo root on sys.path so `python tools/probe_smoke.py`
+# works per the docstring above. A plain script run puts tools/ on sys.path[0]
+# (not the repo root), so `import ludex` would fail; `-m` invocations are unaffected.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from ludex.core.dotenv import load_dotenv
 from ludex.core.organism_config import OrganismConfig
 from ludex.core.birth_probe import probe_brain_capabilities, capability_set
+
+# Faithfully match the live brain path: gemini_cli/agy_cli with auth:api need their
+# billing key in os.environ. The web server, heartbeat, and CLI all load it from
+# .env first; without this the probe reports a FALSE failure for those CLI brains
+# (observed 2026-06-22 — a smoke false-negative right after the Gemini-CLI
+# deprecation looked like an outage but was only this missing call).
+load_dotenv()
 
 if len(sys.argv) < 2:
     print("usage: probe_smoke.py <creature-path>")

@@ -19,7 +19,7 @@ from pathlib import Path
 
 from ludex.blocks.provider import ADAPTER_REGISTRY
 from ludex.core.habitat import HabitatConfig
-from ludex.core.organism_config import DEFAULT_ORGANS, PRESETS, OrganismConfig
+from ludex.core.organism_config import DEFAULT_ORGANS, DEFAULT_EFFORT, PRESETS, OrganismConfig
 from ludex.core.stage import audit_creature
 
 PROVIDERS = list(ADAPTER_REGISTRY.keys())
@@ -138,6 +138,14 @@ def cmd_create(args: argparse.Namespace) -> int:
             print("  model is required")
             return 2
 
+    # Effort (reasoning-depth baseline — substrate axis E). Pin it explicitly so the
+    # creature is never silently coupled to the host's CLI effort default.
+    effort = (args.effort or "").strip().lower()
+    if not effort:
+        default_eff = DEFAULT_EFFORT.get(provider, "")
+        effort = _ask("reasoning effort baseline (low/medium/high/xhigh/max, or 'dynamic')",
+                      default=default_eff) if interactive else default_eff
+
     # Preset
     preset = args.preset or ""
     if not preset:
@@ -159,6 +167,11 @@ def cmd_create(args: argparse.Namespace) -> int:
         )
     else:
         cfg = OrganismConfig.from_preset(preset=preset, name=name, provider=provider, model=model)
+
+    # Effort is a birth-time substrate property (axis E) — pin it on the brain so a new
+    # creature starts at a deliberate baseline, not whatever the host CLI defaults to.
+    if effort:
+        cfg.brain["effort"] = effort
 
     # Output directory
     out_dir = _resolve_out_dir(name, args.out)
@@ -450,6 +463,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--preset", help=f"organ preset: {', '.join(PRESET_NAMES)}, or 'custom'")
     create.add_argument("--out", help="output directory (default: creatures/<name>)")
     create.add_argument("--system", default="", help="custom instructions / system prompt (e.g. preferred conversation language)")
+    create.add_argument("--effort", default="", help="baseline reasoning effort / substrate axis E (low/medium/high/xhigh/max, or 'dynamic' for gemini/agy). Default: high for claude/codex, dynamic for gemini/agy — pinned so the creature isn't host-coupled.")
     create.add_argument("--force", action="store_true", help="write into non-empty directory without asking")
     create.set_defaults(func=cmd_create)
 

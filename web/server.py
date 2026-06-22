@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ludex.core.organism import Organism
-from ludex.core.organism_config import OrganismConfig, DEFAULT_ORGANS, PRESETS
+from ludex.core.organism_config import OrganismConfig, DEFAULT_ORGANS, DEFAULT_EFFORT, PRESETS
 from ludex.core.habitat import HabitatConfig
 from ludex.blocks.provider import ProviderBlock
 from ludex.blocks.engine import EngineBlock
@@ -2005,6 +2005,7 @@ class ForgeAssembleRequest(BaseModel):
     habitat_path: str = ""
     system_prompt: str = ""
     agent_type: str = "chat"
+    effort: str = ""   # baseline reasoning effort (substrate axis E); default-by-provider if blank
 
 
 class RebrainRequest(BaseModel):
@@ -2012,6 +2013,7 @@ class RebrainRequest(BaseModel):
     model: str = ""
     reflect: bool = True
     dir: str = "creatures"
+    effort: str = ""   # new baseline effort; default-by-new-provider if blank
 
 
 @app.post("/api/creature/{name}/rebrain")
@@ -2043,7 +2045,22 @@ async def creature_rebrain(name: str, req: RebrainRequest):
         pre_snap = take_snapshot(cfg.build(), reason=f"pre-rebrain-{old.get('model', '')}")
     except Exception as e:
         print(f"[rebrain] pre-snapshot skipped: {e}")
-    cfg.brain = {"provider": req.provider, "model": req.model}   # same being — only the brain changes
+    # Same being — only the brain changes. Carry forward the old brain's fields (class,
+    # auth, effort, …) rather than WIPING them (the old `= {provider, model}` dropped
+    # brain.auth + brain.effort + class); then re-derive the provider-specific ones.
+    new_brain = {**old, "provider": req.provider, "model": req.model}
+    same_provider = (req.provider == old.get("provider"))
+    if not same_provider:
+        new_brain.pop("auth", None)   # new provider → its _cli_env per-provider default auth applies
+    # Effort (axis E): explicit request wins; a cross-provider swap resets to the new
+    # provider's baseline; a same-provider model upgrade keeps the carried-over effort.
+    if req.effort:
+        new_brain["effort"] = req.effort.strip().lower()
+    elif not same_provider:
+        new_brain["effort"] = DEFAULT_EFFORT.get(req.provider, "")
+    if not new_brain.get("effort"):
+        new_brain.pop("effort", None)
+    cfg.brain = new_brain
     try:
         cfg.save(cdir)
     except Exception as e:
@@ -2142,10 +2159,15 @@ async def forge_assemble(req: ForgeAssembleRequest):
     except Exception:
         pass
 
-    # Build OrganismConfig
+    # Build OrganismConfig. Effort = birth-time substrate (axis E); pin it so the new
+    # creature starts at a deliberate baseline, not whatever the host CLI defaults to.
+    _brain = {"provider": req.provider, "model": req.model}
+    _eff = (req.effort or "").strip().lower() or DEFAULT_EFFORT.get(req.provider, "")
+    if _eff:
+        _brain["effort"] = _eff
     config = OrganismConfig(
         name=req.name,
-        brain={"provider": req.provider, "model": req.model},
+        brain=_brain,
         habitat=habitat,
     )
 

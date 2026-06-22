@@ -58,9 +58,10 @@ def record_transition_span(
     """Write a substrate_transition span. Returns True when written.
 
     Idempotent on the standing fact: if the latest substrate_transition
-    span already records the same (axis, from, to, model), nothing is
+    span already records the same (axis, from, to, model, op), nothing is
     written — re-running the command after a partially-failed swap does
-    not duplicate the event.
+    not duplicate the event. A changed `op` (e.g. a later preserve→transplant
+    RECLASSIFICATION) is a new recordable event, not a duplicate.
     """
     if axis not in AXES:
         raise ValueError(f"axis must be one of {AXES}, got {axis!r}")
@@ -77,6 +78,7 @@ def record_transition_span(
             and a.get("from") == from_desc
             and a.get("to") == to_desc
             and a.get("model") == model
+            and a.get("op") == op
         ):
             return False
 
