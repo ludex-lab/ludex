@@ -801,7 +801,7 @@ def _read_mti(cdir, current_model):
     - OPTIONAL — cohort-outside creatures (claude/codex/gemini/…) have no file → return None →
       the key is omitted entirely (ignore-unknown, R2): a renderer simply draws no radar.
     - STALENESS — MTI measures the brain MODEL, so a creature's temperament IS its brain's
-      profile. If it was re-brained since measurement (provenance.brain_model != its current
+      profile. If it was re-brained since measurement (the measured `model` != its current
       model) we set stale=true so a renderer won't show an old brain's temperament as the new
       being's (narrative identity persists across re-brain; measured temperament does not)."""
     mp = os.path.join(cdir, "mti.json")
@@ -813,7 +813,9 @@ def _read_mti(cdir, current_model):
         return None
     if not isinstance(mti, dict) or not isinstance(mti.get("axes"), dict):
         return None
-    measured = (mti.get("provenance") or {}).get("brain_model", "")
+    # mti/v1 (Ray's battery contract) puts the measured model at top-level "model";
+    # accept the older provenance.brain_model too for forward/backward compat.
+    measured = mti.get("model", "") or (mti.get("provenance") or {}).get("brain_model", "")
     if measured and current_model and measured != current_model:
         mti["stale"] = True
     return mti
@@ -1001,6 +1003,8 @@ FIELD_REGISTRY = {
          "min_creatures": 2, "prompt": "theme", "mode": True, "impl": True},
         {"id": "wilderness", "name": "Wilderness", "i18n": "fld_wild", "viewer": "ticklog",
          "min_creatures": 1, "prompt": None, "ticks": True, "impl": True},
+        {"id": "agora", "name": "Agora", "i18n": "fld_agora", "viewer": "transcript",
+         "min_creatures": 2, "prompt": None, "impl": True},
     ],
     "external": [
         {"id": "lxm", "name": "Ludus ex Machina", "impl": True, "viewer": "lxm",
@@ -1038,6 +1042,10 @@ def _session_transcript_records(field):
                             "attributes": {"action": c.get("action"), "energy": c.get("energy"),
                                            "emotion": c.get("emotion", ""),
                                            "threat": c.get("threat")}})
+    elif hasattr(field, "dialogue"):              # agora — free 1:1 conversation
+        for t in field.dialogue:
+            out.append({"round": t.turn_number, "phase": "turn", "participant": t.speaker,
+                        "kind": "message", "content": t.message, "attributes": None})
     return out
 
 
@@ -1456,6 +1464,9 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
             from ludex.core.syllabus import Syllabus
             field = Academy(name=f"web-academy-{sid}",
                             syllabus=Syllabus(theme=text, mode=academy_mode), auto_trace=False)
+        elif field_kind == "agora":
+            from ludex.fields.agora import Agora
+            field = Agora(name=f"web-agora-{sid}")
         else:
             from ludex.fields.council import Council, Dilemma
             field = Council(name=f"web-council-{sid}", dilemma=Dilemma(text=text), auto_trace=False)
@@ -1467,6 +1478,8 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
             name = getattr(org, "name", None) or name0
             if field_kind == "wilderness":
                 field.join(org)
+            elif field_kind == "agora":
+                field.join(org, org.get_block("engine"))
             else:
                 role = "mediator" if (field_kind == "council" and mediator and mediator in (name, name0)) else "discussant"
                 field.add_participant(Participant(name=name, role=role,
@@ -1500,9 +1513,14 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
             field.evidence_round(response_fn)
             field.challenge_round(response_fn)
             field.update_round(response_fn)
+        elif field_kind == "agora":
+            field.run(turns=6)   # free 1:1 conversation; Agora drives the engines itself
         else:
             field.run(response_fn)   # council + open_council + academy: same ConversationField.run(response_fn)
-        if field_kind != "wilderness":
+        if field_kind == "agora":
+            sess["status"] = "reflecting"
+            field.close()          # Agora's native aftermath: update bonds + reflect + dream
+        elif field_kind != "wilderness":
             sess["status"] = "reflecting"      # post-session: durable memory + bonds (JJ)
             _field_aftermath(sess, field, field_kind, text)
         sess["status"] = "stopped" if sess.get("stop") else "done"
@@ -1703,13 +1721,17 @@ async def field_start(req: FieldStartRequest):
             threading.Thread(target=_run_lxm_multi_match_bg,
                              args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats), daemon=True).start()
         return {"session_id": sid, "status": "starting"}
-    if req.field not in ("council", "forum", "open_council", "academy", "wilderness"):
+    if req.field not in ("council", "forum", "open_council", "academy", "wilderness", "agora"):
         return {"error": f"Field '{req.field}' is not supported yet."}
     ticks = max(3, min(int(req.ticks or 10), 30))
     if req.field == "wilderness":
         if len(req.creatures) < 1:
             return {"error": "Admit at least 1 creature."}
         dilemma = f"Wilderness · {ticks} ticks"     # history label (no claim text)
+    elif req.field == "agora":
+        if len(req.creatures) != 2:
+            return {"error": "Agora is a pair — admit exactly 2 creatures."}
+        dilemma = "Agora · open conversation"       # label; Agora generates its own opener
     else:
         if not (req.dilemma or "").strip():
             return {"error": "A dilemma/claim is required."}
