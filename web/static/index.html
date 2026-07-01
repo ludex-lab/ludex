@@ -1387,6 +1387,13 @@ async function fieldPoll() {
         html += `<div class="ft-turn"><div class="ft-who">${_esc(rec.participant)}${badge ? ` <span class="ft-badge">${_esc(badge)}</span>` : ''}</div><div class="ft-text">${_esc(rec.content)}</div></div>`;
       });
     } else if (d.field === 'lxm') {
+      // Embed the LxM replay viewer inline — attach it to our UX, don't rebuild it
+      // (ludex↔lxm coordination). Shows once the match is complete and the hosted
+      // viewer_url is known; the "Watch on LxM ↗" link stays as the full-screen /
+      // framing-blocked fallback. Game-agnostic — renders MUD, Avalon, ttt, etc.
+      if (d.viewer_url && ['done', 'stopped'].includes(st)) {
+        html += `<div class="lxm-embed" style="margin:8px 0 14px"><iframe src="${_esc(d.viewer_url)}" title="LxM replay" loading="lazy" style="width:100%;height:520px;border:1px solid var(--border,#2a2a3e);border-radius:10px;background:#1a1a2e"></iframe><div style="font-size:12px;opacity:.75;margin-top:5px">↳ <a href="${_esc(d.viewer_url)}" target="_blank" rel="noopener" style="color:#6cf">${t('lxm_watch')} ↗</a></div></div>`;
+      }
       tx.forEach(rec => {
         html += `<div class="ft-turn"><div class="ft-who">[${_esc(rec.round)}] ${_esc(rec.participant)}</div><div class="ft-text">${_esc(rec.content)}</div></div>`;
       });

@@ -19,9 +19,9 @@ leases:
     host: Mac-habitat
     note: >-
       D-051 life-support metabolism (Mac-origin creatures only). Guarded by the ① freshness
-      gate + metabolism-only (cf0ac30). NOTE: Mac also runs a redundant crontab entry for the
-      same heartbeat — the sweep will flag that cron until it is consolidated into this one
-      scheduler (two schedulers = double-fire risk).
+      gate + metabolism-only (cf0ac30). The redundant `crontab` heartbeat entry was REMOVED
+      2026-06-30 (backup in that session's scratchpad) — launchd `com.ludex.macHabitat.heartbeat`
+      is now the SOLE Mac scheduler; the double-fire risk is resolved.
 
   - name: ray-habitat-heartbeat
     match: ["LudexRayHabitatHeartbeat"]

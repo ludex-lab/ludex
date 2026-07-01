@@ -262,6 +262,27 @@ class EngineBlock(Block):
             content=str(result), model=self._cfg("model", "unknown"),
         )
 
+        # An adapter error-fallback ('[Error: ...]') arrives as a *successful*
+        # LLMResponse whose content is the error text — adapters return the
+        # failure as content rather than raising (see provider.handle_llm_call).
+        # Treat it as a failed turn (same shape as an LLMError) so vitals
+        # (error_rate), field completion (fields/base.py), and downstream
+        # consumers — including the LxM bridge's exit_code — see a failure
+        # instead of a success whose response merely happens to be '[Error: ...]'.
+        if (response.content or "").strip().lower().startswith("[error:"):
+            turn_result = TurnResult(
+                turn_number=self._turn_count,
+                prompt=prompt,
+                response="",
+                error=f"brain_error: {response.content.strip()[:200]}",
+                stop_reason="error",
+            )
+            self._emit("turn.ended", turn_number=self._turn_count, success=False,
+                       response="")
+            self._update_vitals(turn_result)
+            self._turn_results.append(turn_result)
+            return turn_result
+
         total_tokens_in = response.tokens_in
         total_tokens_out = response.tokens_out
         total_latency = response.latency_ms

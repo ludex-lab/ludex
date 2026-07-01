@@ -1161,6 +1161,7 @@ _LXM_FALLBACK_GAMES = [
     {"id": "avalon", "min_players": 5, "max_players": 10},
     {"id": "deduction", "min_players": 1, "max_players": 1},
     {"id": "blockworld", "min_players": 1, "max_players": 8},
+    {"id": "mud", "min_players": 1, "max_players": 4},
 ]
 _LXM_GAMES_CACHE = {"at": 0.0, "games": None}
 
@@ -1184,7 +1185,14 @@ def _lxm_games():
     def _multi(gs):
         out = []
         for g in gs:
-            if g.get("id") == "blockworld" and _BLOCKWORLD_MEETING_ENABLED:
+            if g.get("id") == "mud":
+                # Solo language-world-model field (#1a): one creature vs the environment —
+                # "The Astronomer's Tower" (a single default zone; the arena exposes no mud
+                # scenario picker, so scenarios=False and no scenario_id is threaded).
+                # n=1 (no house) routes to _run_lxm_multi_match_bg (the deduction-solo path).
+                # Offered despite min_players=1 (the >=2 "meeting" filter below would drop it).
+                out.append({**g, "min_players": 1, "max_players": 1, "scenarios": False, "solo": True})
+            elif g.get("id") == "blockworld" and _BLOCKWORLD_MEETING_ENABLED:
                 # blockworld is a scenario FAMILY: its multiplayer scenarios are all 2-player
                 # social-dilemma / coordination worlds (PD, stag hunt, commons, pure-coord, …).
                 # Expose it as a 2-player meeting game carrying a scenario picker — a whole new
@@ -1643,7 +1651,8 @@ async def lxm_games():
     from ludex.bridges.hosted_match import HOUSE_BOTS
     return {"games": [{"id": g["id"], "name": _LXM_GAME_NAMES.get(g["id"], g["id"]),
                        "min": g.get("min_players", 2), "max": g.get("max_players", 2),
-                       "house": g["id"] in HOUSE_BOTS, "scenarios": bool(g.get("scenarios"))}
+                       "house": g["id"] in HOUSE_BOTS, "scenarios": bool(g.get("scenarios")),
+                       "solo": bool(g.get("solo"))}
                       for g in _lxm_games()]}
 
 

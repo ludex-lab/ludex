@@ -328,6 +328,23 @@ class MemoryBlock(Block):
         metadata: dict | None = None,
     ) -> str:
         """기억 저장. 반환: memory_id"""
+        # Storage-boundary guard: never persist an adapter error-fallback
+        # ('[Error: ...]') as a memory. A timed-out / failed brain call must
+        # not become an episodic/identity record. The narrative writers
+        # (selfhood.reflect / update_bond, consolidation) already guard their
+        # own paths; this backstop also catches EXTERNAL callers — e.g. the
+        # LxM adapter writing per-turn captures through the bridge, which
+        # produced '<name> @<field>: [Error: ... CLI timed out]' memories
+        # before this. Mirrors selfhood._is_error_fallback, extended to the
+        # trailing '<prefix>: [Error: ...]' capture shape (DOTALL: the Gemini
+        # key error spans two lines).
+        import re
+        if content and re.search(r"\[Error:.*\]\s*$", content, re.IGNORECASE | re.DOTALL):
+            logger.warning(
+                "Refusing to store error-fallback as memory "
+                f"(type={memory_type}, source={source!r}): {content[:120]!r}"
+            )
+            return ""
         mem_id = f"mem_{self._next_id:04d}"
         self._next_id += 1
 

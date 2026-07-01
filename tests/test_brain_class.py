@@ -38,6 +38,13 @@ def test_sonnet_4_6_is_hybrid():
     assert classify_brain("claude_cli", "claude-sonnet-4-6") == HYBRID
 
 
+def test_sonnet_5_is_hybrid():
+    # New frontier Sonnet (2026-07-01). Frontier hybrid, like sonnet-4-6/opus.
+    # Guards against the "sonnet-5" substring colliding with sonnet-4-5 (structured):
+    # test_sonnet_4_5_is_structured must still pass.
+    assert classify_brain("claude_cli", "claude-sonnet-5") == HYBRID
+
+
 def test_gpt_5_5_is_hybrid():
     assert classify_brain("codex_cli", "gpt-5.5") == HYBRID
 

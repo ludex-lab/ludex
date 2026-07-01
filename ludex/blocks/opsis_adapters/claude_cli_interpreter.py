@@ -28,6 +28,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from ludex.blocks.adapters._cli_env import cli_subprocess_env
+
 logger = logging.getLogger(__name__)
 
 
@@ -110,6 +112,14 @@ def interpret(
             encoding="utf-8",
             errors="replace",
             timeout=timeout_s,
+            # Honor subscription auth like the claude_cli brain adapter: strip
+            # ANTHROPIC_API_KEY so the CLI uses its logged-in subscription
+            # rather than billing the API. Ludex loads .env into os.environ for
+            # the model-currency check; that key was leaking into this spawn, so
+            # the CLI warned "connectors disabled because ANTHROPIC_API_KEY ...
+            # takes precedence" and hit the API credit balance. opsis is an organ
+            # service (not a creature brain) → safe subscription default.
+            env=cli_subprocess_env("claude_cli", "subscription"),
         )
     except subprocess.TimeoutExpired as e:
         logger.warning(f"interpreter: timeout after {timeout_s}s")
