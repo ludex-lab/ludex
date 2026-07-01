@@ -290,6 +290,12 @@ class Wilderness:
             "event_category": event.category if event else None,
             "creatures": [],
         }
+        # Register the tick NOW (empty), then fill "creatures" in-place as each
+        # one acts — so a reader of self.log (the web transcript) STREAMS each
+        # creature's turn as it lands, instead of the whole tick appearing at once
+        # at tick-end ("frozen, then a burst" UX with slow brains). The final
+        # self.log is identical; only its visibility is earlier.
+        self.log.append(tick_log)
 
         # Each creature acts
         for creature in self.creatures:
@@ -418,7 +424,8 @@ class Wilderness:
                     except Exception:
                         pass
 
-        self.log.append(tick_log)
+        # (tick_log was appended to self.log at tick-start, above — it filled
+        # in-place during the loop, so no second append here.)
 
     def _pick_event(self) -> WildernessEvent:
         """Pick an event using weighted category selection."""
