@@ -79,12 +79,56 @@ INST_6STEP_001 = StackerInstance(
 )
 
 
+# 8/10/12-step problems: full-stack reversals (optimal = 2N, BFS-verified).
+# Reversal is the canonical "hard" Blockworld shape — every block must move
+# twice (down to the table, then back up in the opposite order), so a weak
+# brain that ceilings on the shallow instances has real headroom here.
+INST_8STEP_001 = StackerInstance(
+    instance_id="planbench_8step_001",
+    blocks=["A", "B", "C", "D"],
+    initial_stacks={"A": "B", "B": "C", "C": "D"},
+    initial_on_table=["A"],
+    goal_stacks={"D": "C", "C": "B", "B": "A"},
+    goal_on_table=["D"],
+    optimal_steps=8,
+    difficulty="8-step",
+    description="Reverse a 4-tall tower A-B-C-D (A bottom, D top) into D-C-B-A (D bottom, A top). BFS-optimal 8.",
+)
+
+INST_10STEP_001 = StackerInstance(
+    instance_id="planbench_10step_001",
+    blocks=["A", "B", "C", "D", "E"],
+    initial_stacks={"A": "B", "B": "C", "C": "D", "D": "E"},
+    initial_on_table=["A"],
+    goal_stacks={"E": "D", "D": "C", "C": "B", "B": "A"},
+    goal_on_table=["E"],
+    optimal_steps=10,
+    difficulty="10-step",
+    description="Reverse a 5-tall tower A-B-C-D-E into E-D-C-B-A. BFS-optimal 10.",
+)
+
+INST_12STEP_001 = StackerInstance(
+    instance_id="planbench_12step_001",
+    blocks=["A", "B", "C", "D", "E", "F"],
+    initial_stacks={"A": "B", "B": "C", "C": "D", "D": "E", "E": "F"},
+    initial_on_table=["A"],
+    goal_stacks={"F": "E", "E": "D", "D": "C", "C": "B", "B": "A"},
+    goal_on_table=["F"],
+    optimal_steps=12,
+    difficulty="12-step",
+    description="Reverse a 6-tall tower A-B-C-D-E-F into F-E-D-C-B-A. BFS-optimal 12.",
+)
+
+
 BUILTIN_INSTANCES = [
     INST_2STEP_001,
     INST_2STEP_002,
     INST_4STEP_001,
     INST_4STEP_002,
     INST_6STEP_001,
+    INST_8STEP_001,
+    INST_10STEP_001,
+    INST_12STEP_001,
 ]
 
 
