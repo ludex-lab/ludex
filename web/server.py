@@ -1186,12 +1186,14 @@ def _lxm_games():
         out = []
         for g in gs:
             if g.get("id") == "mud":
-                # Solo language-world-model field (#1a): one creature vs the environment —
-                # "The Astronomer's Tower" (a single default zone; the arena exposes no mud
-                # scenario picker, so scenarios=False and no scenario_id is threaded).
+                # Solo language-world-model field (#1a): one creature vs the environment.
+                # As of 2026-07-02 the arena exposes a mud scenario picker
+                # (GET /api/games/mud/scenarios?category=solo → 4 worlds: astronomer_tower,
+                # grimhold_keep, ss_erebus, critter_cove), so scenarios=True and the chosen
+                # scenario_id is threaded through to config.scenario_id.
                 # n=1 (no house) routes to _run_lxm_multi_match_bg (the deduction-solo path).
                 # Offered despite min_players=1 (the >=2 "meeting" filter below would drop it).
-                out.append({**g, "min_players": 1, "max_players": 1, "scenarios": False, "solo": True})
+                out.append({**g, "min_players": 1, "max_players": 1, "scenarios": True, "solo": True})
             elif g.get("id") == "blockworld" and _BLOCKWORLD_MEETING_ENABLED:
                 # blockworld is a scenario FAMILY: its multiplayer scenarios are all 2-player
                 # social-dilemma / coordination worlds (PD, stag hunt, commons, pure-coord, …).
@@ -1544,7 +1546,7 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
         _save_field_session(sess)   # persist for history (survives restart)
 
 
-def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str, shuffle_seats: bool = True):
+def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str, shuffle_seats: bool = True, scenario_id: str = ""):
     """N creatures meet on the hosted LxM arena (D-089 §5, B1) — the N-seat generalization of
     _run_lxm_creature_match (avalon, codenames, blockworld, deduction-solo, …). Each plays on
     an ephemeral copy (D-090); on a `published` match each remembers it (a reflection + a bond
@@ -1554,7 +1556,7 @@ def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str
     sess = field_sessions[sid]
     names = [os.path.basename(str(p).rstrip("/\\")) for p in creature_paths]
     try:
-        max_turns = {"avalon": 120, "codenames": 60, "blockworld": 40}.get(game, 30)
+        max_turns = {"avalon": 120, "codenames": 60, "blockworld": 40, "mud": 60}.get(game, 30)
         field = LxMField(names[0]); field.participant_names = list(names)
         sess["field"] = field
         sess["entered"] = list(names); sess["building"] = ""
@@ -1566,7 +1568,7 @@ def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str
             sess["thinking"] = rec.get("name")
 
         result = play_multi_creature_match(creature_paths, game=game, kind=kind, max_turns=max_turns,
-                                           shuffle_seats=shuffle_seats,
+                                           shuffle_seats=shuffle_seats, scenario_id=scenario_id,
                                            on_turn=on_turn, on_start=lambda u: sess.update(viewer_url=u, building=""),
                                            should_stop=lambda: sess.get("stop"))
         field.result = result.get("result")
@@ -1657,19 +1659,23 @@ async def lxm_games():
 
 
 _LXM_SCEN_CACHE = {}  # game -> {"at": ts, "scenarios": [...]}
+# Which scenario category each scenario-family game lists on the arena.
+# blockworld = 2-player social-dilemma worlds (multiplayer); mud = solo world-model worlds.
+_LXM_SCEN_CATEGORY = {"mud": "solo"}
 
 
 def _lxm_scenarios(game: str):
-    """Multiplayer scenarios for a scenario-family game (blockworld) — the 2-player
-    social-dilemma/coordination worlds creatures can MEET in. Proxies LxM's
-    GET /api/games/{game}/scenarios?category=multiplayer (cached 5 min). [] on failure."""
+    """Selectable scenarios for a scenario-family game. Proxies LxM's
+    GET /api/games/{game}/scenarios?category=<cat> (blockworld=multiplayer,
+    mud=solo; cached 5 min). Returns a bare list; [] on failure."""
     c = _LXM_SCEN_CACHE.get(game)
     if c and time.time() - c["at"] < 300:
         return c["scenarios"]
     import urllib.request
     from ludex.bridges.hosted_match import ONRENDER
     try:
-        url = f"{ONRENDER}/api/games/{game}/scenarios?category=multiplayer"
+        cat = _LXM_SCEN_CATEGORY.get(game, "multiplayer")
+        url = f"{ONRENDER}/api/games/{game}/scenarios?category={cat}"
         with urllib.request.urlopen(url, timeout=20) as r:
             scen = json.loads(r.read().decode())
         if isinstance(scen, list):
@@ -1728,7 +1734,7 @@ async def field_start(req: FieldStartRequest):
                              args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats, scenario_id), daemon=True).start()
         else:
             threading.Thread(target=_run_lxm_multi_match_bg,
-                             args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats), daemon=True).start()
+                             args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats, scenario_id), daemon=True).start()
         return {"session_id": sid, "status": "starting"}
     if req.field not in ("council", "forum", "open_council", "academy", "wilderness", "agora"):
         return {"error": f"Field '{req.field}' is not supported yet."}

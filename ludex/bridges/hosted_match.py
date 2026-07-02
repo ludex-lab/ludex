@@ -331,7 +331,7 @@ def record_encounter(creature_path, opponent_name, opponent_creature_id, match_s
 
 def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="published",
                               on_turn=None, on_start=None, action_retries=2, max_turns=80,
-                              should_stop=None, shuffle_seats=True):
+                              should_stop=None, shuffle_seats=True, scenario_id=""):
     """N REAL creatures meet in a hosted cross-machine match — the N-seat generalization of
     play_creature_match (avalon 5–10, codenames 4, blockworld, deduction-solo, or any LxM
     game). The arena is always ONE seat per step (no simultaneous submit — avalon votes are
@@ -362,7 +362,7 @@ def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="
             "game": game, "kind": kind,
             "participants": [{"id": h, "kind": "remote", "creature_id": seats[h]["id"],
                               "display": seats[h]["name"]} for h in handles],
-            "config": {"max_turns": max_turns}})
+            "config": {"max_turns": max_turns, **({"scenario_id": scenario_id} if scenario_id else {})}})
         mid = view["match_id"]
         if on_start:
             on_start(VIEWER.format(id=mid))          # surface the viewer link live, mid-match
