@@ -1005,6 +1005,8 @@ FIELD_REGISTRY = {
          "min_creatures": 1, "prompt": None, "ticks": True, "impl": True},
         {"id": "agora", "name": "Agora", "i18n": "fld_agora", "viewer": "transcript",
          "min_creatures": 2, "prompt": None, "impl": True},
+        {"id": "stacker", "name": "Stacker", "i18n": "fld_stacker", "viewer": "stacker",
+         "min_creatures": 1, "prompt": None, "difficulty": True, "impl": True},
     ],
     "external": [
         {"id": "lxm", "name": "Ludus ex Machina", "impl": True, "viewer": "lxm",
@@ -1046,6 +1048,17 @@ def _session_transcript_records(field):
         for t in field.dialogue:
             out.append({"round": t.turn_number, "phase": "turn", "participant": t.speaker,
                         "kind": "message", "content": t.message, "attributes": None})
+    elif hasattr(field, "steps"):                 # stacker — block-planning steps (D-067)
+        out.append({"round": 0, "phase": "goal", "participant": "world", "kind": "goal",
+                    "content": f"{field.instance_id} · {field.difficulty}"
+                               + (f" · optimal {field.optimal_steps}" if field.optimal_steps else ""),
+                    "attributes": {"optimal_steps": field.optimal_steps,
+                                   "difficulty": field.difficulty, "result": field.result}})
+        for s in field.steps:
+            out.append({"round": s["step"], "phase": "step", "participant": field.creature_name,
+                        "kind": "action", "content": s["action_str"],
+                        "attributes": {"obs": s["obs"], "goal_distance": s["goal_distance"],
+                                       "latency_ms": s.get("latency_ms"), "ok": s.get("ok")}})
     return out
 
 
@@ -1546,6 +1559,217 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
         _save_field_session(sess)   # persist for history (survives restart)
 
 
+_STACKER_FIELD = "academy/stacker"   # physis world_model namespace (matches D-067 baseline + world_schema)
+
+
+def _stacker_action_str(a) -> str:
+    """Human-readable action label for the step log / diagram."""
+    t = a.type
+    if t == "pickup":
+        return f"pickup({a.block})"
+    if t == "putdown":
+        return f"putdown({a.block})"
+    if t == "stack":
+        return f"stack({a.top} on {a.bottom})"
+    if t == "unstack":
+        return f"unstack({a.top} from {a.from_block})"
+    return t
+
+
+def _stacker_action_from_parsed(parsed):
+    """parse_stacker_action() dict → StackerAction (or None)."""
+    from ludex.fields.stacker import StackerAction
+    if not parsed:
+        return None
+    t = parsed.get("type")
+    if t in ("pickup", "putdown"):
+        return StackerAction(type=t, block=parsed.get("block", ""))
+    if t == "stack":
+        return StackerAction(type="stack", top=parsed.get("top", ""), bottom=parsed.get("bottom", ""))
+    if t == "unstack":
+        return StackerAction(type="unstack", top=parsed.get("top", ""), from_block=parsed.get("from", ""))
+    return None
+
+
+_WM_CONFIDENCE_PREAMBLE = (
+    "How to use the world-model notes below: a hint tagged (tentative) is a "
+    "HYPOTHESIS TO TEST, not a policy to execute — it came from only 1-2 past "
+    "episodes and may not generalise. Only (confirmed) and (well-supported) hints "
+    "are reliable enough to act on directly. If a tentative hint and the current "
+    "state conflict, trust the state, and don't let a single past lesson stop you "
+    "from exploring a new action.\n\n"
+)
+
+
+def _confidence_frame_wm(body: str) -> str:
+    """Ray §3.1 — load-time confidence framing: reframe tentative (low-n) lessons
+    as hypotheses so a creature doesn't over-anchor on an n=1 prior (the Lyra
+    failure mode). No-op on an empty world-model."""
+    return (_WM_CONFIDENCE_PREAMBLE + body) if (body or "").strip() else body
+
+
+class _StackerRun:
+    """One Stacker solve session's per-step trace for the web viewer (D-067).
+
+    Single-creature block-planning field. Each step records the block state
+    AFTER the move (blocks/stacks/on_table/in_hand + the goal, in `obs`) so the
+    viewer draws the NOW↔GOAL diagram from either the live object or the
+    persisted transcript. physis is engaged in the loop — the ONE field where
+    the world-model is live (load_world_model → prompt → step → consolidate) —
+    so the creature accumulates a Stacker world-model across runs."""
+
+    def __init__(self, creature_name: str, instance):
+        self.creature_name = creature_name
+        self.participant_names = [creature_name]     # consumed by _field_participant_names
+        self.instance_id = instance.instance_id
+        self.difficulty = instance.difficulty
+        self.optimal_steps = instance.optimal_steps
+        self.steps = []          # {step, action_str, obs, goal_distance, latency_ms, ok}
+        self.result = None       # {outcome, solved, steps_taken, optimal_ratio, ...}
+
+
+def _run_stacker_bg(sid: str, creature_path: str, difficulty: str = "", confidence_frame: bool = False):
+    """Background worker: one creature plays a Stacker block-planning instance.
+
+    Reuses the D-067 loop (render_stacker_prompt → engine → parse → apply →
+    physis.step) and consolidates physis at the end, so the creature LEARNS a
+    world-model from the run. Streams each step into a _StackerRun so the web
+    viewer updates move-by-move (per-step, not batched). Terminates safely:
+    apply() does not advance the step counter on an invalid move, so a hard
+    iteration cap + a consecutive-failure break bound a stuck weak brain."""
+    from ludex.core.organism_config import OrganismConfig
+    from ludex.fields.stacker import StackerEngine, BUILTIN_INSTANCES
+    from ludex.fields.stacker.engine import goal_distance
+    from ludex.blocks.physis_prompt_adapter import (
+        render_stacker_prompt, parse_stacker_action, resolve_tier)
+    sess = field_sessions[sid]
+    try:
+        insts = [i for i in BUILTIN_INSTANCES if not difficulty or i.difficulty == difficulty]
+        instance = (insts or BUILTIN_INSTANCES)[0]
+        name0 = os.path.basename(str(creature_path).rstrip("/\\"))
+        sess["building"] = name0
+        cfg = OrganismConfig.load(creature_path)
+        prov = cfg.brain.get("provider", "")
+        model = cfg.brain.get("model", "")
+        org = _build_creature_org(creature_path)
+        cname = getattr(org, "name", None) or name0
+        run = _StackerRun(cname, instance)
+        sess["field"] = run
+        sess["entered"] = [cname]
+        sess["building"] = ""
+        engine_block = org.get_block("engine")
+        physis = org.get_block("physis")
+        eng = StackerEngine(instance, step_cap=max(6, (instance.optimal_steps or 4) * 3))
+        wm_body = ""
+        if physis is not None:
+            try:
+                wm_body = physis.handle_load_world_model(_STACKER_FIELD)
+            except Exception:
+                wm_body = ""
+        if confidence_frame:                     # Ray §3.1 — tentative lessons load as hypotheses, not policy
+            wm_body = _confidence_frame_wm(wm_body)
+        tier = resolve_tier(prov, model) if prov else None
+        sess["status"] = "running"
+
+        consec_fail = 0
+        seen_states, seen_actions = set(), set()    # Ray §3.3 — behavioural over-anchoring coverage
+        for _ in range(eng.state.step_cap * 3):     # hard bound: invalid/unparseable don't advance step
+            if sess.get("stop") or eng.state.is_terminal():
+                break
+            prev = goal_distance(eng.state)
+            prompt, _t = render_stacker_prompt(
+                eng.observation(), provider=prov, model=model, world_model_excerpt=wm_body)
+            sess["thinking"] = cname
+            t0 = time.time()
+            try:
+                resp = engine_block.handle_submit(prompt)
+                raw = getattr(resp, "response", "") or ""
+            except Exception:
+                raw = ""
+            lat = round((time.time() - t0) * 1000)
+            sess["thinking"] = ""
+            action = _stacker_action_from_parsed(parse_stacker_action(raw, tier) if tier else None)
+            if action is None:
+                consec_fail += 1
+                run.steps.append({"step": eng.state.step, "action_str": "(unparseable move)",
+                                  "obs": eng.observation(), "goal_distance": prev,
+                                  "latency_ms": lat, "ok": False})
+                if physis is not None:
+                    try:
+                        physis.handle_step(_STACKER_FIELD, turn=eng.state.step,
+                                           ground_truth_state=eng.observation(),
+                                           action={"type": "parse_failure"}, reward=-0.1,
+                                           events=["parse_failure"])
+                    except Exception:
+                        pass
+                if consec_fail >= 5:
+                    break
+                continue
+            ok, reason, events = eng.apply(action)
+            if not ok:
+                consec_fail += 1
+                run.steps.append({"step": eng.state.step,
+                                  "action_str": f"{_stacker_action_str(action)}  ✗ {reason}",
+                                  "obs": eng.observation(), "goal_distance": goal_distance(eng.state),
+                                  "latency_ms": lat, "ok": False})
+                if physis is not None:
+                    try:
+                        physis.handle_step(_STACKER_FIELD, turn=eng.state.step,
+                                           ground_truth_state=eng.observation(),
+                                           action=action.to_dict(), reward=-0.1, events=events)
+                    except Exception:
+                        pass
+                if consec_fail >= 5:
+                    break
+                continue
+            consec_fail = 0
+            reward = float(prev - goal_distance(eng.state))
+            if physis is not None:
+                try:
+                    physis.handle_step(_STACKER_FIELD, turn=eng.state.step,
+                                       ground_truth_state=eng.observation(),
+                                       action=action.to_dict(), reward=reward, events=events)
+                except Exception:
+                    pass
+            run.steps.append({"step": eng.state.step, "action_str": _stacker_action_str(action),
+                              "obs": eng.observation(), "goal_distance": goal_distance(eng.state),
+                              "latency_ms": lat, "ok": True})
+            seen_actions.add(_stacker_action_str(action))
+            seen_states.add(json.dumps({"s": eng.state.stacks, "t": sorted(eng.state.on_table),
+                                        "h": eng.state.in_hand}, sort_keys=True))
+
+        solved = eng.state.goal_satisfied
+        outcome = "solved" if solved else ("stuck" if consec_fail >= 5 else "step_cap")
+        run.result = {"outcome": outcome, "solved": solved, "steps_taken": eng.state.step,
+                      "optimal_steps": instance.optimal_steps,
+                      "optimal_ratio": (round(eng.state.step / instance.optimal_steps, 2)
+                                        if instance.optimal_steps else None),
+                      "distinct_states": len(seen_states), "distinct_actions": len(seen_actions),
+                      "exploration": round(len(seen_states) / max(1, len(run.steps)), 2)}
+        sess["result"] = run.result
+        sess["scores"] = {cname: 1.0 if solved else 0.0}
+        if physis is not None and not sess.get("stop"):
+            sess["status"] = "reflecting"        # the creature distills what the run taught
+            sess["aftermath"] = f"distill:{cname}"
+            try:
+                physis.handle_consolidate(_STACKER_FIELD, brain_engine=engine_block,
+                                          episode_id=f"{instance.instance_id}_{int(time.time())}",
+                                          outcome=outcome)
+            except Exception:
+                pass
+            sess["aftermath"] = ""
+        sess["status"] = "stopped" if sess.get("stop") else "done"
+    except Exception as e:
+        sess["status"] = "error"
+        sess["error"] = str(e)
+        print(f"[stacker] run error: {e}")
+    finally:
+        sess["building"] = ""
+        sess["thinking"] = ""
+        sess["aftermath"] = ""
+        _save_field_session(sess)
+
+
 def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str, shuffle_seats: bool = True, scenario_id: str = ""):
     """N creatures meet on the hosted LxM arena (D-089 §5, B1) — the N-seat generalization of
     _run_lxm_creature_match (avalon, codenames, blockworld, deduction-solo, …). Each plays on
@@ -1735,6 +1959,19 @@ async def field_start(req: FieldStartRequest):
         else:
             threading.Thread(target=_run_lxm_multi_match_bg,
                              args=(sid, req.game, req.creatures, req.kind, req.shuffle_seats, scenario_id), daemon=True).start()
+        return {"session_id": sid, "status": "starting"}
+    if req.field == "stacker":
+        if len(req.creatures) != 1:
+            return {"error": "Stacker is single-creature — admit exactly 1 creature."}
+        import threading
+        difficulty = (req.mode or "").strip()          # UI sends the difficulty band in `mode`
+        sid = f"f{int(time.time() * 1000) % 1000000}"
+        cname = os.path.basename(str(req.creatures[0]).rstrip("/\\"))
+        field_sessions[sid] = {"sid": sid, "field": None, "status": "starting", "error": "",
+                               "field_kind": "stacker", "dilemma": f"Stacker · {difficulty or 'all'} · {cname}",
+                               "entered": [], "building": "", "thinking": "", "stop": False,
+                               "started": time.time(), "mediator": "", "aftermath": "", "tick": ""}
+        threading.Thread(target=_run_stacker_bg, args=(sid, req.creatures[0], difficulty), daemon=True).start()
         return {"session_id": sid, "status": "starting"}
     if req.field not in ("council", "forum", "open_council", "academy", "wilderness", "agora"):
         return {"error": f"Field '{req.field}' is not supported yet."}
