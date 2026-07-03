@@ -274,7 +274,7 @@ class EngineBlock(Block):
                 turn_number=self._turn_count,
                 prompt=prompt,
                 response="",
-                error=f"brain_error: {response.content.strip()[:200]}",
+                error=f"brain_error: {(response.content or '').strip()[:200]}",
                 stop_reason="error",
             )
             self._emit("turn.ended", turn_number=self._turn_count, success=False,

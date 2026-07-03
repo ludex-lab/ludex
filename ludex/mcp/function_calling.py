@@ -104,18 +104,23 @@ def dispatch_tool_call_sync(name: str, arguments: dict | str) -> str:
 
     start = _time.time()
     try:
-        # Tool handlers are async — run them in event loop
+        # Tool handlers are async. Run them WITHOUT assuming a current event loop:
+        # asyncio.get_event_loop() RAISES in py3.12+ (and this env's 3.14) when none is
+        # running, which broke the llama/ollama tools path in a threaded harness (Ray,
+        # 2026-07-03 — qwen/exaone don't support tools so never hit this). Detect a
+        # *running* loop explicitly (get_running_loop); otherwise asyncio.run() creates
+        # and owns a fresh one — clean, no exception-driven control flow.
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Already in async context — use threadsafe approach
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as ex:
-                    future = ex.submit(asyncio.run, tool.handler(arguments))
-                    result = future.result(timeout=30)
-            else:
-                result = loop.run_until_complete(tool.handler(arguments))
+            asyncio.get_running_loop()
+            in_running_loop = True
         except RuntimeError:
+            in_running_loop = False
+        if in_running_loop:
+            # Inside a running loop — run the handler in a separate thread with its own loop.
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as ex:
+                result = ex.submit(asyncio.run, tool.handler(arguments)).result(timeout=30)
+        else:
             result = asyncio.run(tool.handler(arguments))
 
         # Extract text content from MCP response format
