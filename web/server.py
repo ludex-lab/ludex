@@ -1161,7 +1161,10 @@ def _lxm_friendly_error(exc):
 
 _LXM_GAME_NAMES = {"trustgame": "Trust Game", "tictactoe": "Tic-Tac-Toe", "chess": "Chess",
                    "poker": "Poker", "avalon": "Avalon", "codenames": "Codenames",
-                   "blockworld": "Blockworld", "deduction": "Deduction"}
+                   "blockworld": "Blockworld", "deduction": "Deduction", "mud": "MUD",
+                   # "Agora-12 (LxM)" per the naming pact — the arena id is agora12
+                   # precisely so it can't collide with our internal Agora field.
+                   "agora12": "Agora-12 (LxM)", "three_kingdoms": "Three Kingdoms"}
 
 # The arena's game roster with player ranges — fetched live (GET /api/games),
 # cached, with a static fallback so the Field still works on a cold start.
@@ -1175,6 +1178,8 @@ _LXM_FALLBACK_GAMES = [
     {"id": "deduction", "min_players": 1, "max_players": 1},
     {"id": "blockworld", "min_players": 1, "max_players": 8},
     {"id": "mud", "min_players": 1, "max_players": 4},
+    {"id": "agora12", "min_players": 3, "max_players": 12},
+    {"id": "three_kingdoms", "min_players": 1, "max_players": 1},
 ]
 _LXM_GAMES_CACHE = {"at": 0.0, "games": None}
 
@@ -1198,15 +1203,21 @@ def _lxm_games():
     def _multi(gs):
         out = []
         for g in gs:
-            if g.get("id") == "mud":
-                # Solo language-world-model field (#1a): one creature vs the environment.
-                # As of 2026-07-02 the arena exposes a mud scenario picker
-                # (GET /api/games/mud/scenarios?category=solo → 4 worlds: astronomer_tower,
-                # grimhold_keep, ss_erebus, critter_cove), so scenarios=True and the chosen
-                # scenario_id is threaded through to config.scenario_id.
-                # n=1 (no house) routes to _run_lxm_multi_match_bg (the deduction-solo path).
-                # Offered despite min_players=1 (the >=2 "meeting" filter below would drop it).
+            if g.get("id") in ("mud", "three_kingdoms"):
+                # Solo scenario fields: one creature vs the environment, with an arena
+                # scenario picker (GET /api/games/{id}/scenarios?category=solo — mud's 4
+                # worlds; three_kingdoms' red_cliffs, the deterministic strategy puzzle,
+                # 2026-07-03). scenarios=True and the chosen scenario_id threads through
+                # to config.scenario_id. n=1 (no house) routes to _run_lxm_multi_match_bg
+                # (the deduction-solo path). Offered despite min_players=1 (the >=2
+                # "meeting" filter below would drop them).
                 out.append({**g, "min_players": 1, "max_players": 1, "scenarios": True, "solo": True})
+            elif g.get("id") == "agora12":
+                # Agora-12 (LxM) — N-agent social survival (3-12 seats, 5 spaces), a
+                # scenario family (survival / survival_blitz / white_room). white_room is
+                # the zero-stakes observational field (no winner — behaviour census).
+                # Multiplayer scenarios, so the default _LXM_SCEN_CATEGORY applies.
+                out.append({**g, "scenarios": True})
             elif g.get("id") == "blockworld" and _BLOCKWORLD_MEETING_ENABLED:
                 # blockworld is a scenario FAMILY: its multiplayer scenarios are all 2-player
                 # social-dilemma / coordination worlds (PD, stag hunt, commons, pure-coord, …).
@@ -1780,7 +1791,8 @@ def _run_lxm_multi_match_bg(sid: str, game: str, creature_paths: list, kind: str
     sess = field_sessions[sid]
     names = [os.path.basename(str(p).rstrip("/\\")) for p in creature_paths]
     try:
-        max_turns = {"avalon": 120, "codenames": 60, "blockworld": 40, "mud": 60}.get(game, 30)
+        max_turns = {"avalon": 120, "codenames": 60, "blockworld": 40, "mud": 60,
+                     "agora12": 200, "three_kingdoms": 25}.get(game, 30)
         field = LxMField(names[0]); field.participant_names = list(names)
         sess["field"] = field
         sess["entered"] = list(names); sess["building"] = ""
@@ -1885,7 +1897,7 @@ async def lxm_games():
 _LXM_SCEN_CACHE = {}  # game -> {"at": ts, "scenarios": [...]}
 # Which scenario category each scenario-family game lists on the arena.
 # blockworld = 2-player social-dilemma worlds (multiplayer); mud = solo world-model worlds.
-_LXM_SCEN_CATEGORY = {"mud": "solo"}
+_LXM_SCEN_CATEGORY = {"mud": "solo", "three_kingdoms": "solo"}
 
 
 def _lxm_scenarios(game: str):
