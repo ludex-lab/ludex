@@ -167,6 +167,32 @@ class EngineBlock(Block):
         except Exception as e:
             logger.debug(f"engine: self_introspect skipped ({e})")
 
+        # [Now] — where/when grounding (memory-systems step 1, 2026-07-03):
+        # one compact line from the topos (where) + chronos (when) sensors.
+        # This is the FIRST runtime consumer of the D-059/D-060 organs — they
+        # were born default-on but nothing ever called handle_sense() in the
+        # loop (Ray's survey), so the creature had no situational sense of
+        # place or elapsed time. Direct get_block, NOT call_port("sense"):
+        # topos/chronos/allos all declare a "sense" port, so the port name is
+        # ambiguous by design — the consumer picks the organ. Skipped
+        # silently for bare organisms; the readings also emit their Phase-A
+        # trace spans, which is what feeds chronos's own recall_window.
+        try:
+            now_parts = []
+            org = self._organism
+            for organ_name, empty in (("topos", "unlocated"), ("chronos", "untimed")):
+                organ = org.get_block(organ_name) if org else None
+                if organ is None:
+                    continue
+                s = organ.handle_sense().summary()
+                if s and s != empty:
+                    now_parts.append(s)
+            if now_parts:
+                now_line = "[Now]\n" + " · ".join(now_parts)
+                sys_prompt = f"{sys_prompt}\n\n{now_line}" if sys_prompt else now_line
+        except Exception as e:
+            logger.debug(f"engine: now-sense skipped ({e})")
+
         # Identity floor (2026-06-11, environment event — the continuity-
         # inequality fix). The body guarantees that EVERY brain — any
         # adapter (HTTP included), any tier — wakes into its compressed

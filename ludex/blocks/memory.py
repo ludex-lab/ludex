@@ -348,6 +348,23 @@ class MemoryBlock(Block):
         mem_id = f"mem_{self._next_id:04d}"
         self._next_id += 1
 
+        # Place-tagging hook (memory-systems step 1, Ray 2026-07-03): every
+        # memory written during a field carries WHERE it was formed, so a
+        # future spatial/type-routed recall can filter by place instead of
+        # lexical match. Reads the same trace context topos/selfhood use;
+        # no-op outside a field or if the caller already tagged it.
+        try:
+            from ludex.core.trace import current_field
+            _field = current_field()
+            if _field:
+                _place = f"field:{_field}"
+                if not tags:
+                    tags = [_place]
+                elif _place not in tags and not any(str(t).startswith("field:") for t in tags):
+                    tags = list(tags) + [_place]
+        except Exception:
+            pass
+
         from ludex.core.memory_types import estimate_tokens, MEMORY_TYPES
         if memory_type not in MEMORY_TYPES:
             logger.debug(f"Unknown memory_type '{memory_type}'; "

@@ -161,6 +161,52 @@ async def memory_recall(args: dict) -> dict[str, Any]:
 
 
 @tool(
+    "ludex_time_recall",
+    "Recall the organism's life-events by TIME, not by topic — what happened in "
+    "the last N hours (in order), or how long ago something last happened. Use "
+    "this for 'when / how long ago / in what order' questions the topic-search "
+    "memory cannot answer.",
+    {
+        "type": "object",
+        "properties": {
+            "hours": {
+                "type": "number",
+                "description": "Look-back window in hours (default 24)",
+            },
+            "kind": {
+                "type": "string",
+                "description": "Optional event kind filter (e.g. 'reflection', "
+                               "'consolidation', 'tick'); empty = all kinds",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max events to return (default 10)",
+            },
+        },
+        "required": [],
+    },
+)
+async def time_recall(args: dict) -> dict[str, Any]:
+    block = _get_block("chronos")
+    if not block:
+        return {"content": [{"type": "text", "text": "Temporal sense not installed."}]}
+    events = block.handle_recall_window(
+        hours=args.get("hours", 24.0),
+        kind=args.get("kind", ""),
+        limit=args.get("limit", 10),
+    )
+    if not events:
+        return {"content": [{"type": "text", "text": "No events in that window."}]}
+
+    def _ago(s: float) -> str:
+        return f"{s/3600:.1f}h ago" if s >= 3600 else f"{int(s/60)}m ago"
+
+    lines = [f"{_ago(e['ago_s'])} · {e['kind']}" + (f" — {e['digest']}" if e['digest'] else "")
+             for e in events]
+    return {"content": [{"type": "text", "text": "\n".join(lines)}]}
+
+
+@tool(
     "ludex_memory_store",
     "Store information in the organism's long-term memory. Use this to remember "
     "user preferences, important facts, or learnings from the conversation. "
@@ -187,7 +233,9 @@ async def memory_store(args: dict) -> dict[str, Any]:
     if not block:
         return {"content": [{"type": "text", "text": "Memory system not installed."}]}
 
-    block.handle_store(
+    # MemoryBlock's port is handle_remember — handle_store never existed; this only
+    # fired once tools-capable SLMs (llama) actually reached the handlers (Ray, 2026-07-03).
+    block.handle_remember(
         content=args["content"],
         memory_type=args.get("memory_type", "semantic"),
     )
@@ -453,6 +501,7 @@ ALL_TOOLS: list[SdkMcpTool] = [
     emotion_analyze,
     emotion_state,
     memory_recall,
+    time_recall,
     memory_store,
     vitals_check,
     humoral_assess,

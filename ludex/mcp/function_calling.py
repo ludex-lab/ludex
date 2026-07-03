@@ -75,6 +75,41 @@ def mcp_to_openai_tools(tool_names: list[str] | None = None) -> list[dict]:
     return result
 
 
+def _coerce_args_to_schema(arguments: dict, schema: dict | None) -> dict:
+    """Coerce tool-call arg values to their declared JSON-schema types (best-effort).
+
+    Only converts when the schema declares a type AND the value is convertible;
+    anything unconvertible passes through unchanged (the handler's own validation
+    still applies). Handles integer / number / boolean / string / array-of-typed."""
+    if not isinstance(arguments, dict) or not isinstance(schema, dict):
+        return arguments
+    props = schema.get("properties") or {}
+    out = dict(arguments)
+    for key, val in arguments.items():
+        spec = props.get(key)
+        if not isinstance(spec, dict):
+            continue
+        t = spec.get("type")
+        try:
+            if t == "integer" and not isinstance(val, bool) and not isinstance(val, int):
+                out[key] = int(float(val))           # "3" / 3.0 / "3.0" → 3
+            elif t == "number" and not isinstance(val, bool) and not isinstance(val, (int, float)):
+                out[key] = float(val)
+            elif t == "boolean" and not isinstance(val, bool):
+                if isinstance(val, str):
+                    if val.strip().lower() in ("true", "1", "yes"):
+                        out[key] = True
+                    elif val.strip().lower() in ("false", "0", "no"):
+                        out[key] = False
+                else:
+                    out[key] = bool(val)
+            elif t == "string" and not isinstance(val, str):
+                out[key] = str(val)
+        except (ValueError, TypeError):
+            pass                                     # unconvertible — leave for the handler
+    return out
+
+
 def dispatch_tool_call_sync(name: str, arguments: dict | str) -> str:
     """
     Synchronously dispatch a tool call to the matching Ludex MCP tool.
@@ -101,6 +136,14 @@ def dispatch_tool_call_sync(name: str, arguments: dict | str) -> str:
     tool = handler_map.get(name)
     if not tool:
         return f"Error: unknown tool '{name}'. Available: {list(handler_map.keys())}"
+
+    # SLM tool-arg coercion (Ray, 2026-07-03): loosely-structured brains (llama) emit
+    # numeric/bool args as strings/floats ("k": "3"), and handlers use them raw (slice
+    # indices, flags) — the tool-calling analogue of the Stacker json_emit floor. Cloud
+    # brains emit schema-typed args, which is why this never fired there. Normalize every
+    # arg to its declared input_schema type HERE, at the dispatch boundary that already
+    # owns the SLM→handler translation — so no handler needs per-arg defensive casts.
+    arguments = _coerce_args_to_schema(arguments, getattr(tool, "input_schema", None))
 
     start = _time.time()
     try:
@@ -164,6 +207,9 @@ async def dispatch_tool_call(name: str, arguments: dict | str) -> str:
     tool = handler_map.get(name)
     if not tool:
         return f"Error: unknown tool '{name}'. Available: {list(handler_map.keys())}"
+
+    # Same SLM tool-arg normalization as the sync path (see _coerce_args_to_schema).
+    arguments = _coerce_args_to_schema(arguments, getattr(tool, "input_schema", None))
 
     try:
         result = await tool.handler(arguments)

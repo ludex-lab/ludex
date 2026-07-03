@@ -79,6 +79,13 @@ class ChronosBlock(Block):
     name = "chronos"
     provides = [
         Port("sense", description="Read unified temporal state"),
+        # Temporal MEMORY (recall-over-time) — the read-layer over store spans
+        # (memory-systems design step 2, Ray 2026-07-03): the record has always
+        # existed (store/spans.jsonl, append-only, timestamped); these ports give
+        # it time-range + sequence + "how long ago" recall, which the lexical
+        # memory organ cannot answer.
+        Port("recall_window", description="Ordered life-events (spans) within a past time window"),
+        Port("time_since", description="How long ago did <kind> last happen (most recent span)"),
     ]
     requires = []
 
@@ -187,3 +194,85 @@ class ChronosBlock(Block):
             return max(0.0, now - p.stat().st_mtime)
         except Exception:
             return None
+
+    # --- Provides: recall_window / time_since (temporal memory read-layer) ---
+    # D-059 Phase B seed (memory-systems step 2, 2026-07-03): recall OVER the
+    # spans record. Pure reads — no new store, no writes; LudexStore.spans()
+    # already filters by kind/since. Answers the queries a lexical index
+    # can't: "what happened in the last N hours, in order" and "how long ago
+    # did X last happen".
+
+    def _store(self):
+        cfg = getattr(self._organism, "config", None)
+        if not cfg:
+            return None
+        try:
+            habitat_dir = cfg.get("habitat_dir", "") if hasattr(cfg, "get") else ""
+        except Exception:
+            return None
+        if not habitat_dir:
+            return None
+        try:
+            from ludex.core.store import LudexStore
+            return LudexStore.for_creature(habitat_dir)
+        except Exception as e:
+            logger.debug(f"chronos._store unavailable: {e}")
+            return None
+
+    @staticmethod
+    def _span_digest(span: dict, max_chars: int = 120) -> str:
+        """Compact one-line digest of a span's attributes for recall output."""
+        attrs = span.get("attributes") or {}
+        parts = []
+        for k, v in attrs.items():
+            if v in (None, "", [], {}):
+                continue
+            s = str(v)
+            parts.append(f"{k}={s[:40]}" if len(s) > 40 else f"{k}={s}")
+            if sum(len(p) for p in parts) > max_chars:
+                break
+        return "; ".join(parts)[:max_chars]
+
+    def handle_recall_window(self, hours: float = 24.0, kind: str = "",
+                             limit: int = 20) -> list[dict]:
+        """Life-events within the past `hours`, oldest→newest (sequence recall).
+
+        Each: {ago_s, kind, digest}. Empty list when no store / no matches."""
+        store = self._store()
+        if store is None:
+            return []
+        now = time.time()
+        since = now - max(0.0, float(hours)) * 3600.0
+        try:
+            spans = store.spans(kind=kind or None, since=since)
+        except Exception as e:
+            logger.debug(f"chronos.recall_window read failed: {e}")
+            return []
+        spans.sort(key=lambda s: s.get("timestamp", 0.0))
+        if limit and len(spans) > int(limit):
+            spans = spans[-int(limit):]
+        return [{"ago_s": max(0.0, now - float(s.get("timestamp", now))),
+                 "kind": s.get("kind", ""),
+                 "digest": self._span_digest(s)} for s in spans]
+
+    def handle_time_since(self, kind: str) -> dict | None:
+        """How long ago did the most recent span of `kind` happen.
+
+        Returns {ago_s, kind, digest} or None when never / no store."""
+        if not kind:
+            return None
+        store = self._store()
+        if store is None:
+            return None
+        try:
+            spans = store.spans(kind=kind)
+        except Exception as e:
+            logger.debug(f"chronos.time_since read failed: {e}")
+            return None
+        if not spans:
+            return None
+        last = max(spans, key=lambda s: s.get("timestamp", 0.0))
+        now = time.time()
+        return {"ago_s": max(0.0, now - float(last.get("timestamp", now))),
+                "kind": last.get("kind", ""),
+                "digest": self._span_digest(last)}
