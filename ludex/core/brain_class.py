@@ -52,7 +52,7 @@ def classify_brain(provider: str, model: str = "") -> str:
         return NARRATIVE
 
     # Frontier hybrid models — bidirectional capability.
-    if "opus" in m or "sonnet-4-6" in m or "sonnet-5" in m or "gpt-5.5" in m:
+    if "opus" in m or "sonnet-4-6" in m or "sonnet-5" in m or "fable" in m or "gpt-5.5" in m:
         return HYBRID
 
     # Workhorse structured: haiku, flash, sonnet-4-5 — fast, function-call.

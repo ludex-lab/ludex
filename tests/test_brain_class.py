@@ -45,6 +45,12 @@ def test_sonnet_5_is_hybrid():
     assert classify_brain("claude_cli", "claude-sonnet-5") == HYBRID
 
 
+def test_fable_5_is_hybrid():
+    # Fable 5 (2026-07). Newest frontier tier — hybrid, like opus/sonnet-5.
+    assert classify_brain("claude_cli", "claude-fable-5") == HYBRID
+    assert classify_brain("anthropic", "claude-fable-5") == HYBRID
+
+
 def test_gpt_5_5_is_hybrid():
     assert classify_brain("codex_cli", "gpt-5.5") == HYBRID
 
