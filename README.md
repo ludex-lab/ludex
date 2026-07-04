@@ -95,6 +95,7 @@ python web/server.py          # then open http://localhost:7860
 
 Two orientation docs:
 
+- [`docs/organism-engineering.md`](docs/organism-engineering.md) — **the concept**: from disposable agents to persistent beings — the layer after context engineering ([한국어](docs/organism-engineering.ko.md))
 - [`docs/design-notes.md`](docs/design-notes.md) — the design philosophy (the "why")
 - [`docs/memory-architecture.md`](docs/memory-architecture.md) — how a creature remembers ([한국어](docs/memory-architecture.ko.md))
 - [`docs/emotion-architecture.md`](docs/emotion-architecture.md) — how a creature feels ([한국어](docs/emotion-architecture.ko.md))
