@@ -153,6 +153,22 @@ HOUSE_BOTS = {
 
 # ---- B1: stable cross-machine creature identity ----
 
+def _parse_mud_obs(text: str):
+    """(room, exits) from a MUD observation — the bridge-side parse the
+    env-agnostic topos organ deliberately doesn't do (D-089). Mirrors the
+    research harness's parser (research/physis-mud/run.py)."""
+    import re as _re
+    room = ""
+    m = _re.search(r"===\s*(.+?)\s*===", text or "")
+    if m:
+        room = m.group(1).strip()
+    exits = []
+    m = _re.search(r"^Exits?:\s*(.+)$", text or "", _re.MULTILINE)
+    if m:
+        exits = [e.strip() for e in m.group(1).split(",") if e.strip()]
+    return room, exits
+
+
 def register_lxm_creature(transport, display_name):
     """Register a creature with LxM → its opaque, server-issued, durable creature_id
     (B1, no TTL). Each POST mints a NEW id, so callers persist + reuse it — see
@@ -356,7 +372,16 @@ def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="
     with contextlib.ExitStack() as stack:
         orgs = [stack.enter_context(ephemeral_creature(p)).build() for p in paths]
         seats = {h: {"org": org, "eng": org.get_block("engine"), "id": cid, "name": n,
-                     "mapper": BrokerLxMBridge(h, transport=t, game=game)}
+                     "mapper": BrokerLxMBridge(h, transport=t, game=game),
+                     # Live cognitive map (default-on for MUD, 2026-07-04): the topos
+                     # organ confirmed causal for exploration (+1.50 vs no-payload,
+                     # replicated 3× at identical magnitude — LIVE-TOPOS + GATED-LIVE
+                     # E1). The ephemeral copy (D-090) makes the map fresh-per-match
+                     # and discards it after — exactly the confirmed LIVE-arm
+                     # semantics, for free. (The §3.2 gate stayed unshipped: its
+                     # marginal effect was NOT confirmed — exact-p=.30 — pending the
+                     # 3-branch directive + bigger-zone v2.)
+                     "topos": org.get_block("topos"), "prev_room": "", "last_go": ""}
                  for h, n, cid, org in zip(handles, names, ids, orgs)}
         view = t.post("/api/matches", {
             "game": game, "kind": kind,
@@ -388,11 +413,30 @@ def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="
             payload = t.get(f"/api/matches/{mid}/turns/{turn}")
             obs = seat["mapper"]._obs_from_payload(payload)
             _engage_perception(seat["org"], obs)      # the active creature's organs react to the encounter
+            map_block = ""
+            if game == "mud" and seat.get("topos") is not None:
+                # Feed the organ (bridge-side parse — organs stay env-agnostic, D-089)
+                # and emit the map+frontier view into this turn's prompt. An edge binds
+                # only on a successful move (room changed after a `go`).
+                room, exits = _parse_mud_obs(obs.text)
+                if room:
+                    moved = bool(seat["prev_room"] and seat["last_go"] and room != seat["prev_room"])
+                    try:
+                        seat["topos"].handle_observe_place(
+                            f"lxm/mud/{scenario_id or 'default'}", room, exits=exits,
+                            moved_from=seat["prev_room"] if moved else "",
+                            moved_dir=seat["last_go"] if moved else "")
+                        seat["prev_room"] = room
+                        map_block = seat["topos"].handle_map_view(
+                            f"lxm/mud/{scenario_id or 'default'}") or ""
+                    except Exception:
+                        map_block = ""
             move, dlg, nudge = None, None, ""
             for _k in range(action_retries + 1):
                 if should_stop and should_stop():
                     break                              # honor Stop between brain retries, not only between turns
-                resp = (getattr(seat["eng"].handle_submit(_INLINE + obs.text + nudge), "response", "") or "").strip()
+                seat_prompt = _INLINE + ((map_block + "\n\n") if map_block else "") + obs.text + nudge
+                resp = (getattr(seat["eng"].handle_submit(seat_prompt), "response", "") or "").strip()
                 try:
                     move = _parse_move_envelope(resp)
                     dlg = _extract_field(resp, "dialogue")
@@ -403,6 +447,9 @@ def play_multi_creature_match(creature_paths, *, game, base_url=ONRENDER, kind="
                     body["dialogue"] = dlg
                 try:
                     t.post(f"/api/matches/{mid}/turns/{turn}/move", body)
+                    if game == "mud":                  # movement tracking for topos edge-binding
+                        seat["last_go"] = (move.get("direction", "")
+                                           if isinstance(move, dict) and move.get("verb") == "go" else "")
                     break                              # accepted
                 except MatchError as e:
                     if getattr(e, "code", "") == "illegal_move":

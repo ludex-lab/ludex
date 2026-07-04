@@ -136,17 +136,28 @@ def _machine_short(alias: str, machine_id: str) -> str:
 
 
 class ToposBlock(Block):
-    """Contextual sensing organ. Aggregator; holds no state.
+    """Contextual sensing organ + spatial memory (cognitive map).
 
-    provides: sense
+    provides: sense (D-060 Phase A) · observe_place / map_view / frontier
+    (memory-systems step 3, 2026-07-04)
     requires: (none; reads config + trace.current_field() defensively)
 
-    D-060 Phase A.
+    The cognitive map is the spatial memory the GIVEN-MAP probe proved causal
+    (exact-p=.0096, d=1.61 — structure's FORM moves exploration where content
+    could not). The organ is env-agnostic: callers (bridges/fields) parse
+    their environment and feed STRUCTURED observations; topos accumulates a
+    per-field place graph (`memory/topos/<field>.map.json`, the physis
+    per-field-store pattern) and emits a map-shaped, frontier-explicit view —
+    the probe-validated format, no prose (Ray reply13: the payoff concentrates
+    in the frontier line).
     """
 
     name = "topos"
     provides = [
         Port("sense", description="Read unified spatial / contextual state"),
+        Port("observe_place", description="Record arrival at a place + its exits (builds the place graph)"),
+        Port("map_view", description="Compact map-shaped emission: places/exits + explicit frontier"),
+        Port("frontier", description="Structured frontier: (place, exit) pairs not yet walked"),
     ]
     requires = []
 
@@ -282,6 +293,110 @@ class ToposBlock(Block):
         Returns empty string. Phase B work.
         """
         return ""
+
+    # ------------------------------------------------------------
+    # Cognitive map (memory-systems step 3) — place graph store
+    # ------------------------------------------------------------
+    # Graph shape (memory/topos/<field>.map.json):
+    #   {"places": {<name>: {"exits": {<dir>: <dest-or-"?">}, "visited": bool,
+    #                        "last_seen": ts}},
+    #    "current": <name>, "updated": ts}
+    # "?" = an exit seen but never successfully walked — the FRONTIER.
+
+    def _map_path(self, field: str):
+        cfg_get = self._cfg_getter()
+        habitat = cfg_get("habitat_dir", "")
+        if not habitat or not field:
+            return None
+        from pathlib import Path
+        parts = [p for p in field.replace("\\", "/").split("/") if p and p not in (".", "..")]
+        return Path(habitat) / "memory" / "topos" / Path(*parts[:-1] or ["."]) / f"{parts[-1]}.map.json"
+
+    def _load_map(self, field: str) -> dict:
+        path = self._map_path(field)
+        if path is None or not path.exists():
+            return {"places": {}, "current": "", "updated": 0.0}
+        try:
+            import json
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"topos map read failed ({field}): {e}")
+            return {"places": {}, "current": "", "updated": 0.0}
+
+    def _save_map(self, field: str, m: dict) -> None:
+        path = self._map_path(field)
+        if path is None:
+            return
+        try:
+            import json
+            import time as _t
+            m["updated"] = _t.time()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(m, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"topos map write failed ({field}): {e}")
+
+    def handle_observe_place(self, field: str, place: str, exits: list[str] | None = None,
+                             moved_from: str = "", moved_dir: str = "") -> dict:
+        """Record arrival at `place` (marks visited, registers its exits) and —
+        when the caller reports HOW it got here (moved_from + moved_dir) — bind
+        that edge's destination, retiring it from the frontier. Idempotent;
+        persists per call. Returns the updated place entry."""
+        if not field or not place:
+            return {}
+        import time as _t
+        m = self._load_map(field)
+        places = m.setdefault("places", {})
+        entry = places.setdefault(place, {"exits": {}, "visited": False, "last_seen": 0.0})
+        entry["visited"] = True
+        entry["last_seen"] = _t.time()
+        for d in exits or []:
+            entry["exits"].setdefault(d, "?")          # seen, not yet walked
+        if moved_from and moved_dir and moved_from in places:
+            places[moved_from]["exits"][moved_dir] = place   # edge bound — off the frontier
+        m["current"] = place
+        self._save_map(field, m)
+        return entry
+
+    def handle_frontier(self, field: str) -> list[tuple[str, str]]:
+        """(place, exit-direction) pairs seen but never successfully walked,
+        current place first — the next-action signal the probe validated."""
+        m = self._load_map(field)
+        cur = m.get("current", "")
+        out: list[tuple[str, str]] = []
+        for name, entry in m.get("places", {}).items():
+            for d, dest in (entry.get("exits") or {}).items():
+                if dest == "?":
+                    out.append((name, d))
+        out.sort(key=lambda pd: (pd[0] != cur, pd[0], pd[1]))   # current place's exits first
+        return out
+
+    def handle_map_view(self, field: str) -> str:
+        """The probe-validated emission: map-shaped, frontier-explicit, no prose
+        (reply13: the payoff concentrates in the frontier line). Empty string
+        when nothing has been observed yet."""
+        m = self._load_map(field)
+        places = m.get("places", {})
+        if not places:
+            return ""
+        cur = m.get("current", "")
+        lines = [f"[Map] {len(places)} places known · you are at: {cur or '?'}"]
+        for name, entry in places.items():
+            exits = entry.get("exits") or {}
+            if exits:
+                ex = " · ".join(f"{d}→{dest if dest != '?' else '?'}" for d, dest in exits.items())
+            else:
+                ex = "(no exits seen)"
+            lines.append(f"- {name}: {ex}")
+        here = [d for (p, d) in self.handle_frontier(field) if p == cur]
+        if here:
+            lines.append(f"Exits you have not walked from where you now stand: {', '.join(here)}")
+        elsewhere = [f"{d} from {p}" for (p, d) in self.handle_frontier(field) if p != cur]
+        if elsewhere:
+            lines.append(f"Unwalked exits elsewhere: {'; '.join(elsewhere)}")
+        if not here and not elsewhere:
+            lines.append("Frontier: none — every seen exit has been walked.")
+        return "\n".join(lines)
 
 
 def _safe_hostname() -> str:
