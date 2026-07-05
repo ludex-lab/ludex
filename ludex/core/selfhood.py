@@ -671,9 +671,15 @@ def update_bond(
             # Engine produced its own header — normalize First met / Brain
             # so a preserved date and looked-up brain are honored even when
             # the brain's response contains its own header block.
+            # Lambda replacements, deliberately: re.sub interprets backslash
+            # sequences in a STRING repl, so dynamic values (a brain id, a
+            # date from an existing file) can mutate the bond document at the
+            # tool boundary — the substitution-injection class Luca observed
+            # in the wild (guard-doc self-replication, 2026-07-04, L6). A
+            # callable repl is inserted literally, closing the class here.
             bond_text = re.sub(
                 r"^First met:.*$",
-                f"First met: {first_met}",
+                lambda _m: f"First met: {first_met}",
                 bond_text,
                 count=1,
                 flags=re.MULTILINE,
@@ -681,7 +687,7 @@ def update_bond(
             if other_brain:
                 bond_text = re.sub(
                     r"^Brain:\s*$",
-                    f"Brain: {other_brain}",
+                    lambda _m: f"Brain: {other_brain}",
                     bond_text,
                     count=1,
                     flags=re.MULTILINE,
