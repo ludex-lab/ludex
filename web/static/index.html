@@ -915,7 +915,7 @@ const FT_PHASES = {
   en: {dilemma_posed:'Dilemma', first_position:'First positions', argument:'Arguments', concession_or_hold:'Concede or hold', resolution:'Resolution', dissent_noted:'Dissent', claim:'Claim', confidence:'Confidence', evidence:'Evidence', challenge:'Challenge', update:'Update', verdict:'Verdict'},
   ko: {dilemma_posed:'딜레마', first_position:'첫 입장', argument:'논증', concession_or_hold:'양보 또는 고수', resolution:'결론', dissent_noted:'이견', claim:'주장', confidence:'확신도', evidence:'근거', challenge:'반박', update:'수정', verdict:'판정'},
 };
-const _esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+const _esc = s => String(s ?? '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 function _fieldShow(view) {
   document.getElementById('fieldPicker').classList.toggle('hidden', view !== 'picker');
   document.getElementById('fieldSetup').classList.toggle('hidden', view !== 'setup');
