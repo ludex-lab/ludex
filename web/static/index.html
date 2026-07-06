@@ -1480,8 +1480,11 @@ async function fieldPoll() {
     });
     if (html !== null) {
       document.getElementById('fieldTranscript').innerHTML = html;
-      // auto-scroll to the newest turn when the count grows
-      if (tx.length !== _fieldLastTurns) {
+      // auto-scroll to the newest turn when the count grows — EXCEPT stacker,
+      // whose NOW→GOAL board renders at the top and must stay in view (it
+      // re-renders with the latest obs each poll = the live block view); the
+      // page-scroll to the last step was hiding it (2026-07-06).
+      if (tx.length !== _fieldLastTurns && d.field !== 'stacker') {
         _fieldLastTurns = tx.length;
         const tr = document.getElementById('fieldTranscript');
         if (tr.lastElementChild) tr.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
