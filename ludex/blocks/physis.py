@@ -1,4 +1,4 @@
-"""Physis — field-dynamics world-model organ (D-067 Phase A skeleton).
+"""Physis — field-dynamics world-model organ (D-067).
 
 Physis is the creature's **"how does this field work"** sense. Where
 Topos answers *where am I* and Allos answers *who else is here*,
@@ -7,9 +7,10 @@ worked before*.
 
 Design doc: ``docs/field-indexed-world-models-design.md``.
 
-Both phases are LIVE (the "Phase A skeleton" framing below is historical
-— Phase B brain-distillation, confidence-tiered hints, and YAML hint
-retrieval all ship and have produced *confirmed* world models). The
+Both consolidation modes are LIVE: Phase A (mechanical verbatim-trace
+append, used when no brain is given) and Phase B (brain-distillation,
+confidence-tiered hints, YAML hint retrieval — all ship and have produced
+*confirmed* world models). The
 organ is environment-agnostic: it takes a generic ``field`` string and
 consumes a (state, action, reward) stream from whatever field feeds it —
 internal (Wilderness) or bridged (LxM, TextArena) via the Environment
@@ -41,10 +42,10 @@ land in nested directories.
   per-game-policy: LxM voxel local-only; Avalon and Stacker
   committed.
 
-Phase A scope is intentionally narrow — get the substrate, signal
-wiring, file I/O, and trace-buffer plumbing right. Brain-driven
-distillation lands in Phase B once at least one field (Stacker or
-Avalon) has produced traces worth distilling.
+Consolidation has two live modes: Phase A appends a verbatim trace
+(mechanical — used when no brain is given, and as the fallback when
+distillation fails); Phase B has the brain distill the trace into reward
+correlates, confidence-tiered policy hints, and open uncertainty.
 """
 from __future__ import annotations
 
@@ -401,10 +402,11 @@ class PhysisBlock(Block):
                 "",
                 f"# World model — `{f}`",
                 "",
-                ("> Phase A skeleton. Trace appended verbatim per episode. "
-                 "Phase B will replace this with brain-distilled reward "
-                 "correlates, policy hints, and open uncertainty (per "
-                 "`docs/field-indexed-world-models-design.md` §3.2)."),
+                ("> Verbatim trace — mechanical consolidation (no brain "
+                 "distillation this episode). A brain-consolidated episode "
+                 "distills this into reward correlates, policy hints, and "
+                 "open uncertainty (`docs/field-indexed-world-models-design.md` "
+                 "§3.2)."),
                 "",
             ])
 

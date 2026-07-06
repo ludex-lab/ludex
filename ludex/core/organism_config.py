@@ -128,7 +128,7 @@ DEFAULT_ORGANS = {
         "enabled": True,
     },
     "physis": {
-        # D-067 Phase A skeleton — field-dynamics world model.
+        # D-067 Physis — field-dynamics world model (both consolidation modes live).
         # Cheap when idle (only loads/writes when fields call its
         # ports). See docs/field-indexed-world-models-design.md.
         "enabled": True,
@@ -566,7 +566,7 @@ class OrganismConfig:
         if organ_cfgs.get("allos", {}).get("enabled", True):
             blocks.append(AllosBlock())
 
-        # Physis (D-067 Phase A skeleton) — field-dynamics world model.
+        # Physis (D-067) — field-dynamics world model (both consolidation modes live).
         # Default-enabled; fields/orchestrators that don't use physis
         # can leave it idle (no traces appended → no consolidation).
         if organ_cfgs.get("physis", {}).get("enabled", True):
