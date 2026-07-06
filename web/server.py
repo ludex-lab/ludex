@@ -214,8 +214,14 @@ async def index():
     # no-cache: the app updates via git pull + restart, so the browser must
     # revalidate index.html each load — otherwise a cached old client shows stale
     # state after an update (looked like sessions were "stuck"; they weren't).
+    # no-store (not just no-cache): the app self-updates via git pull, and a
+    # merely-revalidating cache still served a stale index.html here — the browser
+    # kept an old client that called removed API paths (404s) and lacked the current
+    # field viewers (the Stacker block-diagram rendered as raw text). no-store forces
+    # a fresh fetch every load, killing the whole stale-UI class. (2026-07-06)
     return FileResponse(os.path.join(os.path.dirname(__file__), "static", "index.html"),
-                        headers={"Cache-Control": "no-cache"})
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                                 "Pragma": "no-cache", "Expires": "0"})
 
 
 # ---- self-update (git-based) --------------------------------------------------
