@@ -1767,7 +1767,7 @@ def _run_stacker_bg(sid: str, creature_path: str, difficulty: str = "", confiden
         sess["scores"] = {cname: 1.0 if solved else 0.0}
         if physis is not None and not sess.get("stop"):
             sess["status"] = "reflecting"        # the creature distills what the run taught
-            sess["aftermath"] = f"distill:{cname}"
+            sess["aftermath"] = f"physis:{cname}"   # UI shows 🌿 <name> is distilling (matches the physis: branch)
             try:
                 physis.handle_consolidate(_STACKER_FIELD, brain_engine=engine_block,
                                           episode_id=f"{instance.instance_id}_{int(time.time())}",
