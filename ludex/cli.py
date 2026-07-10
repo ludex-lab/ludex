@@ -449,6 +449,27 @@ def cmd_audit(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_card(args: argparse.Namespace) -> int:
+    """Emit a creature's organ.card/v0 — compiled, never invented: identity/
+    brain/organs from ludex.yaml, evidence from the caretaker-curated
+    store/card_evidence.json (results→claims mapping is a judgment call and
+    stays in a reviewed file). Draft-flagged until --final."""
+    import json as _json
+    from ludex.cards import generate_card, write_card
+
+    creature_dir = _resolve_creature_dir(args.creature)
+    if creature_dir is None:
+        print(f"creature not found: {args.creature}", file=sys.stderr)
+        return 2
+    if args.write:
+        out = write_card(str(creature_dir), issuer=args.issuer, final=args.final)
+        print(f"card written: {out}")
+    else:
+        card = generate_card(str(creature_dir), issuer=args.issuer, final=args.final)
+        print(_json.dumps(card, indent=2, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ludex",
@@ -496,6 +517,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="list forgotten memories with reasons (D-071 pillar 3)",
     )
     audit.set_defaults(func=cmd_audit)
+
+    card = sub.add_parser(
+        "card",
+        help="emit a creature's organ.card/v0 (docs/organ-card-v0.md) — compiled from ludex.yaml + curated store/card_evidence.json",
+    )
+    card.add_argument("creature", help="creature name (resolves under ./creatures/) or path")
+    card.add_argument("--write", action="store_true", help="write <habitat>/organ_card.json (default: print to stdout)")
+    card.add_argument("--issuer", default="ludex-mac-caretaker")
+    card.add_argument("--final", action="store_true",
+                      help="drop the draft flag (only after the schema's external re-verification)")
+    card.set_defaults(func=cmd_card)
 
     return parser
 

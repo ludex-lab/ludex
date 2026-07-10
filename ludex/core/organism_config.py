@@ -133,6 +133,23 @@ DEFAULT_ORGANS = {
         # ports). See docs/field-indexed-world-models-design.md.
         "enabled": True,
     },
+    "sphygmos": {
+        # Sphygmos — vitals/reflex/adaptive immune memory
+        # (docs/sphygmos-organ-design.md, decisions locked 2026-07-10).
+        # PILOT rollout: default OFF; enabled per-creature (Kiln first)
+        # until the pilot proves the autoimmune metric in the wild.
+        # Cheap: no LLM calls; passive unless its ports are fed.
+        "enabled": False,
+    },
+    "taxis": {
+        # Taxis — planning/sequencing control organ
+        # (docs/taxis-organ-design.md; the v3-validated commit-latch gate
+        # as a carried faculty). Default OFF and NOT creature-enabled yet:
+        # Taxis alters behavior (directives into prompts), so wild enable
+        # is gated on the pre-registered 2x2 (P1/P2), unlike sphygmos
+        # whose gate was the offline battery alone.
+        "enabled": False,
+    },
 }
 
 PRESETS = {
@@ -571,6 +588,17 @@ class OrganismConfig:
         # can leave it idle (no traces appended → no consolidation).
         if organ_cfgs.get("physis", {}).get("enabled", True):
             blocks.append(PhysisBlock())
+
+        # Sphygmos — vitals/reflex/adaptive immune memory. PILOT: default OFF.
+        if organ_cfgs.get("sphygmos", {}).get("enabled", False):
+            from ludex.blocks.sphygmos import SphygmosBlock
+            blocks.append(SphygmosBlock())
+
+        # Taxis — planning/sequencing control organ. Default OFF; wild enable
+        # gated on the pre-registered 2x2 (behavior-altering, see DEFAULT_ORGANS).
+        if organ_cfgs.get("taxis", {}).get("enabled", False):
+            from ludex.blocks.taxis import TaxisBlock
+            blocks.append(TaxisBlock())
 
         # Ensure habitat dirs
         self.habitat.ensure_dirs()

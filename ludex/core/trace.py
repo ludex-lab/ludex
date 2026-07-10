@@ -134,6 +134,11 @@ KIND_AUTO_SENSED = "auto_sensed"
 # D-059 — Chronos (temporal) sense invocation
 KIND_CHRONOS_SENSED = "chronos_sensed"
 
+# Sphygmos vitals/reflex organ (docs/sphygmos-organ-design.md) — every reflex
+# block is attributable (autoimmunity rule 2: no silent self-blocks).
+KIND_SPHYGMOS_GUARD = "sphygmos_guard"
+KIND_SPHYGMOS_INCIDENT = "sphygmos_incident"
+
 # D-060 — Topos (contextual / spatial) sense invocation
 KIND_TOPOS_SENSED = "topos_sensed"
 
@@ -760,6 +765,29 @@ def emit_chronos_sensed(
                                        if last_reflection_ago_s is not None else None),
             "summary": (summary or "")[:200],
             "field_name": _fn(field_name),
+        })
+    except Exception:
+        pass
+
+
+def emit_sphygmos_guard(organism, guard: str, cls: str, action: str, reason: str) -> None:
+    """Sphygmos reflex fired — the ATTRIBUTION span (autoimmunity rule 2:
+    a self-protective block must never be silent)."""
+    try:
+        _emit(organism, KIND_SPHYGMOS_GUARD, {
+            "guard": guard, "cls": cls, "action": action,
+            "reason": (reason or "")[:200],
+        })
+    except Exception:
+        pass
+
+
+def emit_sphygmos_incident(organism, cls: str, signature: str, promoted: bool) -> None:
+    """Sphygmos incident recorded; promoted=True when a NEW signature just
+    reached >=2 independent incidents and becomes an acting antibody."""
+    try:
+        _emit(organism, KIND_SPHYGMOS_INCIDENT, {
+            "cls": cls, "signature": (signature or "")[:200], "promoted": bool(promoted),
         })
     except Exception:
         pass

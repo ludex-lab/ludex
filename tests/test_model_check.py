@@ -195,3 +195,20 @@ def test_record_currency_span_skips_current_and_ollama(tmp_path):
         store, "Tc", DEPRECATED, "gemma:7b", "ollama", source="ollama",
     ) is False
     assert store.spans(kind="model_currency") == []
+
+
+def test_tier_split_advisory_gpt56():
+    """2026-07-10 GPT-5.6 solar/lunar/tera lesson: a vendor splitting a plain
+    family into named tiers must surface as a TIER-SPLIT? advisory, not silent
+    CURRENT (the exact-family comparator finds no successor). Advisory only —
+    which tier maps to the creature is a caretaker judgment."""
+    from ludex.cadence.model_check import classify, TIER_SPLIT, CURRENT, SUPERSEDED
+    avail = ["gpt-5.5", "gpt-5.5-pro", "gpt-5.6-solar", "gpt-5.6-lunar", "gpt-5.6-tera"]
+    r = classify("gpt-5.5", avail)
+    assert r.status == TIER_SPLIT
+    assert "solar" in r.successor and "lunar" in r.successor and "tera" in r.successor
+    # no false flags:
+    assert classify("gpt-5.5-pro", avail).status == CURRENT          # same version, extended family
+    assert classify("claude-opus-4-8", ["claude-opus-4-8", "claude-sonnet-5"]).status == CURRENT
+    # existing exact-family supersession unchanged:
+    assert classify("claude-sonnet-4-6", ["claude-sonnet-4-6", "claude-sonnet-5"]).status == SUPERSEDED

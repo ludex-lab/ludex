@@ -40,6 +40,7 @@ CURRENT = "CURRENT"
 SUPERSEDED = "SUPERSEDED"
 DEPRECATED = "DEPRECATED"
 UNVERIFIABLE = "UNVERIFIABLE"
+TIER_SPLIT = "TIER-SPLIT?"   # advisory: family split into named tiers at a higher version
 
 # Which live model list to check a creature's model against. CLI-auth
 # providers run the same underlying models as their HTTP sibling, so we
@@ -165,6 +166,22 @@ def classify(model: str, available: list[str] | None) -> CurrencyResult:
         return CurrencyResult(DEPRECATED, successor)
     if successor:
         return CurrencyResult(SUPERSEDED, successor)
+
+    # Tier-split advisory (2026-07-10, GPT-5.6 solar/lunar/tera lesson): when a
+    # vendor SPLITS a plain family into named tiers, the successor's family
+    # gains a word (gpt-5.5 → gpt-5.6-solar: ("gpt",) → ("gpt","solar")) and
+    # the exact-family search above finds nothing — the creature silently ages
+    # as CURRENT. Detect: any model whose family strictly EXTENDS ours at a
+    # strictly higher version. This is an ADVISORY (which tier maps to this
+    # creature is a caretaker judgment, not a parse) — measured≠asserted, so
+    # it gets its own status, never asserted SUPERSEDED.
+    ext = [
+        (p, a) for p, a in parsed
+        if p[0] and len(p[0]) > len(fam) and p[0][: len(fam)] == fam and p[1] > ver
+    ]
+    if ext:
+        tiers = sorted({a for _, a in ext})
+        return CurrencyResult(TIER_SPLIT, ", ".join(tiers[:4]))
     return CurrencyResult(CURRENT)
 
 
