@@ -37,8 +37,8 @@ PROVIDER_MODEL_HINTS = {
     "ollama": "qwen3.5:4b  |  exaone3.5:7.8b  |  llama3.1:8b",
     "gemini_cli": "gemini-3.1-pro-preview  |  gemini-3.5-flash",
     "agy_cli": "gemini-3.5-flash",   # agy is partial-support / agy-only flash (see gemini_cli_deprecation)
-    "codex_cli": "gpt-5.5  |  gpt-5.4-mini  |  gpt-5.4-nano",
-    "openai": "gpt-5.5  |  gpt-5.4-mini  |  gpt-5.4-nano",
+    "codex_cli": "gpt-5.5  |  gpt-5.6-sol / -terra / -luna (preview, GA 대기)  |  gpt-5.4-mini  |  gpt-5.4-nano",
+    "openai": "gpt-5.5  |  gpt-5.6-sol / -terra / -luna (preview, GA 대기)  |  gpt-5.4-mini  |  gpt-5.4-nano",
     "gemini_api": "gemini-3.5-flash  |  gemini-3.1-flash-lite",
 }
 
