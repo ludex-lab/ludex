@@ -246,6 +246,11 @@ class EngineBlock(Block):
             if memory_context and sys_prompt:
                 sys_prompt = f"{sys_prompt}\n\n[Recalled Memory]\n{memory_context}"
 
+        # Observability (memory-checkup FREEZE ②): expose the exact system
+        # prompt this turn shipped so battery drivers can persist per-turn
+        # prompt captures ([Recalled Memory] evidence) without re-deriving it.
+        self._last_sys_prompt = sys_prompt
+
         # 사용자 메시지 기록
         self._messages.append(Message(
             role="user", content=prompt,

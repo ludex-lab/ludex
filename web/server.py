@@ -25,7 +25,7 @@ load_dotenv()
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from ludex.core.organism import Organism
@@ -207,6 +207,114 @@ async def twin_view():
     # revalidate — otherwise a cached old viewer hides the update (looked like "no change").
     return FileResponse(os.path.join(os.path.dirname(__file__), "twin", "index.html"),
                         headers={"Cache-Control": "no-cache"})
+
+
+# /village — P0 observation dashboard (docs/village-design-spec.md; the village
+# is a VIEW over real creature state, served by ludex.village.bus).
+def _sys_platform() -> str:
+    import sys as _s
+    return _s.platform
+
+
+def _local_habitat() -> str:
+    import sys as _sys
+    return "Mac-habitat" if _sys.platform == "darwin" else "Ray-habitat"
+
+
+@app.get("/village")
+@app.get("/village/")
+async def village_view():
+    # the 2.5D dashboard is retired (2026-07-18) — the village lives in 3D
+    return RedirectResponse("/village3d")
+
+
+@app.get("/village3d")
+@app.get("/village3d/")
+async def village3d_view():
+    # P1 first slice — three.js village over the same bus/APIs (view principle).
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "village3d.html"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/api/village/voice/{name}")
+async def village_voice(name: str):
+    # The creature's most recent RECORDED self-words (SELF.md reflection) —
+    # the knock bubble shows only recorded speech, never generated lines.
+    cdir = _safe_creature_dir(name)
+    if not cdir:
+        return {"error": "unknown creature"}
+    self_md = os.path.join(cdir, "SELF.md")
+    if not os.path.exists(self_md):
+        return {"text": "", "source": ""}
+    stamp, text = "", ""
+    try:
+        with open(self_md, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        for i, line in enumerate(lines):
+            if line.startswith("Last reflection:"):
+                stamp = line.replace("Last reflection:", "").strip()
+            if line.startswith("## ") and not text:
+                for body_line in lines[i + 1:]:
+                    if body_line.strip() and not body_line.startswith("#"):
+                        text = body_line.strip()
+                        break
+                break
+    except Exception:
+        pass
+    if len(text) > 220:
+        cut = text[:220]
+        text = cut[:max(cut.rfind(". "), cut.rfind(", "), 180) + 1] + " …"
+    return {"text": text, "source": f"SELF · {stamp[:16]}" if stamp else "SELF"}
+
+
+@app.get("/api/village/transcript")
+async def village_transcript(ref: str):
+    # Serve a session-transcript JSON by repo-relative ref — restricted to
+    # experiments/*.json (the bus only emits refs of that shape).
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    full = os.path.realpath(os.path.join(repo_root, ref))
+    exp_root = os.path.realpath(os.path.join(repo_root, "experiments"))
+    if not full.startswith(exp_root + os.sep) or not full.endswith(".json"):
+        return {"error": "ref out of bounds"}
+    if not os.path.exists(full):
+        return {"error": "transcript not found"}
+    with open(full, encoding="utf-8") as f:
+        return json.load(f)
+
+
+@app.get("/api/village/outfits")
+async def village_outfits():
+    # creature→garment mapping (pack #2 wardrobe) — JJ-editable JSON
+    f = os.path.join("creatures", ".village", "outfits.json")
+    try:
+        return json.loads(open(f, encoding="utf-8").read())
+    except Exception:
+        return {}
+
+
+@app.get("/api/village/state")
+async def village_state(habitat: str = ""):
+    from ludex.village.bus import scan_state
+    hab = habitat or _local_habitat()
+    creatures = await asyncio.to_thread(scan_state, None, hab)
+    return {"habitat": hab, "creatures": creatures}
+
+
+@app.get("/api/village/map")
+async def village_map(habitat: str = ""):
+    from ludex.village.terrain import build_map
+    hab = habitat or _local_habitat()
+    m = await asyncio.to_thread(build_map, hab)
+    m["habitat"] = hab
+    return m
+
+
+@app.get("/api/village/scenes")
+async def village_scenes(habitat: str = "", limit: int = 400):
+    from ludex.village.bus import build_scenes
+    hab = habitat or _local_habitat()
+    scenes = await asyncio.to_thread(build_scenes, None, hab)
+    return {"habitat": hab, "scenes": scenes[-max(1, min(limit, 5000)):]}
 
 
 @app.get("/")
@@ -512,6 +620,11 @@ async def vitals(session_id: str):
     return get_vitals(org)
 
 
+# JJ-confirmed lab artifacts the mechanical rule can't catch (2026-07-18):
+# these carry a SELF.md from experiment runs but were never birthed.
+_LAB_OVERRIDE = {"Lyra", "Saga"}
+
+
 def _scan_creatures(base: str) -> list:
     """Cheap disk scan of creatures under `base` — identity + lightweight persisted
     vitals (emotional baseline, memory count) + bond targets. No organism build."""
@@ -555,8 +668,42 @@ def _scan_creatures(base: str) -> list:
                                    if f.endswith(".md")) if os.path.isdir(bdir) else []
         except Exception:
             info["bonds"] = []
+        # classification (JJ 2026-07-18: the dashboard mixed lab probes and
+        # remote-habitat creatures into "My Creatures"). Mechanical, transparent:
+        #   lab      — no substantive SELF.md (probes/test artifacts never grow one)
+        #   remote   — habitat.machine_id present and not this machine's
+        #   resident — the rest (this habitat's cared creatures)
+        try:
+            selfp = os.path.join(cdir, "SELF.md")
+            has_self = os.path.exists(selfp) and os.path.getsize(selfp) > 300
+            machine = ""
+            try:
+                machine = (cfg.habitat.machine_id or "") if 'cfg' in dir() else ""
+            except Exception:
+                machine = ""
+            if not has_self or name in _LAB_OVERRIDE:
+                info["kind"] = "lab"
+            elif machine and machine != _local_machine_id():
+                info["kind"] = "remote"
+            else:
+                info["kind"] = "resident"
+        except Exception:
+            info["kind"] = "resident"
         creatures.append(info)
     return creatures
+
+
+_MACHINE_ID = None
+def _local_machine_id() -> str:
+    global _MACHINE_ID
+    if _MACHINE_ID is None:
+        try:
+            from ludex.core.habitat import get_host_machine_id
+            _MACHINE_ID = get_host_machine_id()
+        except Exception:
+            # fall back: the id most common among creatures that clearly live here
+            _MACHINE_ID = "34d41615-1642-4094-be71-05024185149d"
+    return _MACHINE_ID
 
 
 @app.get("/api/creatures")
@@ -569,12 +716,14 @@ async def list_creatures(dir: str = "creatures"):
 
 
 @app.get("/api/ecosystem")
-async def ecosystem(dir: str = "creatures"):
-    """Ecosystem overview: every creature + the bond graph between them. Bonds are
-    directional (a creature has a bonds/<other>.md for each peer it models); a pair
-    modeled both ways is 'mutual'."""
+async def ecosystem(dir: str = "creatures", all: int = 0):
+    """Ecosystem overview: resident creatures + the bond graph between them
+    (?all=1 includes lab/remote). Bonds are directional (a creature has a
+    bonds/<other>.md for each peer it models); both ways = 'mutual'."""
     base = os.path.abspath(os.path.expanduser(dir))
     creatures = _scan_creatures(base)
+    if not all:
+        creatures = [c for c in creatures if c.get("kind", "resident") == "resident"]
     by_lower = {c["name"].lower(): c["name"] for c in creatures}
     directed = set()
     for c in creatures:
@@ -2538,6 +2687,24 @@ async def forge_assemble(req: ForgeAssembleRequest):
         species_parts.append(preset_match)
     species = " / ".join(species_parts)
 
+    # Village onboarding: a persistent creature born under this host's
+    # creatures/ dir reports to the mayor — origin marker, house, outfit,
+    # arrival event — so it appears in the 3D village without a manual step
+    # (JJ 2026-07-20). Temporary/off-tree habitats skip (nothing to render).
+    onboard = None
+    try:
+        import os as _os
+        from ludex.village.bus import REPO_ROOT as _RR
+        _home = _os.path.abspath(habitat.home_dir or "")
+        _under = _home.startswith(str((_RR / "creatures").resolve()))
+        if habitat.persistent and _home and _under:
+            from ludex.village.onboard import onboard_creature
+            from ludex.core.habitat import get_host_machine_id  # noqa
+            _hab_origin = "Mac-habitat" if _sys_platform() == "darwin" else "Ray-habitat"
+            onboard = await asyncio.to_thread(onboard_creature, req.name, _hab_origin)
+    except Exception as _e:
+        onboard = {"error": str(_e)}
+
     return {
         "session_id": session_id,
         "name": req.name,
@@ -2553,6 +2720,7 @@ async def forge_assemble(req: ForgeAssembleRequest):
             "path": habitat.home_dir,
             "persistent": habitat.persistent,
         },
+        "village": onboard,
     }
 
 

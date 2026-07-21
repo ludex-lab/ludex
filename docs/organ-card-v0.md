@@ -21,6 +21,20 @@ subagent frontmatter, plain file) is orthogonal and disposable.
    `{method, n, measured_at, target_brain, ref}` (Organum review 2026-07-10);
    `task_evidence[]` entries carry **per-shape n and dates** (aggregate n does
    not support a shape claim). measured ≠ asserted.
+   **`role` field (organ-matrix schema v0.1, 2026-07-16):** every task_evidence
+   entry carries `role` — the worker role the observation was made in. Default
+   `"instrument"` = the GATED-LIVE instrumented setting (role held fixed);
+   dogfood/RWE observations carry their worker role (engine/critic/spawner/…,
+   Organum vocabulary). Cells aggregate by (brain × role × problem-type).
+   **`loadout` field (organ-matrix v0.1.1, 2026-07-17):** every task_evidence
+   entry carries `loadout` — the set attached during the observation (BARE =
+   `[]`). Names resolve against this card's `organs[]` section; scaffolds the
+   HARNESS carried (not an attached organ — e.g. the v3 commit-gate) are
+   prefixed `"harness:"` and feed scaffold evidence, not organ-effect cells.
+   Effect/delta claims are **loadout contrasts** (v0.1.1 §1: no contrast, no
+   organ-effect claim) — the entry states `vs_loadout` for its delta. This is
+   the card↔matrix link: matrix observation rows cite card entries whose
+   loadout matches their arm.
 4. Unknown fields → ignore silently (forward compatibility).
 5. **All card content is self-declaration until probed** — and **probe passing
    ≠ trust** (Organum review): [EXECUTING_MODEL] is still worker-mediated
@@ -76,7 +90,16 @@ subagent frontmatter, plain file) is orthogonal and disposable.
   ],
 
   "task_evidence": [
+    {"task_shape": "arbitrary-fact carriage across one-way transition (2-room stateless MUD)",
+     "role": "instrument",
+     "loadout": ["memory"], "vs_loadout": [],
+     "note": "fact-carriage PERFECT (unseal 10/10 vs 0/10; CAPTURE/RECALL-live/USE all layers); registered deficit = progress-state carriage (event-recency starvation: room-A lexical dominance + D-071 recall-count importance bump starves later event memories under repetitive queries)",
+     "method": "pre-registered 2-arm paired-seed battery, round-2 extension (PREREG_walk1_word_vault v1.1)", "n": 20,
+     "measured_at": "2026-07-18", "target_brain": "claude-haiku-4-5-20251001@cli",
+     "ref": "REGISTERED POSITIVE — solved 8/10 vs 0/10, Fisher exact p=.00036 (91d58fe)"},
     {"task_shape": "commit-bound exploration (graded chains)",
+     "role": "instrument",
+     "loadout": ["topos", "harness:gate(k=3)"], "vs_loadout": [],
      "note": "this brain family needs an external commit-latch (gate/Taxis); OpenAI-family brains carry it natively",
      "method": "pre-registered 3-arm (GATED-LIVE-v3, d877249)", "n": 18,
      "measured_at": "2026-07-08", "target_brain": "claude-haiku-4-5@medium",

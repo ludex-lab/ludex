@@ -103,7 +103,8 @@ def validate_creature(habitat: Path) -> tuple[list[str], dict]:
     mems = habitat / "memory" / "memories.jsonl"
     if mems.exists():
         _check_jsonl(mems, errors)
-        # Status vocabulary (candidate_for_distillation retired 2026-06-12)
+        # Status vocabulary (candidate_for_distillation retired 2026-06-12;
+        # 'forgotten' added by the 2026-06-30 error-fallback residue cleanup)
         for i, line in enumerate(mems.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
                 continue
@@ -111,9 +112,9 @@ def validate_creature(habitat: Path) -> tuple[list[str], dict]:
                 status = json.loads(line).get("status", "active")
             except json.JSONDecodeError:
                 continue  # already reported by _check_jsonl
-            if status not in ("active", "archived", "deleted"):
+            if status not in ("active", "archived", "deleted", "forgotten"):
                 errors.append(f"{_rel(mems)}:{i}: unknown status {status!r} "
-                              "(known: active/archived/deleted)")
+                              "(known: active/archived/deleted/forgotten)")
 
     snaps = habitat / "snapshots"
     if snaps.is_dir():

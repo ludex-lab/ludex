@@ -301,6 +301,7 @@
   <div class="tab" data-tab="timeline" onclick="switchTab('timeline')" data-i18n="tab_tl">Timeline</div>
   <div class="tab" data-tab="field" onclick="switchTab('field')" data-i18n="tab_field">Field</div>
   <div class="tab" data-tab="forge" onclick="switchTab('forge')" data-i18n="tab_forge">Forge</div>
+  <div class="tab" data-tab="village" onclick="switchTab('village')" data-i18n="tab_village">Village</div>
   <div class="tab-spacer"></div>
   <div class="device-toggle">
     <span class="device-badge">DEVICE</span>
@@ -441,6 +442,10 @@
 </div>
 
 <!-- Ecosystem tab panel -->
+<div class="hidden" id="villagePanel" style="position:fixed;inset:0;top:calc(var(--header-h, 96px));z-index:5;">
+  <iframe id="villageFrame" title="Ludex Village 3D"
+          style="width:100%;height:100%;border:0;background:#0d1117"></iframe>
+</div>
 <div class="eco-panel hidden" id="ecoPanel">
   <div class="eco-inner">
     <h2 data-i18n="eco_h">Ecosystem</h2>
@@ -598,7 +603,7 @@
 // ---- Local app i18n (ko/en) ----
 const LI18N = {
   en: {
-    hdr_status:"Not connected", hdr_connected:"Connected", hdr_disconnected:"Disconnected", hdr_sleep:"💤 Sleep", hdr_sleeping:"💤 Reflecting…", tab_creatures:"My Creatures", tab_forge:"Forge", tab_chat:"Chat", tab_eco:"Ecosystem", tab_field:"Field", tab_rag:"RAG", dev_monitor:"Monitor",
+    hdr_status:"Not connected", hdr_connected:"Connected", hdr_disconnected:"Disconnected", hdr_sleep:"💤 Sleep", hdr_sleeping:"💤 Reflecting…", tab_creatures:"My Creatures", tab_forge:"Forge", tab_chat:"Chat", tab_eco:"Ecosystem", tab_field:"Field", tab_rag:"RAG", tab_village:"Village", crt_show_all:"show {n} lab/remote", crt_res_only:"residents only", dev_monitor:"Monitor",
     tab_tl:"Timeline", tl_h:"Timeline — a creature's life in time", tl_pick:"Creature:", tl_events:"Life events", tl_self:"Self-understanding history (SELF.md)", tl_self_hint:"compare two versions →", tl_diff:"Compare", tl_retro:"Retrospectives (consolidated windows)", tl_loading:"Loading…", tl_empty:"No history yet — this creature is still accumulating a life.", tl_close:"close", tl_profile:"🪪 Shareable profile", tl_to_timeline:"← Back to timeline", tl_profile_note:"A preview of what others would see if you publish this creature — its story, life, and bonds. Nothing is published yet.",
     eco_h:"Ecosystem", eco_creatures:"Creatures", eco_stats:"{c} creatures · {b} bonds ({m} mutual)", eco_loading:"Loading…", eco_none:"No creatures yet — Forge one to begin.", eco_fail:"Couldn't load the ecosystem.",
     fld_h:"Field", fld_sub:"Admit creatures into a Council — pose a dilemma and watch them debate it.", fld_dilemma:"Dilemma", fld_dilemma_ph:"e.g. Is a white lie that saves a life justified?", fld_admit:"Admit creatures (2 or more)", fld_start:"Start session", fld_starting:"Starting…", fld_new:"New session", fld_running:"🟢 Running…", fld_done:"✓ Session complete", fld_error:"Error:", fld_need_dilemma:"Please enter a dilemma.", fld_need_two:"Admit at least 2 creatures.", fld_waking:"waking…", fld_entered:"Entered:", fld_thinking:"is thinking…", fld_stop:"⏹ Stop", fld_stopping:"⏹ Stopping… (finishing current turn)", fld_stopped:"⏹ Stopped", fld_mediator:"Mediator (optional — seeks a resolution)", fld_none:"None", fld_turns:"turns", fld_reflecting:"✍️ Forming memories & bonds…", fld_reflecting_stacker:"🌿 Distilling its world-model…", fld_a_reflect:"is reflecting", fld_a_bond:"forming a bond", fld_history:"Past sessions", fld_pick_sub:"Choose a field to run your creatures through.", fld_council:"Council", fld_council_d:"Pose a dilemma; creatures take positions, debate, and (with a mediator) seek a resolution.", fld_open_council:"Open Council", fld_open_council_d:"Pose a dilemma; creatures speak in turn — no mediator, no forced resolution. Free deliberation.", fld_open_council_sub:"Admit creatures into an Open Council — pose a dilemma and watch them deliberate freely, no mediator.", fld_soon:"More soon", fld_soon_d:"More fields are on the way.", fld_academy:"Academy", fld_academy_d:"Set a theme; creatures study, discuss, and teach one another — learning together, not debating to win.", fld_academy_sub:"Admit creatures into an Academy — set a theme and watch them learn together: study, discuss, and teach one another.", fld_academy_mode:"Mode", fld_theme:"Theme", fld_theme_ph:"e.g. What makes a memory worth keeping?", fld_mode_discussion:"Discussion — explore the theme together", fld_mode_study:"Study — examine the theme closely", fld_mode_mixed:"Mixed — study then discuss", fld_back:"← Fields", fld_to_list:"← Session list", fld_no_sessions:"No sessions yet.", fld_forum:"Forum", fld_forum_d:"State a claim; creatures rate their confidence, bring evidence, challenge, and revise.", fld_forum_sub:"Admit creatures into a Forum — post a claim and watch them weigh the evidence.", fld_claim:"Claim", fld_claim_ph:"e.g. Semiconductors will lead the next market rally.", fld_wild:"Wilderness", fld_wild_d:"A living world of events — storms, discoveries, strangers. Creatures act tick by tick; you watch what they learn.", fld_wild_sub:"Send creatures into a living world — events arrive tick by tick, and you watch what they do and what they learn.", fld_agora:"Agora", fld_agora_d:"Two creatures meet in the open square and talk freely — no task, no winner. A conversation that leaves a bond.", fld_agora_sub:"Admit two creatures into the Agora — an open square where they meet and talk freely. No task, no winner; just a conversation that deepens a bond.", fld_admit_two:"Admit creatures (exactly 2 — Agora is a pair)", fld_need_two_exact:"Agora is a pair — admit exactly 2 creatures.", fld_ticks:"How long the world runs (ticks)", fld_admit_one:"Admit creatures (1 or more)", fld_need_one:"Admit at least 1 creature.", fld_admit_stacker:"Admit 1 creature (a solo block puzzle)", fld_need_one_stacker:"The block puzzle is solo — admit exactly 1 creature.", fld_tick:"Tick", fld_stacker:"Stacker", fld_stacker_d:"Give a creature a block-stacking puzzle and watch it plan, move by move, toward the goal — the one field where its world-model is live.", fld_stacker_sub:"Send a creature into a block-planning puzzle — it reasons step by step toward the goal, and distils what it learns into a world-model.", fld_stacker_diff:"Puzzle difficulty", fld_sk_2:"2-step — easy", fld_sk_4:"4-step — medium", fld_sk_6:"6-step — hard", fld_sk_8:"8-step — reversal", fld_sk_10:"10-step — reversal", fld_sk_12:"12-step — reversal", fld_sk_solved:"solved", fld_sk_optimal:"optimal", fld_sk_steps:"steps", sk_play:"Play", sk_pause:"Pause", sk_live:"Live", fld_a_tom:"is updating its model of a friend", fld_a_physis:"is distilling what the world taught", fld_a_dream:"is dreaming", fld_lxm_sub:"Send creatures into Ludus ex Machina, a cross-machine arena — one vs the house, or two to meet each other. Pick a game and watch, move by move.", fld_lxm_game:"Game", fld_lxm_scenario:"Scenario", lxm_scen_none:"No scenarios available", fld_lxm_kind:"Match kind", fld_lxm_practice:"Practice (ephemeral — nothing kept)", fld_lxm_published:"Published (kept + viewable on LxM)", lxm_watch:"Watch on LxM", fld_lxm_admit:"Admit 1 (vs the house) or 2 (to meet each other)", fld_lxm_need:"Admit one creature (vs the house) or two (to meet).", lxm_retry:"Try again", lxm_loading_games:"Loading games — waking the LxM arena…", lxm_games_fail:"Couldn't reach the LxM arena. Reopen this field to retry.", lxm_assign:"Assign seats/roles (off = random & fair)", lxm_assign_empty:"Check creatures above to order them.", rb_title:"Re-brain", rb_note:"Same being — only the voice changes. Memory, bonds, and self stay intact; recorded as a life event.", rb_go:"Re-brain", rb_cancel:"Cancel", rb_need:"Enter provider and model.", rb_working:"Re-braining…", cons_title:"Consolidate now — distill a window of life into a retrospective", cons_done:"📖 Consolidated a chapter for", cons_events:"events", cons_skip:"Nothing to consolidate yet",
@@ -642,7 +647,7 @@ const LI18N = {
     mdl_need_gemini:"Needs GEMINI_API_KEY (env / .env)", mdl_gemini_cli:"Gemini CLI — retires 2026-06-18", mdl_agy_cli:"agy CLI — partial support",
   },
   ko: {
-    hdr_status:"연결 안 됨", hdr_connected:"연결됨", hdr_disconnected:"연결 끊김", hdr_sleep:"💤 재우기", hdr_sleeping:"💤 돌아보는 중…", tab_creatures:"내 크리처", tab_forge:"만들기", tab_chat:"대화", tab_eco:"생태계", tab_field:"필드", tab_rag:"RAG", dev_monitor:"모니터",
+    hdr_status:"연결 안 됨", hdr_connected:"연결됨", hdr_disconnected:"연결 끊김", hdr_sleep:"💤 재우기", hdr_sleeping:"💤 돌아보는 중…", tab_creatures:"내 크리처", tab_forge:"만들기", tab_chat:"대화", tab_eco:"생태계", tab_field:"필드", tab_rag:"RAG", tab_village:"마을", crt_show_all:"실험·원격 {n}마리 보기", crt_res_only:"주민만 보기", dev_monitor:"모니터",
     tab_tl:"타임라인", tl_h:"타임라인 — 시간 속의 크리처", tl_pick:"크리처:", tl_events:"생애 이벤트", tl_self:"자기이해의 역사 (SELF.md)", tl_self_hint:"두 버전을 비교 →", tl_diff:"비교", tl_retro:"회고 (통합된 시기들)", tl_loading:"불러오는 중…", tl_empty:"아직 역사가 없어요 — 이 크리처는 삶을 쌓는 중입니다.", tl_close:"닫기", tl_profile:"🪪 공유 프로필", tl_to_timeline:"← 타임라인으로", tl_profile_note:"이 크리처를 발행하면 다른 사람에게 보이는 미리보기 — 이야기·삶·유대. 아직 발행되지 않았어요.",
     eco_h:"생태계", eco_creatures:"크리처", eco_stats:"{c} 크리처 · {b} 유대 ({m} 상호)", eco_loading:"불러오는 중…", eco_none:"아직 크리처가 없어요 — 만들기에서 시작하세요.", eco_fail:"생태계를 불러오지 못했어요.",
     fld_h:"필드", fld_sub:"크리처들을 Council(평의회)에 입장시키고 — 딜레마를 던져 토론을 관찰하세요.", fld_dilemma:"딜레마", fld_dilemma_ph:"예: 생명을 구하는 선의의 거짓말은 정당한가?", fld_admit:"크리처 입장 (2명 이상)", fld_start:"세션 시작", fld_starting:"시작 중…", fld_new:"새 세션", fld_running:"🟢 진행 중…", fld_done:"✓ 세션 완료", fld_error:"오류:", fld_need_dilemma:"딜레마를 입력하세요.", fld_need_two:"최소 2명의 크리처를 입장시키세요.", fld_waking:"깨우는 중…", fld_entered:"입장:", fld_thinking:"생각 중…", fld_stop:"⏹ 중단", fld_stopping:"⏹ 중단 중… (현재 턴 마무리)", fld_stopped:"⏹ 중단됨", fld_mediator:"중재자 (선택 — 결론 도출 시도)", fld_none:"없음", fld_turns:"턴", fld_reflecting:"✍️ 기억과 유대 맺는 중…", fld_reflecting_stacker:"🌿 월드모델 정리 중…", fld_a_reflect:"돌아보는 중", fld_a_bond:"유대 맺는 중", fld_history:"지난 세션", fld_pick_sub:"크리처들을 어떤 필드에 넣을지 고르세요.", fld_council:"평의회", fld_council_d:"딜레마를 던지면 크리처들이 입장을 정하고 토론하며 (중재자가 있으면) 결론을 모색합니다.", fld_open_council:"열린 평의회", fld_open_council_d:"딜레마를 던지면 크리처들이 차례로 발언합니다 — 중재자도, 강제된 결론도 없는 자유로운 숙의.", fld_open_council_sub:"크리처들을 열린 평의회에 입장시키고 — 딜레마를 던져 중재자 없이 자유롭게 숙의하는 걸 관찰하세요.", fld_soon:"곧 추가", fld_soon_d:"다른 필드가 준비 중이에요.", fld_academy:"아카데미", fld_academy_d:"주제를 정하면 크리처들이 함께 공부하고, 토의하고, 서로 가르칩니다 — 이기려는 논쟁이 아니라 함께 배우기.", fld_academy_sub:"크리처들을 아카데미에 입장시키고 — 주제를 정해 함께 배우는 걸 관찰하세요: 공부하고, 토의하고, 서로 가르칩니다.", fld_academy_mode:"방식", fld_theme:"주제", fld_theme_ph:"예: 간직할 가치가 있는 기억은 무엇이 다른가?", fld_mode_discussion:"토의 — 주제를 함께 탐구", fld_mode_study:"공부 — 주제를 깊이 들여다보기", fld_mode_mixed:"혼합 — 공부 후 토의", fld_back:"← 필드", fld_to_list:"← 세션 목록", fld_no_sessions:"아직 세션이 없어요.", fld_forum:"포럼", fld_forum_d:"주장을 두면 크리처들이 확신도를 매기고, 근거를 대고, 반박하고, 수정합니다.", fld_forum_sub:"크리처들을 포럼에 입장시키고 — 주장을 던져 근거를 저울질하는 걸 관찰하세요.", fld_claim:"주장", fld_claim_ph:"예: 반도체가 다음 시장 반등을 이끌 것이다.", fld_wild:"야생", fld_wild_d:"사건이 살아 움직이는 세계 — 폭풍, 발견, 낯선 존재. 크리처가 틱마다 행동하고, 무엇을 배우는지 지켜봅니다.", fld_wild_sub:"크리처들을 살아있는 세계로 보내세요 — 틱마다 사건이 찾아오고, 크리처가 무엇을 하고 무엇을 배우는지 지켜봅니다.", fld_agora:"아고라", fld_agora_d:"두 크리처가 광장에서 만나 자유롭게 이야기합니다 — 과제도, 승자도 없이. 유대를 남기는 대화.", fld_agora_sub:"두 크리처를 아고라에 입장시키세요 — 만나서 자유롭게 이야기하는 열린 광장. 과제도 승자도 없이, 유대를 깊게 하는 대화.", fld_admit_two:"크리처 입장 (정확히 2명 — 아고라는 1:1)", fld_need_two_exact:"아고라는 1:1이에요 — 크리처를 정확히 2명 입장시키세요.", fld_ticks:"세계가 흐르는 길이 (틱)", fld_admit_one:"크리처 입장 (1명 이상)", fld_need_one:"최소 1명의 크리처를 입장시키세요.", fld_admit_stacker:"크리처 입장 (1명 — 블록 퍼즐은 단독)", fld_need_one_stacker:"블록 퍼즐은 단독이에요 — 크리처를 정확히 1명 입장시키세요.", fld_tick:"틱", fld_stacker:"블록 쌓기", fld_stacker_d:"크리처에게 블록 쌓기 퍼즐을 주고 — 목표를 향해 한 수씩 계획하는 걸 지켜보세요. 크리처의 월드모델이 살아있는 유일한 필드예요.", fld_stacker_sub:"크리처를 블록 계획 퍼즐로 보내세요 — 목표를 향해 한 단계씩 추론하고, 배운 것을 월드모델로 증류합니다.", fld_stacker_diff:"퍼즐 난이도", fld_sk_2:"2단계 — 쉬움", fld_sk_4:"4단계 — 보통", fld_sk_6:"6단계 — 어려움", fld_sk_8:"8단계 — 역전", fld_sk_10:"10단계 — 역전", fld_sk_12:"12단계 — 역전", fld_sk_solved:"해결", fld_sk_optimal:"최적", fld_sk_steps:"스텝", sk_play:"재생", sk_pause:"정지", sk_live:"라이브", fld_a_tom:"친구에 대한 모형 다듬는 중", fld_a_physis:"세계에서 배운 것 정리 중", fld_a_dream:"꿈꾸는 중", fld_lxm_sub:"크리처를 Ludus ex Machina — 기계 간 아레나로 보내세요. 하우스와 1명, 또는 서로 만나는 2명. 게임을 고르고 한 수씩 지켜봅니다.", fld_lxm_game:"게임", fld_lxm_scenario:"시나리오", lxm_scen_none:"이용 가능한 시나리오가 없어요", fld_lxm_kind:"매치 종류", fld_lxm_practice:"연습 (휘발성 — 기록 안 됨)", fld_lxm_published:"공개 (기록 + LxM에서 관전 가능)", lxm_watch:"LxM에서 관전", fld_lxm_admit:"1명 (하우스와) 또는 2명 (서로 만나기) 입장", fld_lxm_need:"크리처 1명(하우스와) 또는 2명(서로 만나기)을 입장시키세요.", lxm_retry:"다시 시도", lxm_loading_games:"게임 목록 불러오는 중 — LxM 아레나 깨우는 중…", lxm_games_fail:"LxM 아레나에 닿지 못했어요. 필드를 다시 열어 재시도하세요.", lxm_assign:"좌석·역할 직접 배정 (끄면 무작위·공정)", lxm_assign_empty:"위에서 크리처를 체크하면 순서를 정할 수 있어요.", rb_title:"브레인 교체", rb_note:"같은 존재 — 목소리만 바뀝니다. 기억·유대·자아는 그대로, 삶의 사건으로 기록돼요.", rb_go:"교체", rb_cancel:"취소", rb_need:"provider와 model을 입력하세요.", rb_working:"교체 중…", cons_title:"지금 회고 — 한 시기의 삶을 회고로 통합", cons_done:"📖 회고를 만들었어요:", cons_events:"개 이벤트", cons_skip:"아직 회고할 만큼 쌓이지 않았어요",
@@ -723,13 +728,20 @@ function switchTab(tab) {
   const tabEl = document.querySelector(`.tab[data-tab="${tab}"]`);
   if (tabEl) tabEl.classList.add('active');
   const isForge = tab === 'forge', isEco = tab === 'ecosystem', isField = tab === 'field', isTl = tab === 'timeline';
-  const fullPanel = isForge || isEco || isField || isTl;
+  const isVillage = tab === 'village';
+  const fullPanel = isForge || isEco || isField || isTl || isVillage;
   document.querySelector('.device-toggle').style.display = fullPanel ? 'none' : '';
   document.querySelector('main').style.display = fullPanel ? 'none' : '';
   document.getElementById('connectModal').classList.toggle('hidden', !isForge);
   document.getElementById('ecoPanel').classList.toggle('hidden', !isEco);
   document.getElementById('fieldPanel').classList.toggle('hidden', !isField);
   document.getElementById('tlPanel').classList.toggle('hidden', !isTl);
+  document.getElementById('villagePanel').classList.toggle('hidden', !isVillage);
+  if (isVillage) {                     // lazy: the 3D scene loads on first visit
+    const fr = document.getElementById('villageFrame');
+    if (!fr.src) fr.src = '/village3d?embed=1';
+    return;
+  }
   if (isForge) return;
   if (isEco) { loadEcosystem(); return; }
   if (isField) { loadField(); return; }
@@ -745,20 +757,31 @@ function setChatPlaceholder(){
   if (el) el.placeholder = t('chat_ph');
 }
 
+let showAllCreatures = false;
+function toggleAllCreatures() { showAllCreatures = !showAllCreatures; loadCreaturesView(); }
 async function loadCreaturesView() {
   const grid = document.getElementById('cgrid');
   grid.innerHTML = `<div class="cempty">${t('view_loading')}</div>`;
   try {
     const res = await fetch('/api/creatures');
     const data = await res.json();
-    const list = data.creatures || [];
-    if (!list.length) { grid.innerHTML = `<div class="cempty">${t('view_no')}</div>`; return; }
-    grid.innerHTML = list.map(c => {
+    const all = data.creatures || [];
+    // My Creatures = this habitat's cared residents; lab probes and
+    // remote-habitat creatures sit behind the toggle (JJ 2026-07-18)
+    const list = showAllCreatures ? all : all.filter(c => (c.kind || 'resident') === 'resident');
+    const hidden = all.length - all.filter(c => (c.kind || 'resident') === 'resident').length;
+    const toggle = `<div class="cempty" style="grid-column:1/-1;text-align:right;padding:4px 8px;">
+      <a href="#" onclick="toggleAllCreatures();return false" style="color:var(--c-text-muted);font-size:12px;">
+      ${showAllCreatures ? t('crt_res_only') : t('crt_show_all').replace('{n}', hidden)}</a></div>`;
+    if (!list.length) { grid.innerHTML = toggle + `<div class="cempty">${t('view_no')}</div>`; return; }
+    grid.innerHTML = toggle + list.map(c => {
       const dom = (c.emotion && c.emotion.dominant && Object.keys(c.emotion.dominant)[0]) || '—';
       const val = (c.emotion && c.emotion.valence != null) ? c.emotion.valence : '—';
       const safe = c.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const badge = c.kind === 'lab' ? ' <span style="font-size:11px;color:var(--c-text-muted)">[실험]</span>'
+                  : c.kind === 'remote' ? ' <span style="font-size:11px;color:var(--c-text-muted)">[원격]</span>' : '';
       return `<div class="ccard">
-        <h3>${c.name}</h3>
+        <h3>${c.name}${badge}</h3>
         <div class="cbrain">${c.provider || '?'} / ${c.model || '?'}</div>
         <div class="crow"><span>${t('card_organs')}</span><b>${(c.organs || []).length}</b></div>
         <div class="crow"><span>${t('card_memories')}</span><b>${c.memories || 0}</b></div>

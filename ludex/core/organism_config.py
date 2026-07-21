@@ -56,7 +56,7 @@ _PROVIDER_ENV_KEYS = {
 # self-modulate (dynamic). Used by forge + re-brain so a creature's effort is its OWN, not
 # silently inherited from the host CLI's settings. See the effort-substrate-axis note.
 DEFAULT_EFFORT = {
-    "claude_cli": "high", "codex_cli": "high",
+    "claude_cli": "high", "codex_cli": "high", "grok_cli": "high",
     "gemini_cli": "dynamic", "agy_cli": "dynamic",
 }
 

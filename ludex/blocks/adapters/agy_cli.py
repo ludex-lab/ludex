@@ -130,7 +130,13 @@ class AgyCliAdapter(BaseAdapter):
         # seeding domain hints.
         sandbox_cwd = tempfile.mkdtemp(prefix="ludex_sb_")
 
-        cmd = [self._cmd, "-p", full_prompt]
+        # Windows argv cap: WinError 206 at >=34KB (measured 2026-07-15, Wick
+        # 80-day catch-up consolidation). Large prompts go via STDIN — `agy`
+        # with no -p reads the prompt from stdin (verified v1.0.10, 50KB OK).
+        # Small prompts keep the long-tested argv path.
+        _ARGV_SAFE_CHARS = 30000
+        use_stdin = len(full_prompt) > _ARGV_SAFE_CHARS
+        cmd = [self._cmd] if use_stdin else [self._cmd, "-p", full_prompt]
         # HARD POLICY: never pass --dangerously-skip-permissions. Folder trust
         # alone does NOT auto-approve tool calls in v1.0.2.
 
@@ -138,13 +144,7 @@ class AgyCliAdapter(BaseAdapter):
         try:
             try:
                 child_env = cli_subprocess_env("agy_cli", self._auth)
-                result = subprocess.run(
-                    cmd,
-                    # Headless: never inherit the parent's stdin. agy reads the prompt
-                    # from argv (-p), not stdin; an inherited TTY/console stdin can hang
-                    # the call waiting on interactive input — observed on Windows agy.cmd
-                    # (2026-06-22). DEVNULL gives the child immediate EOF instead.
-                    stdin=subprocess.DEVNULL,
+                run_kwargs = dict(
                     capture_output=True,
                     text=True,
                     timeout=self.timeout_ms / 1000,
@@ -153,6 +153,16 @@ class AgyCliAdapter(BaseAdapter):
                     env=child_env,
                     cwd=sandbox_cwd,
                 )
+                if use_stdin:
+                    # Large prompt: feed via stdin (argv would hit WinError 206).
+                    run_kwargs["input"] = full_prompt
+                else:
+                    # Headless: never inherit the parent's stdin. agy reads the prompt
+                    # from argv (-p), not stdin; an inherited TTY/console stdin can hang
+                    # the call waiting on interactive input — observed on Windows agy.cmd
+                    # (2026-06-22). DEVNULL gives the child immediate EOF instead.
+                    run_kwargs["stdin"] = subprocess.DEVNULL
+                result = subprocess.run(cmd, **run_kwargs)
             finally:
                 shutil.rmtree(sandbox_cwd, ignore_errors=True)
 

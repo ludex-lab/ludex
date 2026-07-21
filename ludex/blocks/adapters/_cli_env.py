@@ -23,6 +23,7 @@ import os
 _PROVIDER_AUTH = {
     "claude_cli": ("ANTHROPIC_API_KEY", "subscription"),
     "codex_cli":  ("OPENAI_API_KEY",    "subscription"),
+    "grok_cli":   ("XAI_API_KEY",       "subscription"),
     "gemini_cli": ("GEMINI_API_KEY",    "api"),
     "agy_cli":    ("GEMINI_API_KEY",    "api"),
 }

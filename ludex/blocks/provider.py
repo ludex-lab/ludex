@@ -30,6 +30,7 @@ from ludex.blocks.adapters.claude_sdk import ClaudeSdkAdapter
 from ludex.blocks.adapters.gemini_cli import GeminiCliAdapter
 from ludex.blocks.adapters.agy_cli import AgyCliAdapter
 from ludex.blocks.adapters.codex_cli import CodexCliAdapter
+from ludex.blocks.adapters.grok_cli import GrokCliAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,7 @@ ADAPTER_REGISTRY: dict[str, type[BaseAdapter]] = {
     "gemini_cli": GeminiCliAdapter,
     "agy_cli": AgyCliAdapter,
     "codex_cli": CodexCliAdapter,
+    "grok_cli": GrokCliAdapter,
 }
 
 DEFAULT_BASE_URLS: dict[str, str] = {
@@ -79,8 +81,13 @@ DEFAULT_BASE_URLS: dict[str, str] = {
     "claude_cli": "claude.cmd" if __import__("os").name == "nt" else "claude",
     "claude_sdk": "claude_sdk",
     "gemini_cli": "gemini.cmd" if __import__("os").name == "nt" else "gemini",
-    "agy_cli": "agy.cmd" if __import__("os").name == "nt" else "agy",
+    # agy: curl install ships agy.exe (no .cmd) — a hardcoded "agy.cmd" here
+    # overrode the adapter's shutil.which resolution and broke the ENGINE path
+    # while the (base_url-less) birth-probe path worked (2026-07-15, Wick
+    # re-brain catch-up). Single source of truth: the adapter's resolver.
+    "agy_cli": __import__("ludex.blocks.adapters.agy_cli", fromlist=["_AGY_CMD"])._AGY_CMD,
     "codex_cli": "codex.cmd" if __import__("os").name == "nt" else "codex",
+    "grok_cli": "grok.cmd" if __import__("os").name == "nt" else "grok",
 }
 
 
@@ -142,13 +149,13 @@ class ProviderBlock(Block):
         if adapter_cls:
             # Pass cwd to adapters that support it (claude_cli, claude_sdk, gemini_cli, agy_cli, codex_cli)
             kwargs = {"base_url": base_url, "api_key": api_key, "timeout_ms": timeout_ms}
-            if provider in ("claude_cli", "claude_sdk", "gemini_cli", "agy_cli", "codex_cli") and cwd:
+            if provider in ("claude_cli", "claude_sdk", "gemini_cli", "agy_cli", "codex_cli", "grok_cli") and cwd:
                 kwargs["cwd"] = cwd
             # brain.auth (subscription|api) — birth-time billing decision honored
             # by the 4 subprocess CLI adapters when building their child env.
             # claude_sdk is excluded: it's in-process (no subprocess env to strip)
             # and forwards **kwargs to BaseAdapter, which rejects an `auth` arg.
-            if provider in ("claude_cli", "gemini_cli", "agy_cli", "codex_cli"):
+            if provider in ("claude_cli", "gemini_cli", "agy_cli", "codex_cli", "grok_cli"):
                 kwargs["auth"] = auth
             self._adapter = adapter_cls(**kwargs)
         else:
