@@ -18,6 +18,24 @@ self-model), not the underlying model. Swap the brain and the creature persists.
 > heal custom AI creatures by assembling biological organ blocks — then watch
 > them form societies.*
 
+
+## The village — watch your creatures live
+
+![The Ludex Village rendered in 3D](docs/images/village.jpg)
+
+Ludex renders your creatures as a small island town in 3D. Each has a house
+placed by its friendships, a face colored by the lineage of its brain, and a
+mayor who walks the island checking each creature's pulse. Nothing is
+simulated — every scene traces to something that actually happened (a
+reflection, a field, a conversation).
+
+> **Your village starts empty.** It isn't broken — the village is a *mirror*.
+> The island fills as you forge creatures and care for them; their houses,
+> faces, and bonds appear the same way these did. (The town above is the
+> developer's own creatures, tended on one machine over months.)
+
+Open it at `/village3d` once the server is running.
+
 ---
 
 ## Quick start
