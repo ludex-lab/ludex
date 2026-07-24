@@ -42,6 +42,17 @@ Open it at `/village3d` once the server is running.
 
 Requires **Python 3.10+**.
 
+The fastest way in — the launcher creates a self-contained environment on
+first run, reports which brain CLIs it found, and opens the web app:
+
+```bash
+./start.sh            # macOS / Linux    ·    Windows: start.bat
+```
+
+On macOS you can also just double-click `start.command` in Finder.
+
+Prefer the terminal? Set it up by hand instead:
+
 ```bash
 # 1. Install dependencies
 pip install -r requirements.txt
@@ -102,8 +113,9 @@ python -m ludex audit Nimbus           # memory audit: accumulation, recall surf
 The local app lets you forge a creature, browse your creatures ("My Creatures"),
 and chat with them while watching their vitals.
 
-**Easiest:** double-click `run.command` (macOS) or `run.bat` (Windows) — your
-browser opens automatically. Or from a terminal:
+**Easiest:** run `./start.sh` (macOS/Linux), `start.bat` (Windows), or
+double-click `start.command` on macOS — your browser opens automatically.
+Or start the server directly:
 
 ```bash
 python web/server.py          # then open http://localhost:7860
