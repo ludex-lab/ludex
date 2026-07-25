@@ -282,6 +282,22 @@ async def village_transcript(ref: str):
         return json.load(f)
 
 
+@app.post("/api/village/snapshot")
+async def village_snapshot(req: dict):
+    # dev/share: persist a canvas screenshot posted from the 3D viewer.
+    import base64, re as _re
+    data = (req or {}).get("data", "")
+    m = _re.match(r"data:image/(png|jpeg);base64,(.+)", data, _re.S)
+    if not m:
+        return {"error": "expected a data:image/* base64 URL"}
+    ext = "jpg" if m.group(1) == "jpeg" else "png"
+    out = os.path.join(os.path.dirname(__file__), "static", "village3d",
+                       f"snapshot.{ext}")
+    with open(out, "wb") as f:
+        f.write(base64.b64decode(m.group(2)))
+    return {"saved": out, "bytes": os.path.getsize(out)}
+
+
 @app.get("/api/village/outfits")
 async def village_outfits():
     # creature→garment mapping (pack #2 wardrobe) — JJ-editable JSON

@@ -160,7 +160,7 @@ function findRoute(from, to) {
 
 /* ---------- three scene ---------- */
 const W = () => window.innerWidth, H = () => window.innerHeight;
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setSize(W(), H());
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
@@ -331,17 +331,22 @@ const TILE_COLOR = {
 }
 
 /* text label as sprite */
-function label(text, color = "#e6edf3", size = 15) {
+function label(text, color = "#e6edf3", size = 15, dot = null) {
   const cv = document.createElement("canvas");
   const ctx = cv.getContext("2d");
   ctx.font = `600 ${size * 4}px -apple-system, "Apple SD Gothic Neo", sans-serif`;
-  cv.width = Math.max(2, ctx.measureText(text).width + 24); cv.height = size * 4 + 18;
+  const dotW = dot ? size * 2.4 : 0;   // room for the pulse dot before the text
+  cv.width = Math.max(2, ctx.measureText(text).width + 24 + dotW); cv.height = size * 4 + 18;
   const c2 = cv.getContext("2d");
   c2.font = `600 ${size * 4}px -apple-system, "Apple SD Gothic Neo", sans-serif`;
   c2.fillStyle = "rgba(13,17,23,.62)";
   c2.beginPath(); c2.roundRect(0, 0, cv.width, cv.height, 16); c2.fill();
+  if (dot) {
+    c2.fillStyle = dot;
+    c2.beginPath(); c2.arc(12 + size * 0.9, cv.height / 2, size * 0.85, 0, Math.PI * 2); c2.fill();
+  }
   c2.fillStyle = color; c2.textBaseline = "middle";
-  c2.fillText(text, 12, cv.height / 2 + 2);
+  c2.fillText(text, 12 + dotW, cv.height / 2 + 2);
   const tex = new THREE.CanvasTexture(cv);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
   sp.scale.set(cv.width / 260, cv.height / 260, 1);
@@ -461,7 +466,9 @@ function makeFacility(kind) {
 const HOUSE_ACCENTS = [0xa64d3f, 0x4d7ea6, 0x7ba64d, 0xa6924d, 0x8d5fa6,
                       0x4da695, 0xa65f77, 0x5b6ea6, 0x86a64d];
 let hi = 0;
-for (const [k, v] of Object.entries(MAP.plots || {})) {
+const PLACED_PLOTS = new Set();
+function placeStructure(k, v) {
+  if (PLACED_PLOTS.has(k)) return;
   const p = world(v.col, v.row);
   let obj, name;
   if (k.startsWith("house:")) {
@@ -484,7 +491,9 @@ for (const [k, v] of Object.entries(MAP.plots || {})) {
   lb.position.set(0, openf ? 1.25 : (k.startsWith("facility:") ? 2.2 : 1.6), 0);
   obj.add(lb);
   scene.add(obj);
+  PLACED_PLOTS.add(k);
 }
+for (const [k, v] of Object.entries(MAP.plots || {})) placeStructure(k, v);
 
 /* props — the countryside (trees, rocks) from MAP data */
 for (const pr of (MAP.props || [])) {
@@ -570,13 +579,34 @@ function animatePerson(p, dt, moving) {
     p.rotation.z *= 0.85;
     p.position.y = gy + 0.012 * Math.sin(u.t);            // breathing (presence, not behavior)
   }
+  if (u.ring && u.emo) {
+    // emotion ring breath: calm sets how present it is, arousal how fast it beats
+    const base = 0.14 + 0.5 * (u.emo.calm ?? 0);
+    const pace = 0.6 + 6 * (u.emo.arousal ?? 0);
+    u.ring.material.opacity = base + 0.06 * Math.sin(u.t * pace);
+  }
 }
 
 /* residents at their houses — real state only */
 const residents = [];
-for (const c of (STATE.creatures || [])) {
+const SPAWNED = new Set();
+/* emotion & vitals — projections of real organ artifacts (view principle:
+   absent data → nothing drawn; low values → genuinely quiet visuals) */
+function emoColor(e) {         // valence sign → warm / cool / neutral gray-blue
+  if (!e) return null;
+  const v = e.valence ?? 0;
+  return v > 0.05 ? 0xe0b070 : (v < -0.05 ? 0x7099d0 : 0x8a97a8);
+}
+function hbDot(c) {            // last heartbeat → grade colour; stale → gray
+  const hb = c.last_heartbeat;
+  if (!hb || !hb.grade) return null;
+  if ((Date.now() / 1000 - hb.t) > 172800) return "#6b7280";   // >48h: long-silent pulse
+  return { A: "#7ee0a3", B: "#e0c97e" }[hb.grade] || "#e08a7e"; // C and below: strained
+}
+function spawnResident(c) {
+  if (SPAWNED.has(c.name)) return;
   const plot = MAP.plots[`house:${c.name}`];
-  if (!plot) continue;
+  if (!plot) return;
   const nameHash = [...c.name].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) | 0, 7) >>> 0;
   const p = makePerson({
     body: 0x7d8da1,
@@ -592,15 +622,45 @@ for (const c of (STATE.creatures || [])) {
   p.userData.gy = tileH(d.col, d.row);
   p.userData.tile = d;
   p.userData.name = c.name;
+  p.userData.bonds = c.bonds || [];   // real bond files (bonds/*.md), lowercase names
+  p.userData.brainSig = `${c.provider}|${c.model}|${c.substrate_status}`;  // re-brain detector
   p.rotation.y = Math.PI;      // face the road (screen-south)
   if (c.substrate_status !== "live") p.userData.dormant = true;
-  const lb = label(c.name, "#9fb6cf", 10);
+  // emotion ring at the feet — colour from valence, pulse pace from arousal,
+  // presence from calm (no emotion artifact / dormant → no ring)
+  if (c.emotion && !p.userData.dormant) {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.26, 0.36, 28),
+      new THREE.MeshBasicMaterial({ color: emoColor(c.emotion), transparent: true,
+                                    opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.03;
+    p.add(ring);
+    p.userData.ring = ring;
+    p.userData.emo = c.emotion;
+  }
+  const lb = label(c.name, "#9fb6cf", 10, hbDot(c));
   lb.position.y = 1.45;
   p.add(lb);
   scene.add(p);
   residents.push(p);
   OCCUPIED.add(d.row * G + d.col);
+  SPAWNED.add(c.name);
 }
+// remove a resident's mesh so it can re-form (re-brain = new lineage colour /
+// face / dormancy). Residents idle at their doorstep — only the mayor walks —
+// so a re-spawn in place is safe and reuses the proven build path.
+function despawnResident(name) {
+  const i = residents.findIndex(r => r.userData.name === name);
+  if (i < 0) return;
+  const p = residents[i];
+  scene.remove(p);
+  residents.splice(i, 1);
+  if (p.userData.tile) OCCUPIED.delete(p.userData.tile.row * G + p.userData.tile.col);
+  SPAWNED.delete(name);
+  if (bondSel === name) clearBonds();   // drop stale arcs (runs long after load — no TDZ)
+}
+for (const c of (STATE.creatures || [])) spawnResident(c);
 
 /* mayor */
 const mayor = makePerson({ body: 0x46525f, head: 0xcfc4e8, h: 1,
@@ -758,6 +818,44 @@ setInterval(async () => {
       M.queue.push(...expandScenes(fresh.filter(s => s.t > SEEN_UNTIL && sceneTarget(s))));
     }
   } catch {}
+
+  /* live arrivals — a creature forged/onboarded since load walks into the
+     open village: new house plots and residents appear without a reload.
+     (The arrival scene itself already flows through the scene tail above, so
+     the mayor walks over to welcome the new house once it exists.) */
+  try {
+    const [nm, ns] = await Promise.all([
+      fetch("/api/village/map").then(x => x.json()),
+      fetch("/api/village/state").then(x => x.json()),
+    ]);
+    let placed = false;
+    for (const [k, v] of Object.entries(nm.plots || {})) {
+      if (!MAP.plots[k]) { MAP.plots[k] = v; placeStructure(k, v); placed = true; }
+    }
+    for (const c of (ns.creatures || [])) {
+      if (!SPAWNED.has(c.name)) {
+        spawnResident(c);
+        // now on the map → include in heartbeat fan-out (dedupe: a creature
+        // present at load but plot-less then is already in STATE.creatures)
+        if (SPAWNED.has(c.name) && !STATE.creatures.some(x => x.name === c.name)) STATE.creatures.push(c);
+      } else {
+        // re-brain — brain identity changed → re-form at the doorstep with the
+        // new lineage colour / face / dormancy (rare; a substrate transition)
+        const sig = `${c.provider}|${c.model}|${c.substrate_status}`;
+        const cur = residents.find(r => r.userData.name === c.name);
+        if (cur && cur.userData.brainSig !== sig) { despawnResident(c.name); spawnResident(c); }
+        else if (cur) {
+          cur.userData.bonds = c.bonds || [];        // new bonds show on next click
+          if (cur.userData.ring && c.emotion) {
+            // live emotion drift — retint the ring, let the breath follow
+            cur.userData.emo = c.emotion;
+            cur.userData.ring.material.color.setHex(emoColor(c.emotion));
+          }
+        }
+      }
+    }
+    if (placed) bakeMinimap();  // a new house/facility now shows on the minimap too
+  } catch {}
 }, 60000);
 
 /* ---------- minimap: static island baked once, live mayor overlay ---------- */
@@ -765,7 +863,7 @@ const mm = document.getElementById("minimap");
 const mmCtx = mm.getContext("2d");
 const mmBase = document.createElement("canvas");
 mmBase.width = mmBase.height = 192;
-{
+function bakeMinimap() {
   const b = mmBase.getContext("2d");
   const s = 192 / G;
   const cnum = hex => `#${hex.toString(16).padStart(6, "0")}`;
@@ -785,6 +883,7 @@ mmBase.width = mmBase.height = 192;
     b.fillRect(v.col * s - 1.6, v.row * s - 1.6, 3.2, 3.2);
   }
 }
+bakeMinimap();
 function drawMinimap() {
   const s = 192 / G;
   mmCtx.clearRect(0, 0, 192, 192);
@@ -834,6 +933,48 @@ addEventListener("wheel", e => { cam.dist = Math.min(120, Math.max(6, cam.dist +
 addEventListener("resize", () => {
   camera.aspect = W() / H(); camera.updateProjectionMatrix();
   renderer.setSize(W(), H());
+});
+
+/* ---------- bond view: click a resident to see its real bonds ----------
+   Query-style, not an always-on web (Primo alone holds 7 bonds — drawing
+   them all at once would smother the village). Each arc is a projection of
+   an actual bonds/<name>.md file; a partner living outside this village
+   (remote habitat, lab) draws nothing — honest by omission. */
+const bondGroup = new THREE.Group();
+scene.add(bondGroup);
+let bondSel = null;
+function clearBonds() { bondGroup.clear(); bondSel = null; }
+function showBonds(p) {
+  bondGroup.clear();
+  bondSel = p.userData.name;
+  const from = p.position.clone(); from.y += 0.9;
+  for (const bn of (p.userData.bonds || [])) {
+    const other = residents.find(r => r.userData.name.toLowerCase() === bn.toLowerCase());
+    if (!other) continue;
+    const to = other.position.clone(); to.y += 0.9;
+    const mid = from.clone().add(to).multiplyScalar(0.5);
+    mid.y += Math.max(1.2, from.distanceTo(to) * 0.18);
+    const tube = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(from, mid, to), 24, 0.04, 6),
+      new THREE.MeshBasicMaterial({ color: 0xe0c97e, transparent: true, opacity: 0.38, depthWrite: false }));
+    bondGroup.add(tube);
+  }
+}
+const ray = new THREE.Raycaster();
+let downAt = null;
+renderer.domElement.addEventListener("pointerdown", e => { downAt = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!downAt) return;
+  const moved = Math.abs(e.clientX - downAt.x) + Math.abs(e.clientY - downAt.y);
+  downAt = null;
+  if (moved > 6) return;                       // camera drag, not a click
+  ray.setFromCamera(new THREE.Vector2((e.clientX / W()) * 2 - 1, -(e.clientY / H()) * 2 + 1), camera);
+  const hit = ray.intersectObjects(residents, true)[0];
+  if (!hit) { clearBonds(); return; }
+  let g = hit.object;
+  while (g && !g.userData.name) g = g.parent;
+  if (!g || g.userData.name === bondSel) { clearBonds(); return; }
+  showBonds(g);
 });
 
 /* ---------- main loop ---------- */

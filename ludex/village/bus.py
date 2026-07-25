@@ -131,6 +131,23 @@ def scan_state(base: Path | None = None, habitat: str = "") -> list[dict]:
         if bonds_dir.is_dir():
             st["bonds"] = sorted(
                 p.stem for p in bonds_dir.glob("*.md"))
+        # emotion — projection of the organ's own baseline artifact (absent → None,
+        # and the view draws nothing: no simulated feelings)
+        try:
+            bp = cdir / "emotion" / "baseline.json"
+            if bp.exists():
+                b = json.loads(bp.read_text(encoding="utf-8"))
+                freq = b.get("dominant_emotions_freq") or {}
+                st["emotion"] = {
+                    "valence": b.get("avg_valence"),
+                    "arousal": b.get("avg_arousal"),
+                    "calm": b.get("avg_calm"),
+                    "dominant": max(freq, key=freq.get) if freq else None,
+                }
+            else:
+                st["emotion"] = None
+        except Exception:
+            st["emotion"] = None
         out.append(st)
     return out
 
