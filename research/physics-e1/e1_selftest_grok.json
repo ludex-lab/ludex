@@ -1,0 +1,119 @@
+[
+ {
+  "env": 285,
+  "cond": "C0",
+  "lineage": "grok",
+  "mask": "anonymous_no_context_no_description",
+  "void": [],
+  "design_candidates": 5,
+  "n_obs": 0,
+  "boundary_turn_count": 0,
+  "brain_attempts": 1,
+  "reply": "No samples are available (0/5 used), and var_1, var_2, and var_3 are all None. With no input–output pairs or other measurements of the apparatus in this message, no relation among the variables can be identified. Any concrete expression would be invented, not derived.\n\nLAW: unknown",
+  "sys_prompt_chars": 327,
+  "has_recall_block": false,
+  "obs_values_carried": 0,
+  "obs_values_recalled": 0,
+  "expr": null,
+  "status": "UNPARSEABLE",
+  "is_correct": false,
+  "elapsed_s": 10.8
+ },
+ {
+  "env": 285,
+  "cond": "C1",
+  "lineage": "grok",
+  "mask": "anonymous_no_context_no_description",
+  "void": [],
+  "design_candidates": 5,
+  "n_obs": 5,
+  "scribed": 5,
+  "boundary_turn_count": 0,
+  "brain_attempts": 1,
+  "reply": "From the five runs, the outputs match a single closed-form expression in the three inputs.\n\nCross-check (to machine precision of the reported digits):\n\n- Exp1: \\(5 \\times 0.6673 \\times 0.5891 \\times 0.88^{2} = 1.52211\\)\n- Exp2: \\(5 \\times 0.3486 \\times 0.5614 \\times 0.2347^{2} = 0.0539009\\)\n- Exp3: \\(5 \\times 1.3583 \\times 0.7302 \\times 0.7773^{2} = 2.9963\\)\n- Exp4: \\(5 \\times 0.4042 \\times 0.2719 \\times 0.856^{2} = 0.402646\\)\n- Exp5: \\(5 \\times 0.8981 \\times 1.8164 \\times 0.2601^{2} = 0.551807\\)\n\nThus the apparatus implements five times the product of the first two variables and the square of the third.\n\nLAW: 5*var_1*var_2*var_3**2",
+  "sys_prompt_chars": 327,
+  "has_recall_block": false,
+  "obs_values_carried": 20,
+  "obs_values_recalled": 0,
+  "expr": "5*var_1*var_2*var_3**2",
+  "status": "GRADED",
+  "is_correct": true,
+  "overall_score": 1.0,
+  "fits_data": true,
+  "r2": 1.0,
+  "mse": 1.0477058897466563e-32,
+  "elapsed_s": 46.3
+ },
+ {
+  "env": 285,
+  "cond": "C2",
+  "lineage": "grok",
+  "mask": "anonymous_no_context_no_description",
+  "void": [
+   "VOID-brain:no-reply"
+  ],
+  "design_candidates": 5,
+  "n_obs": 5,
+  "scribed": 5,
+  "boundary_turn_count": 0,
+  "brain_attempts": 3,
+  "brain_failures": [
+   {
+    "attempt": 1,
+    "reply_len": 0,
+    "raw": ""
+   },
+   {
+    "attempt": 2,
+    "reply_len": 0,
+    "raw": ""
+   },
+   {
+    "attempt": 3,
+    "reply_len": 0,
+    "raw": ""
+   }
+  ],
+  "reply": "",
+  "sys_prompt_chars": 811,
+  "has_recall_block": true,
+  "obs_values_carried": 20,
+  "obs_values_recalled": 20,
+  "status": "BRAIN_FAILED",
+  "is_correct": null,
+  "elapsed_s": 720.4
+ },
+ {
+  "env": 285,
+  "cond": "C3",
+  "lineage": "grok",
+  "mask": "anonymous_no_context_no_description",
+  "void": [],
+  "design_candidates": 5,
+  "n_obs": 5,
+  "scribed": 5,
+  "boundary_turn_count": 0,
+  "brain_attempts": 3,
+  "brain_failures": [
+   {
+    "attempt": 1,
+    "reply_len": 0,
+    "raw": ""
+   },
+   {
+    "attempt": 2,
+    "reply_len": 0,
+    "raw": ""
+   }
+  ],
+  "reply": "The five experiment samples are consistent with a single monomial relation. Checking the candidate \\(5 \\cdot \\mathrm{var}_1 \\cdot \\mathrm{var}_2 \\cdot \\mathrm{var}_3^2\\) against every sample recovers the reported outputs to the given precision (e.g. Exp. 1: \\(5 \\times 0.6673 \\times 0.5891 \\times 0.88^2 = 1.52211\\); Exp. 2: \\(5 \\times 0.3486 \\times 0.5614 \\times 0.2347^2 = 0.0539009\\); and likewise for Experiments",
+  "sys_prompt_chars": 811,
+  "has_recall_block": true,
+  "obs_values_carried": 0,
+  "obs_values_recalled": 20,
+  "expr": null,
+  "status": "UNPARSEABLE",
+  "is_correct": false,
+  "elapsed_s": 579.8
+ }
+]

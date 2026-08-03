@@ -1,0 +1,206 @@
+{
+ "dropped": [],
+ "lineages": {
+  "agy": {
+   "rates": {
+    "C0": {
+     "k": 0,
+     "n": 8,
+     "rate": 0.0,
+     "ci95": [
+      0.0,
+      0.369
+     ]
+    },
+    "C1": {
+     "k": 8,
+     "n": 8,
+     "rate": 1.0,
+     "ci95": [
+      0.631,
+      1.0
+     ]
+    },
+    "C2": {
+     "k": 8,
+     "n": 8,
+     "rate": 1.0,
+     "ci95": [
+      0.631,
+      1.0
+     ]
+    },
+    "C3": {
+     "k": 0,
+     "n": 8,
+     "rate": 0.0,
+     "ci95": [
+      0.0,
+      0.369
+     ]
+    }
+   },
+   "instrument_health": {
+    "C0": {
+     "graded_n": 8,
+     "unparseable": 2,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "C1": {
+     "graded_n": 8,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "C2": {
+     "graded_n": 8,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "C3": {
+     "graded_n": 8,
+     "unparseable": 3,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    }
+   },
+   "recovery": {
+    "value": 0.0,
+    "note": "profile, not a test; denominator (C1-C0) must exceed 0"
+   },
+   "harm_C2_vs_C1": {
+    "n_pairs": 8,
+    "C1_only": 0,
+    "C2_only": 0,
+    "both": 8,
+    "neither": 0,
+    "p_exact_two_sided": 1.0,
+    "direction": "tie",
+    "net_discordant": 0
+   },
+   "main_contrast_C3_vs_C0": {
+    "n_pairs": 8,
+    "C3_only": 0,
+    "C0_only": 0,
+    "both": 0,
+    "neither": 8,
+    "p_exact_two_sided": 1.0,
+    "note": "replication-grade: p reported, no confirmatory framing"
+   }
+  },
+  "haiku": {
+   "rates": {
+    "C0": {
+     "k": 0,
+     "n": 4,
+     "rate": 0.0,
+     "ci95": [
+      0.0,
+      0.602
+     ]
+    },
+    "C1": {
+     "k": 4,
+     "n": 4,
+     "rate": 1.0,
+     "ci95": [
+      0.398,
+      1.0
+     ]
+    },
+    "C2": {
+     "k": 4,
+     "n": 4,
+     "rate": 1.0,
+     "ci95": [
+      0.398,
+      1.0
+     ]
+    },
+    "C3": {
+     "k": 3,
+     "n": 4,
+     "rate": 0.75,
+     "ci95": [
+      0.194,
+      0.994
+     ]
+    }
+   },
+   "instrument_health": {
+    "C0": {
+     "graded_n": 4,
+     "unparseable": 4,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "C1": {
+     "graded_n": 4,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "C2": {
+     "graded_n": 4,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "C3": {
+     "graded_n": 4,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    }
+   },
+   "recovery": {
+    "value": 0.75,
+    "note": "profile, not a test; denominator (C1-C0) must exceed 0"
+   },
+   "harm_C2_vs_C1": {
+    "n_pairs": 4,
+    "C1_only": 0,
+    "C2_only": 0,
+    "both": 4,
+    "neither": 0,
+    "p_exact_two_sided": 1.0,
+    "direction": "tie",
+    "net_discordant": 0
+   },
+   "main_contrast_C3_vs_C0": {
+    "n_pairs": 4,
+    "C3_only": 3,
+    "C0_only": 0,
+    "both": 0,
+    "neither": 1,
+    "p_exact_two_sided": 0.25,
+    "note": "replication-grade: p reported, no confirmatory framing"
+   }
+  }
+ },
+ "walk_shape": "measured-profile; no confirmatory NHST registered",
+ "screen_literacy_descriptive": {
+  "agy": {
+   "C0": 0,
+   "C0_n": 26,
+   "C1": 8,
+   "C1_n": 26
+  },
+  "haiku": {
+   "C0": 0,
+   "C0_n": 26,
+   "C1": 4,
+   "C1_n": 24
+  }
+ }
+}
