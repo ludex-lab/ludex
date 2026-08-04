@@ -1,0 +1,13 @@
+{
+ "what": "server-side timestamp for a pre-registration published before firing",
+ "commit": "6b35e917d03c87f6cf928c5150d17f2c3475b55b",
+ "ref": "refs/heads/main",
+ "github_push_event": {
+  "id": "16557145606",
+  "created_at": "2026-08-03T10:01:01Z",
+  "before": "1f5aa39d578d40f387079df98299396f0f311363"
+ },
+ "captured_at": "2026-08-04T04:00:52Z",
+ "why": "A commit's author and committer dates are set locally and prove nothing to a reader. GitHub's PushEvent time is recorded server-side and is the artifact that actually evidences ordering. Public events expire from the API after roughly 90 days, so the receipt is archived here while it is still live.",
+ "limits": "This file is our archive of GitHub's statement. While the event remains queryable a third party can confirm it independently; afterwards they are trusting this copy. A signed commit or an external timestamp anchor would be strictly stronger and is the obvious next hardening."
+}
