@@ -1,0 +1,26 @@
+{
+ "restamped_at": 1785808770.4444249,
+ "drift": {
+  "agy": {
+   "provider": "agy_cli",
+   "gate_version": "1.1.10",
+   "verdict_version": "1.1.10",
+   "match": true
+  },
+  "haiku": {
+   "provider": "claude_cli",
+   "gate_version": "2.1.220 (Claude Code)",
+   "verdict_version": "2.1.221 (Claude Code)",
+   "match": false
+  }
+ },
+ "quarantined_runs": 0,
+ "window_evidence": {
+  "claude_pkg_mtime": "2026-08-04T10:56:28",
+  "last_claude_call": "2026-08-03T19:26:14",
+  "update_after_last_run": true,
+  "gap_hours": 15.5,
+  "reading": "installed package postdates the final run, so no run straddles the version boundary; the mismatch comes from re-stamping a day late, not from a mid-battery update"
+ },
+ "quarantine_basis": "window evidence (see window_evidence), not version equality"
+}

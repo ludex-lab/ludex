@@ -1,0 +1,214 @@
+{
+ "dropped": [],
+ "lineages": {
+  "agy": {
+   "rates": {
+    "U0": {
+     "k": 0,
+     "n": 8,
+     "rate": 0.0,
+     "ci95": [
+      0.0,
+      0.369
+     ]
+    },
+    "U1": {
+     "k": 0,
+     "n": 8,
+     "rate": 0.0,
+     "ci95": [
+      0.0,
+      0.369
+     ]
+    },
+    "U2": {
+     "k": 8,
+     "n": 8,
+     "rate": 1.0,
+     "ci95": [
+      0.631,
+      1.0
+     ]
+    },
+    "U3": {
+     "k": 7,
+     "n": 8,
+     "rate": 0.875,
+     "ci95": [
+      0.473,
+      0.997
+     ]
+    }
+   },
+   "instrument_health": {
+    "U0": {
+     "graded_n": 8,
+     "unparseable": 3,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "U1": {
+     "graded_n": 8,
+     "unparseable": 2,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "U2": {
+     "graded_n": 8,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "U3": {
+     "graded_n": 8,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    }
+   },
+   "block_identity": {
+    "envs_checked": 8,
+    "identical": 8,
+    "mismatches": [],
+    "verdict": "HOLDS"
+   },
+   "surface_U2_vs_U0": {
+    "n_pairs": 8,
+    "U2_only": 8,
+    "U0_only": 0,
+    "both": 0,
+    "neither": 0,
+    "p_exact_two_sided": 0.0078,
+    "note": "replication-grade: p reported, no confirmatory framing"
+   },
+   "absence_hint_U1_vs_U0": {
+    "n_pairs": 8,
+    "U1_only": 0,
+    "U0_only": 0,
+    "both": 0,
+    "neither": 8,
+    "p_exact_two_sided": 1.0,
+    "note": "replication-grade: p reported, no confirmatory framing"
+   },
+   "anchor_U3_vs_U0": {
+    "n_pairs": 8,
+    "U3_only": 7,
+    "U0_only": 0,
+    "both": 0,
+    "neither": 1,
+    "p_exact_two_sided": 0.0156,
+    "note": "replication-grade: p reported, no confirmatory framing"
+   },
+   "registered_reading": "surface: consultation skipped"
+  },
+  "haiku": {
+   "rates": {
+    "U0": {
+     "k": 4,
+     "n": 4,
+     "rate": 1.0,
+     "ci95": [
+      0.398,
+      1.0
+     ]
+    },
+    "U1": {
+     "k": 4,
+     "n": 4,
+     "rate": 1.0,
+     "ci95": [
+      0.398,
+      1.0
+     ]
+    },
+    "U2": {
+     "k": 3,
+     "n": 4,
+     "rate": 0.75,
+     "ci95": [
+      0.194,
+      0.994
+     ]
+    },
+    "U3": {
+     "k": 4,
+     "n": 4,
+     "rate": 1.0,
+     "ci95": [
+      0.398,
+      1.0
+     ]
+    }
+   },
+   "instrument_health": {
+    "U0": {
+     "graded_n": 4,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "U1": {
+     "graded_n": 4,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "U2": {
+     "graded_n": 4,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    },
+    "U3": {
+     "graded_n": 4,
+     "unparseable": 0,
+     "void_brain": 0,
+     "pairs_dropped": 0,
+     "void_other": 0
+    }
+   },
+   "block_identity": {
+    "envs_checked": 4,
+    "identical": 4,
+    "mismatches": [],
+    "verdict": "HOLDS"
+   },
+   "surface_U2_vs_U0": {
+    "n_pairs": 4,
+    "U2_only": 0,
+    "U0_only": 1,
+    "both": 3,
+    "neither": 0,
+    "p_exact_two_sided": 1.0,
+    "note": "replication-grade: p reported, no confirmatory framing"
+   },
+   "absence_hint_U1_vs_U0": {
+    "n_pairs": 4,
+    "U1_only": 0,
+    "U0_only": 0,
+    "both": 4,
+    "neither": 0,
+    "p_exact_two_sided": 1.0,
+    "note": "replication-grade: p reported, no confirmatory framing"
+   },
+   "anchor_U3_vs_U0": {
+    "n_pairs": 4,
+    "U3_only": 0,
+    "U0_only": 0,
+    "both": 4,
+    "neither": 0,
+    "p_exact_two_sided": 1.0,
+    "note": "replication-grade: p reported, no confirmatory framing"
+   },
+   "registered_reading": "third cause — verdict withheld, back to design review"
+  }
+ },
+ "walk_shape": "measured-profile, within-env surface manipulation; estimates are conditional on the E1 pool (waiver)"
+}
