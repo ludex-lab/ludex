@@ -1,0 +1,12 @@
+{
+ "commit": "fc1833824124558625ee503e1a33979ad25e47ef",
+ "ref": "refs/heads/main",
+ "github_push_event": {
+  "id": "16873696784",
+  "created_at": "2026-08-06T04:03:41Z",
+  "before": "42d407251493ae86e3a23acca2e3dd48ec83a758"
+ },
+ "captured_at": "2026-08-06T04:03:46Z",
+ "why": "server-side push time is what evidences ordering; commit dates are local",
+ "limits": "our archive of GitHub's statement; a signed commit or external anchor is stronger"
+}
