@@ -1,0 +1,13 @@
+{
+ "commit": "ef0704f23f5f388abe858b5a8f0026b2dbfe157f",
+ "ref": "refs/heads/main",
+ "github_push_event": {
+  "id": "16879960677",
+  "created_at": "2026-08-06T05:17:20Z",
+  "before": "e3dced1dfe8cf9113c45b92daeb4162d030d3a04"
+ },
+ "captured_at": "2026-08-06T05:22:05Z",
+ "document": "AMENDMENT_01_metabolism_m1.md",
+ "why": "server-side push time; this amendment is dated AFTER launch by design and the receipt records when the ruling entered the public log",
+ "note": "the pre-registration receipt (push 2026-08-06T04:03:41Z) is the ordering evidence for the FROZEN spec and is unaffected by this file"
+}
