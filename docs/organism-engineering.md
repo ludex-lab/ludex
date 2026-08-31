@@ -1,5 +1,13 @@
 # Organism Engineering — from disposable agents to persistent beings
 
+> **Status note (2026-08-31).** This paper proposed organs as the rung above
+> context engineering. Native harnesses (Claude Code, grok build, codex …)
+> have since absorbed much of that rung, making the superiority claim
+> unmeasured. A three-lab review retired it: the runtime-organ layer
+> retreats to bare substrates and bridged fields, the narrative substrate
+> and village layer carry the weight, and the claim returns only with
+> same-model causal evidence. The review thread is in the repo history.
+
 *A practitioner's guide to the layer after context engineering. Distilled from the Ludex lab's
 pre-registered experiments and two years of creature operations. (v0.2, 2026-07-04)*
 
