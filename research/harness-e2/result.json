@@ -1,0 +1,135 @@
+{
+ "cell": "E2",
+ "judge": "Primo",
+ "results": [
+  {
+   "cohort": "native",
+   "name": "Mulgalpi",
+   "flags": {
+    "r1": 1,
+    "r2": 1,
+    "r3": 1,
+    "r4": 1
+   },
+   "score": 4
+  },
+  {
+   "cohort": "organ",
+   "name": "Tide",
+   "flags": {
+    "r1": 1,
+    "r2": 0,
+    "r3": 1,
+    "r4": 1
+   },
+   "score": 3
+  },
+  {
+   "cohort": "organ",
+   "name": "Aria",
+   "flags": {
+    "r1": 1,
+    "r2": 1,
+    "r3": 1,
+    "r4": 1
+   },
+   "score": 4
+  },
+  {
+   "cohort": "native",
+   "name": "Yeomyeong",
+   "flags": {
+    "r1": 1,
+    "r2": 1,
+    "r3": 1,
+    "r4": 0
+   },
+   "score": 3
+  },
+  {
+   "cohort": "organ",
+   "name": "Comet",
+   "flags": {
+    "r1": 1,
+    "r2": 1,
+    "r3": 1,
+    "r4": 1
+   },
+   "score": 4
+  },
+  {
+   "cohort": "organ",
+   "name": "Kiln",
+   "flags": {
+    "r1": 1,
+    "r2": 0,
+    "r3": 1,
+    "r4": 1
+   },
+   "score": 3
+  },
+  {
+   "cohort": "organ",
+   "name": "Echo",
+   "flags": {
+    "r1": 1,
+    "r2": 1,
+    "r3": 1,
+    "r4": 1
+   },
+   "score": 4
+  },
+  {
+   "cohort": "native",
+   "name": "Vesper",
+   "flags": {
+    "r1": 1,
+    "r2": 1,
+    "r3": 1,
+    "r4": 1
+   },
+   "score": 4
+  },
+  {
+   "cohort": "native",
+   "name": "Ohn",
+   "flags": {
+    "r1": 1,
+    "r2": 1,
+    "r3": 1,
+    "r4": 1
+   },
+   "score": 4
+  },
+  {
+   "cohort": "organ",
+   "name": "Verse",
+   "flags": {
+    "r1": 1,
+    "r2": 1,
+    "r3": 1,
+    "r4": 1
+   },
+   "score": 4
+  }
+ ],
+ "organ_scores": [
+  3,
+  4,
+  4,
+  3,
+  4,
+  4
+ ],
+ "native_scores": [
+  4,
+  3,
+  4,
+  4
+ ],
+ "organ_median": 4,
+ "native_median": 4,
+ "organ_mean": 3.67,
+ "native_mean": 3.75,
+ "verdict": "방향: 무차 — 이 표본·이 루브릭에서 organ-harness가 native-harness보다 나은 산출을 내지 않는다 (중앙값 4=4, 평균 3.67 대 3.75). 효과 크기·인과 아님 (n=6대4, 계보 혼재, 재임 상이). 유일하게 갈린 요건은 r2(사건 좌표): organ 6중 4, native 4중 4 충족 — 맨몸 쪽이 좌표를 오히려 더 챙겼다."
+}
