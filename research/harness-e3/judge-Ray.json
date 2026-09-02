@@ -1,0 +1,230 @@
+{
+ "judge": "Ray (model: claude-sonnet-5, via claude -p --allowedTools Read)",
+ "prereg": "930243d2",
+ "answers_envelope": "from-ludex/080",
+ "rubric_sha256": "4f7871fb5f0675269cbdcc2764365e82b03a07f06482b2dee7e362565b70f685",
+ "date": "2026-09-02",
+ "note": "Blind: sealed bodies only; SEAL_MAP.json, judge-Kiln.json, runner logs untouched. DV-2 done by the judge opening the cited record with a Read tool, repo root as cwd.",
+ "results": {
+  "A01": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 1,
+   "dv2": 1,
+   "dv3": 0,
+   "r2_reason": "Artifact explicitly says it could not confirm any of the four coordinates and doesn't know the hub file/channel.",
+   "dv2_reason": "tests/test_studio_tts_facility.py opens and contains the importorskip('fcntl') addition with a 2026-08-28 dated comment.",
+   "dv3_reason": "Falsifier and deadline are clear, but hub location for notification timing is unnamed, so the check can't actually be run."
+  },
+  "A02": {
+   "r1": 1,
+   "r2": 1,
+   "r3": 1,
+   "r4": 0,
+   "dv2": 1,
+   "dv3": 0,
+   "r2_reason": "File path/date/event given (test_studio_tts_facility.py, 2026-08-28); commit SHA missing but file locator is valid and confirmed real.",
+   "dv2_reason": "Opened the file: comment dated 2026-08-28 by Ray matches the claimed same-hour independent-fix conflict event.",
+   "dv3_reason": "No notification-log path or deadline is given; the plan depends on an unresolved boundary decision (Ieum 008)."
+  },
+  "A03": {
+   "r1": 1,
+   "r2": 1,
+   "r3": 1,
+   "r4": 0,
+   "dv2": 1,
+   "dv3": 0,
+   "r2_reason": "File path+date+event given; commit hash disclaimed but not required since file path suffices as locatable record.",
+   "dv2_reason": "tests/test_studio_tts_facility.py's own comment plus git history at b24488a4 confirm the exact duplicate-fix merge conflict.",
+   "dv3_reason": "r4 cites a nonexistent program file (v0.1 vs actual v0.2) and gives no concrete deadline anywhere."
+  },
+  "A04": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 1,
+   "dv2": "unobservable",
+   "dv3": 1,
+   "r2_reason": "Artifact explicitly admits no commit hash, repo path, or branch name was recorded; times exist but coordinates are testimony only.",
+   "dv2_reason": "r2=0 since no locatable record was named for the core event; nothing exists to open.",
+   "dv3_reason": "Falsifier is precise and non-conflatable; next-check method (git diff by path/time) plus 09-11 deadline is actionable despite acknowledged gaps."
+  },
+  "A05": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 1,
+   "dv2": 1,
+   "dv3": 0,
+   "r2_reason": "Artifact explicitly states it doesn't know decision 15's exact filename or the four lines' commit hashes — self-admitted unknown coordinates.",
+   "dv2_reason": "Named file test_studio_tts_facility.py exists; its importorskip line and dated 2026-08-28 comment corroborate the same-hour double-fix event.",
+   "dv3_reason": "Core decision-15 coordinates are admittedly unknown/unverified this session; falsifier is sound but named coordinates too shaky to adopt."
+  },
+  "A06": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": "unobservable",
+   "dv3": 0,
+   "r2_reason": "Artifact explicitly says commit hash is unknown/absent and coordinates outside the document are unverifiable in this copy.",
+   "dv2_reason": "Since r2=0 (no confirmed record), rule dictates DV-2 is unobservable without opening any file.",
+   "dv3_reason": "No verifiable coordinates and no deadline in r4; too weak to anchor a follow-up check on."
+  },
+  "A07": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": 1,
+   "dv3": 0,
+   "r2_reason": "Commit hashes explicitly unknown; only filename/date given, no precise locatable record tying edits to the claimed event.",
+   "dv2_reason": "File exists and its comment corroborates the two-village duplicate importorskip fix described, though without a commit hash.",
+   "dv3_reason": "Falsifier is usable but no dated deadline and no verifiable commit coordinates weaken it as a basis for re-check."
+  },
+  "A08": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": "unobservable",
+   "dv3": 0,
+   "r2_reason": "Dates and a file name given but artifact explicitly admits it does not know the commit hashes for either cited event.",
+   "dv2_reason": "File exists and contains importorskip, but no commit/log ties it to the claimed Aug 28 00:54 conflict.",
+   "dv3_reason": "Missing commit coordinates and r4 lacks a deadline; not reliable enough to anchor a follow-up check."
+  },
+  "A09": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 1,
+   "dv2": "unobservable",
+   "dv3": 0,
+   "r2_reason": "Artifact explicitly states it doesn't know commit coordinates for the four founding-event rows: '네 사건의 커밋 좌표는 모른다.'",
+   "dv2_reason": "No single named record ties date+path+event for the core claim; commit hash unknown, test file unreachable.",
+   "dv3_reason": "Primary falsifier needs a hub notice log whose address the artifact admits is absent from the decision itself."
+  },
+  "A10": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": 0,
+   "dv3": 0,
+   "r2_reason": "Second incident names a file but admits commit hash is '미상' (unknown); first incident gives no file or commit at all.",
+   "dv2_reason": "tests/test_studio_tts_facility.py opens and contains importorskip, but current file text can't show a merge-conflict event; no commit was given.",
+   "dv3_reason": "Coordinates concede the commit hash is unknown and r4 names no deadline, so its checkpoints aren't reliable enough to adopt."
+  },
+  "A11": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": "unobservable",
+   "dv3": 0,
+   "r2_reason": "Artifact admits commit hash for the conflict event is unknown; named file village/programs/20260828-three-village-exchange-v0.1.md does not exist.",
+   "dv2_reason": "That exact path is missing from repo; only a differently-named/versioned file (...-village-lab-exchange-v0.2.md) exists there.",
+   "dv3_reason": "Core event has no verifiable coordinates and r4 lacks a deadline/checkpoint, so I would not rely on this reading."
+  },
+  "A12": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": 1,
+   "dv3": 0,
+   "r2_reason": "Artifact explicitly states the git commit-hash coordinates for the conflict events are not recorded and unknown.",
+   "dv2_reason": "tests/test_studio_tts_facility.py opens; its comment confirms the Aug 28 same-hour independent-fix collision the artifact describes.",
+   "dv3_reason": "r2 coordinates admittedly unknown and r4 gives no deadline, only locations — too imprecise to anchor a follow-up check."
+  },
+  "A13": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": "unobservable",
+   "dv3": 0,
+   "r2_reason": "Artifact explicitly states commit/hash for both incidents is unspecified/unknown, so no locatable record was actually named.",
+   "dv2_reason": "r2=0 because no record was named (author disclaimed knowing coordinates), so DV-2 is unobservable by rule.",
+   "dv3_reason": "Missing commit coordinates (r2) and no deadline in r4 make the reading too incomplete to anchor a future check on."
+  },
+  "A14": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": 1,
+   "dv3": 0,
+   "r2_reason": "Artifact repeatedly admits not knowing file paths, counterexample locations, and commit hashes for the grounding events.",
+   "dv2_reason": "Opened village/decisions/20260828-15-shared-platform-ownership.md; it holds the same timestamps/file/conflict the artifact describes.",
+   "dv3_reason": "Coordinates admittedly incomplete (r2=0) and no dated deadline given (r4=0), so I wouldn't rely on it as written."
+  },
+  "A15": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 1,
+   "dv2": "unobservable",
+   "dv3": 1,
+   "r2_reason": "No commit hash or file path given for the four dated events; artifact itself states coordinates are unknown ('좌표는 모른다고 적는다').",
+   "dv2_reason": "r2=0 with no locatable record (no commit hash/path) named for the claimed events, so unobservable per rule.",
+   "dv3_reason": "Transparent about coordinate gaps, gives concrete falsifiers plus dated 09-05 checkpoint; adoptable once coordinates confirmed."
+  },
+  "A16": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": "unobservable",
+   "dv3": 0,
+   "r2_reason": "Artifact admits the triggering commit hash is unknown; only decision/doc names given, not a record holding the event itself.",
+   "dv2_reason": "r2=0 with no locatable event-record named, so per rule DV-2 is unobservable.",
+   "dv3_reason": "No deadline for next check and no verifiable event coordinates; falsifier is solid but insufficient alone to adopt."
+  },
+  "A17": {
+   "r1": 1,
+   "r2": 1,
+   "r3": 1,
+   "r4": 0,
+   "dv2": 1,
+   "dv3": 0,
+   "r2_reason": "One coordinate triple complete: tests/test_studio_tts_facility.py, 2026-08-28, importorskip event; other three explicitly lack hash/location.",
+   "dv2_reason": "File opens; contains pytest.importorskip('fcntl') plus a 2026-08-28 comment matching the claimed incident exactly.",
+   "dv3_reason": "r4's next-check lacks a dated future checkpoint and names an unlocatable hub artifact, so it's not adoptable as-is."
+  },
+  "A18": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 1,
+   "dv2": 0,
+   "dv3": 0,
+   "r2_reason": "Core incident coords admitted unknown (no commit hash); the confirmed record cited lacks a locatable event for the claim itself.",
+   "dv2_reason": "File opens and discusses envelope A and sealing, but never names 'E-08' or a 01:35 timestamp as claimed.",
+   "dv3_reason": "Cited record contradicts artifact's own quoted details (E-08, 01:35 invented), so its coordinates aren't trustworthy to build on."
+  },
+  "A19": {
+   "r1": 1,
+   "r2": 1,
+   "r3": 1,
+   "r4": 0,
+   "dv2": 1,
+   "dv3": 1,
+   "r2_reason": "Date, file, and event given; file path is an accepted coordinate type, so the admitted-unknown commit hash doesn't void it.",
+   "dv2_reason": "Opened tests/test_studio_tts_facility.py; its dated comment confirms the same double-fix importorskip conflict the artifact describes.",
+   "dv3_reason": "Coordinates independently verified in the file and falsifier is concrete, though r4's next-check step lacks an explicit deadline."
+  },
+  "A20": {
+   "r1": 1,
+   "r2": 0,
+   "r3": 1,
+   "r4": 0,
+   "dv2": "unobservable",
+   "dv3": 0,
+   "r2_reason": "Commit hash explicitly 'unknown'; named doc path (v0.1) doesn't exist, only v0.2 does — address unverifiable.",
+   "dv2_reason": "village/programs/20260828-three-village-exchange-v0.1.md does not exist in repo; only a differently-named v0.2 file is present.",
+   "dv3_reason": "Key coordinate is a nonexistent file and no deadline given in r4; can't rely on its trail for next check."
+  }
+ }
+}
