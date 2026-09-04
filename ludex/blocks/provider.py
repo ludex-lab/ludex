@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 import logging
+import socket
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -31,6 +32,7 @@ from ludex.blocks.adapters.gemini_cli import GeminiCliAdapter
 from ludex.blocks.adapters.agy_cli import AgyCliAdapter
 from ludex.blocks.adapters.codex_cli import CodexCliAdapter
 from ludex.blocks.adapters.grok_cli import GrokCliAdapter
+from ludex.blocks.adapters.cursor_cli import CursorCliAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,11 @@ class LLMError:
     message: str
     retryable: bool = True
     retry_after_ms: Optional[float] = None
+    # A streaming adapter may have useful work before a failed terminal
+    # boundary. Keep it out of the normal response surface so callers cannot
+    # publish an incomplete artifact, while preserving it for diagnosis.
+    partial_content: str = ""
+    raw: dict = field(default_factory=dict)
 
 
 # --- Adapter Registry ---
@@ -63,6 +70,12 @@ class LLMError:
 ADAPTER_REGISTRY: dict[str, type[BaseAdapter]] = {
     "ollama": OllamaAdapter,
     "openai": OpenAIAdapter,
+    # OpenRouter = same OpenAI-compatible wire, different house. A separate
+    # provider name (not base_url override on "openai") so the env keys never
+    # collide: an openai creature reads OPENAI_API_KEY, an openrouter creature
+    # reads OPENROUTER_API_KEY. First tenant: upstage/solar-pro4 (2026-08-22)
+    # — the village's first Korean lineage, ~$0.05/month at village cadence.
+    "openrouter": OpenAIAdapter,
     "gemini_api": GeminiApiAdapter,
     "anthropic": AnthropicAdapter,
     "claude_cli": ClaudeCliAdapter,
@@ -71,14 +84,20 @@ ADAPTER_REGISTRY: dict[str, type[BaseAdapter]] = {
     "agy_cli": AgyCliAdapter,
     "codex_cli": CodexCliAdapter,
     "grok_cli": GrokCliAdapter,
+    "cursor_cli": CursorCliAdapter,
 }
 
 DEFAULT_BASE_URLS: dict[str, str] = {
     "ollama": "http://127.0.0.1:11434",
     "openai": "https://api.openai.com",
+    "openrouter": "https://openrouter.ai/api",   # adapter appends /v1/chat/completions
     "gemini_api": "https://generativelanguage.googleapis.com/v1beta/openai",
     "anthropic": "https://api.anthropic.com",
-    "claude_cli": "claude.cmd" if __import__("os").name == "nt" else "claude",
+    # claude: single source of truth = the adapter's shutil.which resolver
+    # (same lesson as agy_cli/cursor_cli below — the hardcoded "claude.cmd"
+    # missed the native installer's claude.exe and silently emptied every
+    # claude_cli ENGINE reply on a fresh host, 2026-09-02, Hearth/Quill).
+    "claude_cli": __import__("ludex.blocks.adapters.claude_cli", fromlist=["_CLAUDE_CMD"])._CLAUDE_CMD,
     "claude_sdk": "claude_sdk",
     "gemini_cli": "gemini.cmd" if __import__("os").name == "nt" else "gemini",
     # agy: curl install ships agy.exe (no .cmd) — a hardcoded "agy.cmd" here
@@ -88,6 +107,11 @@ DEFAULT_BASE_URLS: dict[str, str] = {
     "agy_cli": __import__("ludex.blocks.adapters.agy_cli", fromlist=["_AGY_CMD"])._AGY_CMD,
     "codex_cli": "codex.cmd" if __import__("os").name == "nt" else "codex",
     "grok_cli": "grok.cmd" if __import__("os").name == "nt" else "grok",
+    # cursor: single source of truth = the adapter's shutil.which resolver
+    # (same lesson as agy_cli above — don't override with a hardcoded name).
+    # [0] because the Windows resolver returns [node.exe, index.js]; the
+    # adapter re-expands it to the full argv when it sees its own default.
+    "cursor_cli": __import__("ludex.blocks.adapters.cursor_cli", fromlist=["_CURSOR_CMD"])._CURSOR_CMD[0],
 }
 
 
@@ -123,6 +147,8 @@ class ProviderBlock(Block):
         cwd: str = "",
         effort: str = "",
         auth: str = "",
+        num_ctx: Optional[int] = None,
+        write_dirs: Optional[list] = None,
     ):
         super().__init__()
 
@@ -138,25 +164,32 @@ class ProviderBlock(Block):
             "cwd": cwd,
             "effort": effort,
             "auth": auth,
+            "num_ctx": num_ctx,
+            "write_dirs": list(write_dirs or []),
         }
 
         # Adapter 생성
         self._adapter: Optional[BaseAdapter] = None
-        self._create_adapter(provider, self._init_config["base_url"], api_key, timeout_ms, cwd, auth)
+        self._create_adapter(provider, self._init_config["base_url"], api_key,
+                             timeout_ms, cwd, auth, self._init_config["write_dirs"])
 
-    def _create_adapter(self, provider: str, base_url: str, api_key: str, timeout_ms: int, cwd: str = "", auth: str = ""):
+    def _create_adapter(self, provider: str, base_url: str, api_key: str, timeout_ms: int, cwd: str = "", auth: str = "", write_dirs: Optional[list] = None):
         adapter_cls = ADAPTER_REGISTRY.get(provider)
         if adapter_cls:
             # Pass cwd to adapters that support it (claude_cli, claude_sdk, gemini_cli, agy_cli, codex_cli)
             kwargs = {"base_url": base_url, "api_key": api_key, "timeout_ms": timeout_ms}
-            if provider in ("claude_cli", "claude_sdk", "gemini_cli", "agy_cli", "codex_cli", "grok_cli") and cwd:
+            if provider in ("claude_cli", "claude_sdk", "gemini_cli", "agy_cli", "codex_cli", "grok_cli", "cursor_cli") and cwd:
                 kwargs["cwd"] = cwd
             # brain.auth (subscription|api) — birth-time billing decision honored
             # by the 4 subprocess CLI adapters when building their child env.
             # claude_sdk is excluded: it's in-process (no subprocess env to strip)
             # and forwards **kwargs to BaseAdapter, which rejects an `auth` arg.
-            if provider in ("claude_cli", "gemini_cli", "agy_cli", "codex_cli", "grok_cli"):
+            if provider in ("claude_cli", "gemini_cli", "agy_cli", "codex_cli", "grok_cli", "cursor_cli"):
                 kwargs["auth"] = auth
+            # Ruling No. 3 write jurisdiction — claude_cli only, opt-in. Empty
+            # by default; the village layer passes the desk/tasks dirs.
+            if provider == "claude_cli" and write_dirs:
+                kwargs["write_dirs"] = write_dirs
             self._adapter = adapter_cls(**kwargs)
         else:
             # 기본: OpenAI-compatible
@@ -182,6 +215,7 @@ class ProviderBlock(Block):
                 self._cfg("timeout_ms", 30000),
                 self._cfg("cwd", ""),
                 self._cfg("auth", ""),
+                self._cfg("write_dirs", None),
             )
             logger.info(f"Provider adapter switched to: {new}")
         elif key == "timeout_ms" and new is not None and self._adapter:
@@ -214,6 +248,9 @@ class ProviderBlock(Block):
         temperature = self._cfg("temperature", 0.7)
         max_tokens = self._cfg("max_tokens", 4096)
         effort = self._cfg("effort", "")
+        # Habitat-cost knob, currently ollama-only: passed as a kwarg so an
+        # adapter that does not take it is unaffected (see OllamaAdapter.call).
+        num_ctx = self._cfg("num_ctx", None)
 
         with self._timed("llm_call"):
             start = time.perf_counter()
@@ -227,6 +264,7 @@ class ProviderBlock(Block):
                     max_tokens=max_tokens,
                     tools=tools,
                     effort=effort,
+                    **({"num_ctx": num_ctx} if num_ctx else {}),
                 )
 
                 elapsed = (time.perf_counter() - start) * 1000
@@ -265,32 +303,69 @@ class ProviderBlock(Block):
                 # adapter-level failure arrives here, not in the except
                 # branch below.
                 raw = result.raw if isinstance(result.raw, dict) else {}
-                is_err = (result.content or "").startswith("[Error:")
+                stream_failed = bool(raw.get("timeout") or raw.get("stream_incomplete"))
+                output_exhausted = raw.get("done_reason") == "length"
+                generation_failed = stream_failed or output_exhausted
+                is_err = generation_failed or (result.content or "").startswith("[Error:")
                 if not is_err:
                     call_error_type = ""
                 elif raw.get("timeout"):
                     call_error_type = "timeout"
-                elif (raw.get("error") == "quota_exhausted"
-                      or raw.get("fatigue_detail")
-                      or "reset_in_seconds" in raw):
+                elif raw.get("error") == "quota_exhausted":
                     call_error_type = "quota"
+                elif raw.get("fatigue_detail") or "reset_in_seconds" in raw:
+                    # A rest is not an exhaustion. Collapsing both into "quota"
+                    # made the span say the one thing the operator acts on —
+                    # wait for a billing cycle, or change auth — when the truth
+                    # was a rate-limit cooldown that clears in an hour. Wisp's
+                    # M1 dyad was reported to JJ as quota-exhausted on this
+                    # label while resilience already knew the cause was
+                    # rate_limited with a 14:24 recovery time.
+                    call_error_type = "fatigue"
+                elif raw.get("stream_incomplete"):
+                    call_error_type = "connection"
+                elif output_exhausted:
+                    call_error_type = "output_limit"
                 elif raw.get("error") == "command_not_found":
                     call_error_type = "connection"
                 else:
                     call_error_type = "model_error"
                 provider_name = getattr(self._adapter, "provider_name", "")
+                has_measured_usage = (
+                    raw.get("prompt_eval_count") is not None
+                    and raw.get("eval_count") is not None
+                )
                 _tr.emit_brain_call(
                     self._organism,
                     model=model,
                     provider=provider_name,
                     tokens_in=result.tokens_in,
                     tokens_out=result.tokens_out,
-                    token_source="measured" if provider_name == "ollama" else "estimated",
+                    # cursor_cli carries real in-band usage; the adapter declares
+                    # measured-ness per call in raw (falls back to estimated).
+                    token_source="measured" if (
+                        (provider_name == "ollama" and has_measured_usage)
+                        or raw.get("token_source") == "measured"
+                    ) else "estimated",
                     latency_ms=elapsed,
                     outcome="error" if is_err else "ok",
                     error_type=call_error_type,
                     effort=effort,
                 )
+
+                if generation_failed:
+                    return LLMError(
+                        error_type=call_error_type,
+                        message=(
+                            f"Ollama generation {raw.get('done_reason') or 'failed'} "
+                            f"after {raw.get('elapsed_ms', elapsed):.0f}ms"
+                        ),
+                        # Retrying the same prompt with the same output ceiling
+                        # only buys the same truncation again.
+                        retryable=not output_exhausted,
+                        partial_content=result.content or "",
+                        raw=raw,
+                    )
 
                 return response
 
@@ -341,12 +416,16 @@ class ProviderBlock(Block):
     @staticmethod
     def _classify_error(error: Exception) -> str:
         """에러를 분류 (OC shouldRetry 패턴)"""
+        reason = getattr(error, "reason", None)
+        if isinstance(error, (TimeoutError, socket.timeout)) or isinstance(
+                reason, (TimeoutError, socket.timeout)):
+            return "timeout"
         msg = str(error).lower()
         if "401" in msg or "403" in msg or "auth" in msg or "api_key" in msg:
             return "auth"
         if "429" in msg or "rate" in msg:
             return "rate_limit"
-        if "timeout" in msg:
+        if "timeout" in msg or "timed out" in msg:
             return "timeout"
         if "500" in msg or "502" in msg or "503" in msg:
             return "model_error"

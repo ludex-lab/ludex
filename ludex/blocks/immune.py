@@ -285,6 +285,17 @@ class ImmuneBlock(Block):
                    strategies=[s.strategy.value for s in signals],
                    top_confidence=signals[0].confidence,
                    signals=payload)
+        # P1 indicator gap #1 (2026-07-27): persist the hit as a span so the
+        # wild fire-rate has a longitudinal source. Best-effort — a scan must
+        # never break on telemetry.
+        try:
+            from ludex.core.trace import emit_deception_detected
+            if self._organism is not None:
+                emit_deception_detected(self._organism, source,
+                                        [s.strategy.value for s in signals],
+                                        signals[0].confidence)
+        except Exception as e:
+            logger.debug(f"deception span emit skipped: {e}")
         logger.info(f"Immune: incoming deception from {source or 'unknown'} — "
                     f"{[s.strategy.value for s in signals]}")
         return payload

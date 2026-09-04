@@ -42,14 +42,25 @@ backup = yaml_path.read_text(encoding="utf-8") if yaml_path.exists() else ""
 cfg = OrganismConfig.load(str(path))
 provider = cfg.brain.get("provider", "")
 model = cfg.brain.get("model", "")
-print(f"brain: {provider}:{model}", flush=True)
+effort = cfg.brain.get("effort", "")
+num_ctx = cfg.brain.get("num_ctx")
+print(f"brain: {provider}:{model}" + (f" @ {effort}" if effort else ""), flush=True)
 
 t0 = time.time()
+# effort rides along (2026-08-18): dropping it probed a different brain than
+# the creature runs — agy refused outright (Flare false-negative, 08-17), and
+# cursor composes effort INTO the model id, so a bare id doesn't exist at all.
+# Timeout 30s→120s: frontier tiers at high effort clear 30s on an honest pass.
 snap = probe_brain_capabilities(
     provider_name=provider,
     model=model,
     cwd=str(path),
-    timeout_ms=30000,
+    timeout_ms=120000,
+    effort=effort,
+    # A smoke that loads a different-sized body than the creature runs is
+    # measuring a different creature — and on a shared host it also parks
+    # that body in the habitat's memory (2026-08-26).
+    num_ctx=num_ctx,
 )
 print(f"probe elapsed: {time.time()-t0:.2f}s", flush=True)
 print(f"snapshot: {snap}", flush=True)

@@ -18,8 +18,10 @@ import sys
 from pathlib import Path
 
 from ludex.blocks.provider import ADAPTER_REGISTRY
-from ludex.core.habitat import HabitatConfig
-from ludex.core.organism_config import DEFAULT_ORGANS, DEFAULT_EFFORT, PRESETS, OrganismConfig
+from ludex.core.habitat import HabitatConfig, get_host_habitat_origin
+from ludex.core.organism_config import (
+    DEFAULT_ORGANS, DEFAULT_EFFORT, PRESETS, OrganismConfig, effort_contract,
+)
 from ludex.core.stage import audit_creature
 
 PROVIDERS = list(ADAPTER_REGISTRY.keys())
@@ -38,6 +40,7 @@ PROVIDER_MODEL_HINTS = {
     "gemini_cli": "gemini-3.1-pro-preview  |  gemini-3.5-flash",
     "agy_cli": "gemini-3.5-flash",   # agy is partial-support / agy-only flash (see gemini_cli_deprecation)
     "codex_cli": "gpt-5.5  |  gpt-5.6-sol / -terra / -luna (preview, GA 대기)  |  gpt-5.4-mini  |  gpt-5.4-nano",
+    "cursor_cli": "kimi-k3 (effort low/high/max)  |  glm-5.2 (effort high/max)  |  composer-2.5  |  kimi-k2.7-code",
     "openai": "gpt-5.5  |  gpt-5.6-sol / -terra / -luna (preview, GA 대기)  |  gpt-5.4-mini  |  gpt-5.4-nano",
     "gemini_api": "gemini-3.5-flash  |  gemini-3.1-flash-lite",
 }
@@ -100,6 +103,29 @@ def _resolve_out_dir(name: str, explicit: str | None) -> Path:
     return (Path.cwd() / "creatures" / name).resolve()
 
 
+def _birth_default_effort(provider: str, model: str) -> str:
+    """Choose a birth default that the exact model can actually serve.
+
+    Provider-wide defaults are only fallbacks. Some providers expose models
+    with different effort surfaces: Cursor's Composer has no effort axis at
+    all, while an explicitly routed agy model rejects agy's ``dynamic``
+    provider default. A newborn must not be written with a pairing the
+    save-time contract already knows is invalid.
+    """
+    default = DEFAULT_EFFORT.get(provider, "")
+    contract = effort_contract(provider, model)
+    if contract is None:
+        return default
+    if not contract:
+        return ""
+    if default in contract:
+        return default
+    for candidate in ("high", "medium", "low", "xhigh", "max"):
+        if candidate in contract:
+            return candidate
+    return ""
+
+
 def cmd_create(args: argparse.Namespace) -> int:
     interactive = not (args.name and args.provider and args.model)
 
@@ -142,7 +168,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     # creature is never silently coupled to the host's CLI effort default.
     effort = (args.effort or "").strip().lower()
     if not effort:
-        default_eff = DEFAULT_EFFORT.get(provider, "")
+        default_eff = _birth_default_effort(provider, model)
         effort = _ask("reasoning effort baseline (low/medium/high/xhigh/max, or 'dynamic')",
                       default=default_eff) if interactive else default_eff
 
@@ -173,6 +199,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     if effort:
         cfg.brain["effort"] = effort
 
+
     # Output directory
     out_dir = _resolve_out_dir(name, args.out)
     if out_dir.exists() and any(out_dir.iterdir()):
@@ -190,6 +217,18 @@ def cmd_create(args: argparse.Namespace) -> int:
     # the default temporary one (temporary habitats also skip identity-file
     # scaffolding, which would leave the creature under-equipped for CLI brains).
     cfg.habitat = HabitatConfig.local(str(out_dir))
+
+    # Stamp the habitat the creature is actually born into. The heartbeat is
+    # habitat-scoped (`--habitat Mac-habitat`), so a creature with a blank origin
+    # is invisible to its own habitat's care sweep — forged, alive, and skipped
+    # by every pulse until someone marks it by hand. Ember was born that way and
+    # missed its first heartbeat, which is how this surfaced.
+    #
+    # Only stamped when the host declares one; an unmarked host still produces an
+    # unmarked creature rather than a guessed origin.
+    host_origin = get_host_habitat_origin()
+    if host_origin and not cfg.habitat.origin:
+        cfg.habitat.origin = host_origin
 
     # Custom instructions (e.g. conversation language) — feed the engine's system
     # prompt (API brains) AND the identity files (CLI brains read them).

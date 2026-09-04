@@ -72,6 +72,9 @@ class BaseAdapter(ABC):
     def _request(self, url: str, data: bytes | None = None, headers: dict | None = None, method: str = "GET") -> dict:
         """공통 HTTP 요청 헬퍼"""
         import json
+        import socket
+        import time
+        import urllib.error
         import urllib.request
 
         hdrs = {"Content-Type": "application/json"}
@@ -80,6 +83,140 @@ class BaseAdapter(ABC):
 
         req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
         timeout_sec = self.timeout_ms / 1000
+        started = time.monotonic()
 
-        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        # Ollama's streaming transport is selected by the request body.  Keep
+        # the generic JSON path unchanged for every other adapter/request.
+        streaming = False
+        if data:
+            try:
+                streaming = json.loads(data.decode("utf-8")).get("stream") is True
+            except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+                pass
+
+        chunks: list[dict] = []
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                if not streaming:
+                    return json.loads(resp.read().decode("utf-8"))
+
+                timed_out = False
+                while True:
+                    # urlopen's timeout is a socket-idle timeout, not a total
+                    # generation deadline.  Check a wall clock as chunks arrive
+                    # so a continuously streaming model cannot run forever.
+                    if time.monotonic() - started >= timeout_sec:
+                        timed_out = True
+                        break
+                    try:
+                        line = resp.readline()
+                    except (TimeoutError, socket.timeout):
+                        timed_out = True
+                        break
+                    if not line:
+                        break
+                    try:
+                        chunk = json.loads(line.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        continue
+                    if isinstance(chunk, dict):
+                        chunks.append(chunk)
+                    if chunk.get("done") is True:
+                        break
+
+                return self._aggregate_json_stream(
+                    chunks,
+                    timed_out=timed_out,
+                    elapsed_ms=(time.monotonic() - started) * 1000,
+                )
+        except (TimeoutError, socket.timeout) as exc:
+            if streaming:
+                return self._aggregate_json_stream(
+                    chunks,
+                    timed_out=True,
+                    elapsed_ms=(time.monotonic() - started) * 1000,
+                    transport_error=str(exc),
+                )
+            raise
+        except urllib.error.URLError as exc:
+            if streaming and isinstance(exc.reason, (TimeoutError, socket.timeout)):
+                return self._aggregate_json_stream(
+                    chunks,
+                    timed_out=True,
+                    elapsed_ms=(time.monotonic() - started) * 1000,
+                    transport_error=str(exc),
+                )
+            raise
+
+    @staticmethod
+    def _aggregate_json_stream(
+        chunks: list[dict],
+        *,
+        timed_out: bool,
+        elapsed_ms: float,
+        transport_error: str = "",
+    ) -> dict:
+        """Combine Ollama NDJSON chunks without inventing token usage.
+
+        Exact prompt/eval counts are emitted only in Ollama's terminal chunk.
+        When a deadline interrupts generation we preserve the partial text,
+        thinking trace, and observed chunk count, but deliberately leave token
+        counts absent so callers cannot mislabel an estimate as measurement.
+        """
+        last = dict(chunks[-1]) if chunks else {}
+        message: dict[str, Any] = {"role": "assistant", "content": ""}
+        thinking_parts: list[str] = []
+        content_parts: list[str] = []
+        tool_calls: list[Any] = []
+
+        for chunk in chunks:
+            msg = chunk.get("message") or {}
+            if not isinstance(msg, dict):
+                continue
+            if msg.get("role"):
+                message["role"] = msg["role"]
+            content_parts.append(msg.get("content") or "")
+            thinking_parts.append(msg.get("thinking") or "")
+            if isinstance(msg.get("tool_calls"), list):
+                tool_calls.extend(msg["tool_calls"])
+
+        message["content"] = "".join(content_parts)
+        thinking = "".join(thinking_parts)
+        if thinking:
+            message["thinking"] = thinking
+        if tool_calls:
+            message["tool_calls"] = tool_calls
+
+        result = last
+        result["message"] = message
+        result["stream_chunks"] = len(chunks)
+        result["elapsed_ms"] = round(float(elapsed_ms), 3)
+        result["partial_usage"] = {
+            "token_counts_available": (
+                "prompt_eval_count" in result and "eval_count" in result
+            ),
+            "stream_chunks": len(chunks),
+            "thinking_chars": len(thinking),
+            "content_chars": len(message["content"]),
+        }
+        if transport_error:
+            result["transport_error"] = transport_error
+
+        terminal = bool(chunks and chunks[-1].get("done") is True)
+        if timed_out:
+            result.update({
+                "done": False,
+                "done_reason": "timeout",
+                "timeout": True,
+                "partial": True,
+            })
+        elif not terminal:
+            result.update({
+                "done": False,
+                "done_reason": result.get("done_reason") or "stream_incomplete",
+                "stream_incomplete": True,
+                "partial": True,
+            })
+        else:
+            result["partial"] = False
+        return result

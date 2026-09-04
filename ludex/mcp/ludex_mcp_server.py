@@ -25,9 +25,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
-
-from claude_agent_sdk import tool, create_sdk_mcp_server, SdkMcpTool
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,37 @@ logger = logging.getLogger(__name__)
 # Tool definitions (stateless — organism injected at runtime)
 # ============================================================
 
-_organism = None  # Set by create_ludex_mcp()
+@dataclass(frozen=True)
+class LudexTool:
+    """SDK-independent organ-tool definition.
+
+    Local OpenAI/Ollama function calling and the standalone stdio MCP server
+    only need these four fields. Keeping their definitions local prevents an
+    optional Claude Agent SDK install from becoming a prerequisite for every
+    tools-capable brain.
+    """
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+    handler: Callable[[dict], Awaitable[dict[str, Any]]]
+
+
+def tool(name: str, description: str, input_schema: dict[str, Any]):
+    """Declare a Ludex organ tool without importing a provider SDK."""
+
+    def decorate(handler: Callable[[dict], Awaitable[dict[str, Any]]]) -> LudexTool:
+        return LudexTool(
+            name=name,
+            description=description,
+            input_schema=input_schema,
+            handler=handler,
+        )
+
+    return decorate
+
+
+_organism = None  # Set by bind_ludex_organism()/create_ludex_mcp().
 
 
 def _get_block(name: str):
@@ -495,7 +524,7 @@ async def engine_submit(args: dict) -> dict[str, Any]:
 # MCP Server Factory
 # ============================================================
 
-ALL_TOOLS: list[SdkMcpTool] = [
+ALL_TOOLS: list[LudexTool] = [
     immune_assess,
     immune_intervene,
     emotion_analyze,
@@ -509,6 +538,58 @@ ALL_TOOLS: list[SdkMcpTool] = [
     weight_check,
     engine_submit,
 ]
+
+
+_TOOL_BLOCKS: dict[str, str | None] = {
+    "ludex_immune_assess": "immune",
+    "ludex_immune_intervene": "immune",
+    "ludex_emotion_analyze": "emotion",
+    "ludex_emotion_state": "emotion",
+    "ludex_memory_recall": "memory",
+    "ludex_time_recall": "chronos",
+    "ludex_memory_store": "memory",
+    "ludex_vitals": None,
+    "ludex_humoral_assess": "humoral_immune",
+    "ludex_humoral_report": "humoral_immune",
+    "ludex_weight": None,
+    "ludex_engine_submit": "engine",
+}
+
+
+def bind_ludex_organism(organism) -> None:
+    """Bind tool handlers to an organism without constructing an MCP server."""
+    global _organism
+    _organism = organism
+
+
+def select_ludex_tools(
+    organism=None,
+    tools: list[str] | None = None,
+    *,
+    include_engine: bool = True,
+) -> list[LudexTool]:
+    """Return tools available to an organism.
+
+    ``ludex_engine_submit`` is useful as an external reach transport, but a
+    creature's own brain must not receive it: calling its own engine from an
+    engine turn would recurse. Local FC callers therefore pass
+    ``include_engine=False``.
+    """
+    if tools is not None:
+        requested = set(tools)
+        selected = [t for t in ALL_TOOLS if t.name in requested]
+    else:
+        selected = []
+        for candidate in ALL_TOOLS:
+            required_block = _TOOL_BLOCKS.get(candidate.name)
+            if required_block is None or (
+                organism is not None and organism.get_block(required_block)
+            ):
+                selected.append(candidate)
+
+    if not include_engine:
+        selected = [t for t in selected if t.name != "ludex_engine_submit"]
+    return selected
 
 
 def create_ludex_mcp(organism=None, tools: list[str] | None = None):
@@ -540,37 +621,31 @@ def create_ludex_mcp(organism=None, tools: list[str] | None = None):
         ):
             print(msg)
     """
-    global _organism
-    _organism = organism
+    bind_ludex_organism(organism)
+    selected = select_ludex_tools(organism, tools)
 
-    if tools:
-        selected = [t for t in ALL_TOOLS if t.name in tools]
-    else:
-        # Auto-select based on installed organs
-        selected = []
-        for t in ALL_TOOLS:
-            # Map tool name to required block
-            block_map = {
-                "ludex_immune_assess": "immune",
-                "ludex_immune_intervene": "immune",
-                "ludex_emotion_analyze": "emotion",
-                "ludex_emotion_state": "emotion",
-                "ludex_memory_recall": "memory",
-                "ludex_memory_store": "memory",
-                "ludex_vitals": None,  # always available
-                "ludex_humoral_assess": "humoral_immune",
-                "ludex_humoral_report": "humoral_immune",
-                "ludex_weight": None,  # always available
-                "ludex_engine_submit": "engine",  # D-062 reach transport
-            }
-            required_block = block_map.get(t.name)
-            if required_block is None or (organism and organism.get_block(required_block)):
-                selected.append(t)
+    # This is the one path that genuinely needs the optional Claude SDK.
+    # Local Ollama/OpenAI function calling and standalone stdio MCP use the
+    # provider-neutral LudexTool definitions above.
+    try:
+        from claude_agent_sdk import create_sdk_mcp_server, tool as sdk_tool
+    except ModuleNotFoundError as exc:
+        if exc.name != "claude_agent_sdk":
+            raise
+        raise ModuleNotFoundError(
+            "claude-agent-sdk is required for create_ludex_mcp(); "
+            "local Ludex function calling does not require it"
+        ) from exc
+
+    sdk_tools = [
+        sdk_tool(t.name, t.description, t.input_schema)(t.handler)
+        for t in selected
+    ]
 
     return create_sdk_mcp_server(
         name="ludex-organs",
         version="0.1.0",
-        tools=selected,
+        tools=sdk_tools,
     )
 
 
@@ -659,27 +734,8 @@ if __name__ == "__main__":
         org = config.build()
         print(f"Ludex MCP: ephemeral creature '{creature_name}' (preset={args.preset})", file=sys.stderr)
 
-    _organism = org
-
-    # Auto-select tools based on installed organs
-    selected_tools = []
-    for t in ALL_TOOLS:
-        block_map = {
-            "ludex_immune_assess": "immune",
-            "ludex_immune_intervene": "immune",
-            "ludex_emotion_analyze": "emotion",
-            "ludex_emotion_state": "emotion",
-            "ludex_memory_recall": "memory",
-            "ludex_memory_store": "memory",
-            "ludex_vitals": None,
-            "ludex_humoral_assess": "humoral_immune",
-            "ludex_humoral_report": "humoral_immune",
-            "ludex_weight": None,
-            "ludex_engine_submit": "engine",
-        }
-        req = block_map.get(t.name)
-        if req is None or org.get_block(req):
-            selected_tools.append(t)
+    bind_ludex_organism(org)
+    selected_tools = select_ludex_tools(org)
 
     print(f"  Tools: {[t.name for t in selected_tools]}", file=sys.stderr)
 

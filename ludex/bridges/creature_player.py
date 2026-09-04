@@ -26,7 +26,22 @@ _RETRY_NUDGE = ("\n\n[Your last reply could not be read as a move. Reply with ON
                 "the move, inline in your response, exactly as instructed — nothing else.]")
 
 
-def _engage_perception(organism, obs) -> None:
+def _canonical_move(action_text: str) -> str:
+    """The creature's structured move from its raw reply, if unambiguous.
+
+    수리 A (TEXTARENA-01 사문 2): the humoral exploited-check compares
+    canonical moves, and my_action="" kept that channel dead through every
+    bridged game. Only a reply naming exactly one move canonicalizes —
+    anything else stays "" rather than guessing.
+    """
+    up = action_text.upper()
+    has_c, has_d = "COOPERATE" in up, "DEFECT" in up
+    if has_c != has_d:
+        return "COOPERATE" if has_c else "DEFECT"
+    return ""
+
+
+def _engage_perception(organism, obs, my_last_move: str = "") -> None:
     """Organs that READ the environment before the creature acts.
 
     immune: scan each incoming peer utterance for deceptive persuasion
@@ -52,7 +67,7 @@ def _engage_perception(organism, obs) -> None:
             try:
                 humoral.handle_report_interaction(
                     opponent=agent, opponent_action=move,
-                    my_action="", my_score=0, opponent_score=0,
+                    my_action=my_last_move, my_score=0, opponent_score=0,
                 )
             except Exception as e:
                 logger.debug(f"humoral report failed ({agent}): {e}")
@@ -60,7 +75,8 @@ def _engage_perception(organism, obs) -> None:
 
 def play_episode(organism, bridge, *, max_steps: int = 100,
                  consolidate: bool = True, prompt_prefix: str = "",
-                 on_turn=None, action_retries: int = 0) -> dict:
+                 on_turn=None, action_retries: int = 0,
+                 organ_line=None) -> dict:
     """Run one episode of `organism` in `bridge`'s environment.
 
     Returns a result dict: {field, reward, turns, present_agents}.
@@ -70,6 +86,15 @@ def play_episode(organism, bridge, *, max_steps: int = 100,
     `on_turn`, if given, is called once per turn with a dict
     {turn, saw, action, result, reward, terminal} — the per-turn trace an
     experiment needs (move/score capture) without losing organ engagement.
+
+    `organ_line` — 수리 B (TEXTARENA-01 사문 1, design change, approved
+    2026-08-30): a callable(organism, obs) -> str|None. When it yields a
+    non-empty line, that ONE line rides at the top of the turn prompt —
+    the read path from organ output back to judgment that the bridge never
+    had. Arms differ only by producer: FULL passes a real organ reading,
+    SHAM the same format with an irrelevant value, BARE passes nothing.
+    The insertion point is identical for every arm; producer failure
+    degrades to no line, never to a crash.
     """
     engine = organism.get_block("engine")
     if engine is None:
@@ -88,10 +113,18 @@ def play_episode(organism, bridge, *, max_steps: int = 100,
 
     turn = 0
     total_reward = 0.0
+    last_move = ""   # 수리 A: the canonical previous move rides into perception
     while not obs.terminal and turn < max_steps:
-        _engage_perception(organism, obs)
+        _engage_perception(organism, obs, last_move)
         saw = obs.text
-        base_prompt = (prompt_prefix + obs.text) if prompt_prefix else obs.text
+        line = None
+        if organ_line is not None:
+            try:
+                line = organ_line(organism, obs)
+            except Exception as e:
+                logger.debug(f"organ_line failed at turn {turn}: {e}")
+        body = obs.text if not line else f"{line}\n{obs.text}"
+        base_prompt = (prompt_prefix + body) if prompt_prefix else body
         prev_state = dict(obs.state)
         for _attempt in range(action_retries + 1):   # re-prompt if the bridge rejects the action
             prompt = base_prompt if _attempt == 0 else base_prompt + _RETRY_NUDGE
@@ -103,6 +136,7 @@ def play_episode(organism, bridge, *, max_steps: int = 100,
                 action = ""
             try:
                 obs = bridge.step(action)
+                last_move = _canonical_move(action)
                 break
             except Exception as e:
                 if _attempt < action_retries:
@@ -131,7 +165,7 @@ def play_episode(organism, bridge, *, max_steps: int = 100,
                 logger.debug(f"physis.step failed at turn {turn}: {e}")
         turn += 1
 
-    _engage_perception(organism, obs)   # final peer messages (e.g. end-game reveal)
+    _engage_perception(organism, obs, last_move)   # final peer messages (e.g. end-game reveal)
 
     if consolidate and physis is not None:
         try:

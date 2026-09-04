@@ -1,8 +1,8 @@
 """
 Field cadence proposer — recommend next field candidates.
 
-Reads each creature's store + bonds + ludex.json and produces a ranked
-list of proposals for the caretaker to approve.
+Reads each creature's store + bonds + ludex.yaml (ludex.json fallback)
+and produces a ranked list of proposals for the caretaker to approve.
 
 Scoring heuristics (kept interpretable over optimal):
 - Recency penalty: creatures inactive longer are preferred participants
@@ -74,13 +74,23 @@ class CandidateProposal:
 
 def _load_creature(name: str, root: str = CREATURES_ROOT) -> CreatureSummary | None:
     habitat = Path(root) / name
-    cfg_path = habitat / "ludex.json"
-    if not cfg_path.exists():
-        return None
+    # ludex.yaml is the live authority (heartbeat and re-brains write it);
+    # ludex.json is the legacy format some creatures still carry. Reading
+    # json first meant post-migration creatures were surveyed with their
+    # pre-migration brains, and yaml-only creatures were invisible — 11 of
+    # 25 surveyed, four of them with brains they no longer had (2026-08-08).
+    yaml_path = habitat / "ludex.yaml"
+    json_path = habitat / "ludex.json"
     try:
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        if yaml_path.exists():
+            import yaml
+            cfg = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        elif json_path.exists():
+            cfg = json.loads(json_path.read_text(encoding="utf-8"))
+        else:
+            return None
     except Exception as e:
-        logger.warning(f"Failed to parse {cfg_path}: {e}")
+        logger.warning(f"Failed to parse config in {habitat}: {e}")
         return None
 
     brain = cfg.get("brain", {})

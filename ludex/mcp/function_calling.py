@@ -5,10 +5,10 @@ Lets non-MCP brains (Ollama SLMs, OpenAI, Gemini, etc.) call Ludex organ tools
 via standard OpenAI-compatible function calling.
 
 Usage:
-    from ludex.mcp import create_ludex_mcp, mcp_to_openai_tools, dispatch_tool_call
+    from ludex.mcp import bind_ludex_organism, mcp_to_openai_tools, dispatch_tool_call
 
     organism = ...  # Built from OrganismConfig
-    create_ludex_mcp(organism)  # Sets up _organism context
+    bind_ludex_organism(organism)  # Sets up handler context; no SDK required
 
     # Get OpenAI-format tool schemas
     tools_schema = mcp_to_openai_tools()
@@ -55,7 +55,7 @@ def mcp_to_openai_tools(tool_names: list[str] | None = None) -> list[dict]:
         ]
     """
     selected = ALL_TOOLS
-    if tool_names:
+    if tool_names is not None:
         selected = [t for t in ALL_TOOLS if t.name in tool_names]
 
     result = []

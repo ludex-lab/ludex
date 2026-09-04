@@ -75,6 +75,18 @@ def pulse_creature(
     if not any((creature_dir / f).exists() for f in ("ludex.yaml", "ludex.json")):
         return {"name": name, "skip": True, "reason": "no ludex.yaml/json"}
 
+    # Retired/dormant creatures are not built AT ALL. Building is not
+    # side-effect-free: an ollama brain's FC-wiring probe loads the whole
+    # model into RAM. Moss (retired by Decision 13, 9.6GB gemma4) was still
+    # being built every pulse, and on 2026-08-24 02:03 that load collapsed
+    # the habitat's GUI session. The label is read lightweight, before any
+    # build cost; other lifecycle labels (cost-watch, wind-down, retiring)
+    # remain display-only and still pulse normally.
+    status = _creature_substrate_status(creature_dir)
+    if status in ("dormant", "retired"):
+        return {"name": name, "skip": True, "reason": f"substrate:{status}",
+                "substrate_status": status}
+
     try:
         cfg = OrganismConfig.load(str(creature_dir))
         organism = cfg.build()
@@ -92,10 +104,21 @@ def pulse_creature(
         "timestamp": time.time(),
     }
     # Caretaker-declared substrate lifecycle label (substrate_change_policy:
-    # live / cost-watch / wind-down / retiring / dormant). Display-only —
-    # the heartbeat never acts on it.
+    # live / cost-watch / wind-down / retiring / dormant / retired).
+    # dormant/retired short-circuit before build (see gate above); the
+    # remaining labels are display-only and surfaced here.
     if brain.get("substrate_status"):
         result["substrate_status"] = brain["substrate_status"]
+
+    # 0a. Task-bound budget (founder 09-03: Haru's solar is paid per token —
+    # only its two translation jobs may spend it). A pulse still records
+    # health, but never calls the brain: no reflect, no consolidation.
+    if brain.get("budget") == "task_bound":
+        result["outcome"] = "task_bound"
+        result["budget"] = "task_bound"
+        if not dry_run:
+            _emit_heartbeat_span(organism, result)
+        return result
 
     # 0. D-068 Brain fatigue check — if creature is in cooldown, surface
     # "resting" outcome immediately and skip brain calls entirely.
@@ -377,6 +400,36 @@ def _check_bond_staleness(creature_dir: Path) -> list[str]:
     return stale
 
 
+def _creature_substrate_status(creature_dir: Path) -> str:
+    """Read brain.substrate_status without full load/build.
+
+    Same lightweight-read rationale as _creature_habitat_origin: the whole
+    point of this label check is to avoid build cost (and build side
+    effects), so it must not pay them itself. Normalized to lowercase —
+    the load_bonds case-sensitivity bug taught us caretaker-written
+    labels arrive in mixed case. Empty string if absent or unreadable.
+    """
+    for fname in ("ludex.yaml", "ludex.json"):
+        p = creature_dir / fname
+        if not p.exists():
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+            if fname.endswith(".yaml"):
+                try:
+                    import yaml
+                    data = yaml.safe_load(text) or {}
+                except Exception:
+                    return ""
+            else:
+                data = json.loads(text)
+            return str((data.get("brain") or {}).get(
+                "substrate_status", "") or "").strip().lower()
+        except Exception:
+            return ""
+    return ""
+
+
 def _creature_habitat_origin(creature_dir: Path) -> str:
     """Read habitat.origin from a creature's config without full load/build.
 
@@ -483,6 +536,19 @@ def _consolidation_rotation(
             continue
         if r.get("substrate_status") == "dormant":
             continue
+        # Instruments do not get consolidation slots. A probe's value is that it
+        # stays blank — a measurement base that accumulates memories changes the
+        # recall surface every battery copies from it. Rotation is capped at one
+        # per pulse, so a slot spent on an instrument is a slot a creature did
+        # not get; GrokProbe had already taken one. Health checks still run:
+        # an instrument that has quietly died should still be visible.
+        try:
+            import yaml as _yaml
+            if (_yaml.safe_load((d / "ludex.yaml").read_text()) or {}
+                    ).get("role") == "probe":
+                continue
+        except Exception:
+            pass
         try:
             decision = should_consolidate(d)
         except Exception as e:

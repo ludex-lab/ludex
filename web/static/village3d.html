@@ -29,7 +29,8 @@
     <label><input type="checkbox" id="follow" checked> <span data-v="follow"></span></label>
     <label><span data-v="speed"></span> <input type="range" id="speed" min="0.5" max="3" step="0.25" value="1" style="vertical-align:middle;width:90px"></label>
     <span id="status"></span>
-    <button id="replayAll" style="margin-left:8px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px"></button>
+    <button id="replayAll" data-v="replay_all" style="margin-left:8px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px"></button>
+    <button id="skipBtn" data-v="skip" style="display:none;margin-left:8px;background:#2b2113;color:#e0c97e;border:1px solid #5a4a24;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px"></button>
   </div>
 </div>
 
@@ -51,16 +52,34 @@ const WALKTEST = new URLSearchParams(location.search).get("walktest") === "1";
 let VLANG = (() => { try { return localStorage.getItem("ludex_lang") === "ko" ? "ko" : "en"; }
                      catch { return "en"; } })();
 const VSTR = {
-  en: { subtitle: "view principle: real scenes only", follow: "Follow mayor", speed: "Speed",
+  en: { subtitle: "view principle: real scenes only", follow: "Follow the action", speed: "Speed",
+        skip: "Skip speech \u25B8",
         loading: "loading…", live: "live", waiting: "waiting for live scenes", mayor: "Mayor",
         cap_reflect: "checking {n}'s reflection", cap_hb: "checking {n}'s pulse",
         cap_field: "{w} — a stage of {k}", cap_report: "writing the village report",
-        cap_arrival: "welcoming {n} — newly arrived", replay_all: "replay from start" },
-  ko: { subtitle: "뷰-원칙: 실재 장면만", follow: "촌장 따라가기", speed: "속도",
+        cap_duty: "{n} — the day's work at the {o} desk",
+        cap_letter: "a letter — {a} → {b}",
+        cap_meeting: "a working meeting of {k} — {w}",
+        cap_agora: "the agora in session — {k} present, {w}",
+        cap_ruling: "a ruling posted — {w}",
+        cap_notice: "pinned on the board — {w}",
+        cap_arrival: "welcoming {n} — newly arrived", replay_all: "replay from start",
+        cap_transition: "{n}'s substrate moved — {f} → {t}",
+        cap_turnover: "a generation turns over — {k} residents, {a} axis, nobody gone" },
+  ko: { subtitle: "뷰-원칙: 실재 장면만", follow: "장면 따라가기", speed: "속도",
+        skip: "대사 건너뛰기 \u25B8",
         loading: "로딩…", live: "가동", waiting: "실시간 대기 중", mayor: "촌장",
         cap_reflect: "{n}의 반성을 살핀다", cap_hb: "{n}의 맥박을 살핀다",
         cap_field: "{w} — {k}마리의 무대", cap_report: "촌정 보고를 쓴다",
-        cap_arrival: "새로 온 {n}를 맞이한다", replay_all: "처음부터 다시보기" },
+        cap_duty: "{n} — {o} 데스크의 오늘 일",
+        cap_letter: "편지 — {a} → {b}",
+        cap_meeting: "{k}인의 실무 회의 — {w}",
+        cap_agora: "아고라가 열리다 — {k}인 참석, {w}",
+        cap_ruling: "판결문이 붙다 — {w}",
+        cap_notice: "게시판에 붙다 — {w}",
+        cap_arrival: "새로 온 {n}를 맞이한다", replay_all: "처음부터 다시보기",
+        cap_transition: "{n}의 기질이 옮겨졌다 — {f} → {t}",
+        cap_turnover: "세대가 넘어간다 — {k}명, {a}축, 아무도 떠나지 않았다" },
 };
 const vt = k => (VSTR[VLANG][k] ?? VSTR.en[k] ?? k);
 let mayorRef = null;   // set after the mayor exists (const in TDZ until then)
@@ -446,6 +465,65 @@ function makeFacility(kind) {
     const roof = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.16, 1.9), facRoof(0x8fb7d6));
     roof.position.y = 0.98;
     g.add(b, roof);
+  } else if (kind === "chronicle_hall") {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 1.2), facWall());
+    b.position.y = 0.4; b.castShadow = true; b.receiveShadow = true;
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.14, 1.45), facRoof(0xc98f8f));
+    roof.position.y = 0.86;
+    // the ledger stack by the door — a chroniclers' hall keeps its books outside too
+    const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.22), facRoof(0xd6c8a8));
+    b1.position.set(0.55, 0.05, 0.75);
+    const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.2), facRoof(0x9fb6cf));
+    b2.position.set(0.53, 0.13, 0.73); b2.rotation.y = 0.3;
+    g.add(b, roof, b1, b2);
+  } else if (kind === "editors_desk") {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.75, 1.15), facWall());
+    b.position.y = 0.38; b.castShadow = true; b.receiveShadow = true;
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.14, 1.4), facRoof(0x7ec7b6));
+    roof.position.y = 0.8;
+    const lectern = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.42, 0.22), woodMat());
+    lectern.position.set(-0.55, 0.21, 0.8); lectern.castShadow = true;
+    g.add(b, roof, lectern);
+  } else if (kind === "research_institute") {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 1.5), facWall());
+    b.position.y = 0.4; b.castShadow = true; b.receiveShadow = true;
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.55, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), facRoof(0x9db4ff));
+    dome.position.y = 0.8; dome.castShadow = true;
+    g.add(b, dome);
+  } else if (kind === "counsel_office") {
+    const t2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.58, 1.0, 8), facWall());
+    t2.position.y = 0.5; t2.castShadow = true;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.66, 0.5, 8), facRoof(0xb9a3d6));
+    cap.position.y = 1.25; cap.castShadow = true;
+    // the visitor's bench — refusal costs nothing, and there is a place to sit either way
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.12, 0.22), woodMat());
+    bench.position.set(0.75, 0.1, 0.45); bench.castShadow = true;
+    g.add(t2, cap, bench);
+  } else if (kind === "registry_office") {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.1), facWall());
+    b.position.y = 0.35; b.castShadow = true; b.receiveShadow = true;
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 1.3), facRoof(0xd6b98a));
+    roof.position.y = 0.76;
+    // the drawer stack — a registrar is a keeper of rows
+    for (let i = 0; i < 3; i++) {
+      const dr = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.11, 0.24), stoneMat());
+      dr.position.set(0.62, 0.07 + i * 0.13, 0.62); dr.castShadow = true;
+      g.add(dr);
+    }
+    g.add(b, roof);
+  } else if (kind === "scouts_tower") {
+    for (const [dx, dz] of [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 1.5, 6), woodMat());
+      leg.position.set(dx, 0.75, dz); leg.castShadow = true;
+      g.add(leg);
+    }
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.1, 1.0), woodMat());
+    deck.position.y = 1.5; deck.castShadow = true;
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.55, 0.75), facWall());
+    cabin.position.y = 1.83; cabin.castShadow = true;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.6, 0.42, 4), facRoof(0x8fb7d6));
+    cap.position.y = 2.32; cap.rotation.y = Math.PI / 4;
+    g.add(deck, cabin, cap);
   } else if (kind === "academy") {
     const b = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.8, 1.4), facWall());
     b.position.y = 0.4; b.castShadow = true; b.receiveShadow = true;
@@ -662,6 +740,68 @@ function despawnResident(name) {
 }
 for (const c of (STATE.creatures || [])) spawnResident(c);
 
+/* ---------- "지금 마을": stations + mailbox flags (view-principle) ----------
+   A resident stands where their latest recorded act put them: if the newest
+   duty/meeting/reflect scene naming them is a duty or a meeting, they stand
+   at that facility; a reflect (written at home) brings them home. Nothing is
+   scheduled or simulated — the position IS the ledger's last word. */
+const lastAct = {};
+for (const s of SCENES) {
+  if (!["duty", "meeting", "reflect"].includes(s.kind)) continue;
+  for (const a of (s.actors || [])) {
+    if (!lastAct[a] || s.t >= lastAct[a].t) lastAct[a] = s;
+  }
+}
+const atFacility = {};
+for (const p of residents) {
+  const s = lastAct[p.userData.name];
+  if (!s || s.kind === "reflect") continue;
+  const where = s.kind === "meeting" ? "council_hall" : s.where;
+  if (MAP.plots[`facility:${where}`]) (atFacility[where] ||= []).push(p);
+}
+{
+  // one tile per body — colleagues at the same desk stand beside each
+  // other, never inside each other
+  const takenS = new Set(OCCUPIED);
+  for (const [where, group] of Object.entries(atFacility)) {
+    for (const p of group) {
+      const d = doorstep(MAP.plots[`facility:${where}`], takenS);
+      takenS.add(d.row * G + d.col);
+      const pos = world(d.col, d.row);
+      p.position.set(pos.x, tileH(d.col, d.row), pos.z);
+      p.userData.gy = tileH(d.col, d.row);
+      p.userData.tile = d;   // walkers route from the ledger's last position
+    }
+  }
+}
+
+/* mailbox flags — unread letters raise a flag at the resident's house door */
+const unreadMail = {};
+for (const s of SCENES) {
+  if (s.kind === "letter" && s.read === false) {
+    const to = (s.actors || [])[1];
+    if (to) unreadMail[to] = (unreadMail[to] || 0) + 1;
+  }
+}
+for (const [name, n] of Object.entries(unreadMail)) {
+  const plot = MAP.plots[`house:${name}`];
+  if (!plot) continue;
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), woodMat());
+  pole.position.y = 0.3;
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.14), facWall());
+  box.position.y = 0.62; box.castShadow = true;
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.02), facRoof(0xe0b070));
+  flag.position.set(0.1, 0.75, 0);
+  g.add(pole, box, flag);
+  const lb = label(String(n), "#e0b070", 9);
+  lb.position.y = 0.95;
+  g.add(lb);
+  const pos = world(plot.col, plot.row);
+  g.position.set(pos.x + 0.55, tileH(plot.col, plot.row), pos.z + 0.55);
+  scene.add(g);
+}
+
 /* mayor */
 const mayor = makePerson({ body: 0x46525f, head: 0xcfc4e8, h: 1,
   faceSlot: "face_mayor", bodySlot: "body_mayor", bodyTint: 0xffffff });
@@ -679,6 +819,55 @@ scene.add(mayor);
 const M = { pos: { col: start.col, row: start.row }, route: [], qi: 0, queue: [],
             moving: false, wp: null, prog: 0 };
 
+/* ---------- P2d: resident walkers ----------
+   The mayor was the only body that could walk; the residents' acts were
+   watched from his feet. Now a scene's own actors carry it: a duty is the
+   holder's commute, a letter is walked by its author to the recipient's
+   door, a meeting walks every participant to the hall, a reflect brings
+   its writer home. The mayor keeps the machinery's own errands — pulse
+   visits, machinery-filed letters, rulings, notices. Same view-principle:
+   every walk replays a recorded act, nobody wanders. */
+let ACTIVE = [];        // walkers of the current turn: {mesh,pos,route,ri,wp,prog,moving}
+let WALK_DONE = [];     // last turn's walkers, for arrival staging
+let PRIMARY = mayor;    // the turn's protagonist — bubble, camera, sun follow them
+const resOf = n => residents.find(r => r.userData.name === n);
+/* live occupancy — every body's current (or reserved) tile. Destination
+   picking consults THIS, not the spawn-time set, so nobody is ever sent
+   to stand inside somebody (JJ, 08-11). */
+function occupiedNow(exceptMesh) {
+  const t = new Set();
+  if (exceptMesh !== mayor) t.add(M.pos.row * G + M.pos.col);
+  for (const r of residents) {
+    if (r === exceptMesh || !r.userData.tile) continue;
+    t.add(r.userData.tile.row * G + r.userData.tile.col);
+  }
+  return t;
+}
+function moversFor(s) {
+  const one = (who, target) => {
+    const m = resOf(who);
+    return (m && target) ? [{ mesh: m, target }] : null;
+  };
+  if (s.kind === "duty")
+    return one(s.actors[0], MAP.plots[`facility:${s.where}`] || MAP.plots["facility:council_hall"]);
+  if (s.kind === "letter")
+    return one(s.actors[0], MAP.plots[`house:${s.actors[1]}`]);
+  if (s.kind === "reflect")
+    return one(s.actors[0], MAP.plots[`house:${s.actors[0]}`]);
+  if (s.kind === "meeting" || s.kind === "agora") {
+    /* an agora is not a meeting held elsewhere: its actors stand ON the
+       agora. Added 2026-08-26 with the `agora` scene kind — the bus learned
+       to see the founding the same morning, and a kind the renderer does not
+       know is a kind nobody walks to. */
+    const target = MAP.plots[s.kind === "agora" ? "facility:agora"
+                                                : "facility:council_hall"];
+    const out = (s.actors || []).map(resOf).filter(Boolean)
+      .map(m => ({ mesh: m, target }));
+    return out.length ? out : null;
+  }
+  return null;   // the mayor's errand
+}
+
 /* ---------- scene queue: same view-principle stream as 2.5D ---------- */
 function sceneTarget(s) {
   if (s.kind === "reflect") return MAP.plots[`house:${s.actors[0]}`];
@@ -687,6 +876,19 @@ function sceneTarget(s) {
   if (s.kind === "field") return MAP.plots[s.where];
   if (s.kind === "report") return MAP.plots["facility:mayor_office"];
   if (s.kind === "heartbeat") return { col: G / 2, row: G / 2 + 2 };
+  // a single move belongs to its doorstep; a sweep belongs to the whole village
+  if (s.kind === "transition") {
+    return s.cohort_sweep ? { col: G / 2, row: G / 2 }
+                          : MAP.plots[`house:${s.actors[0]}`];
+  }
+  /* village institutions — desk facilities arrive with the civic district;
+     until a desk has its own plot, its work is watched from the hall */
+  if (s.kind === "duty") return MAP.plots[`facility:${s.where}`] || MAP.plots["facility:council_hall"];
+  if (s.kind === "letter") return MAP.plots[`house:${s.actors[1]}`] || MAP.plots["facility:mayor_office"];
+  if (s.kind === "meeting") return MAP.plots["facility:council_hall"];
+  if (s.kind === "agora") return MAP.plots["facility:agora"];
+  if (s.kind === "ruling") return MAP.plots["facility:agora"];
+  if (s.kind === "notice") return MAP.plots["facility:notice_board"];
   return null;
 }
 function expandScenes(list) {
@@ -709,18 +911,80 @@ function caption(s) {
   if (s.kind === "arrival") return F("cap_arrival", { n: s.actors[0] });
   if (s.kind === "field") return F("cap_field", { w: s.field_name || s.where, k: s.actors.length });
   if (s.kind === "report") return F("cap_report", {});
+  if (s.kind === "transition") {
+    if (s.cohort_sweep) {
+      return F("cap_turnover", { k: s.actors.length, a: (s.axes || []).join("+") });
+    }
+    const m = (s.moves || [])[0] || {};
+    return F("cap_transition", { n: s.actors[0], f: m.from || "?", t: m.to || "?" });
+  }
+  if (s.kind === "duty") return F("cap_duty", { n: s.actors[0], o: s.office || "village" });
+  if (s.kind === "letter") return F("cap_letter", { a: s.actors[0], b: s.actors[1] });
+  if (s.kind === "meeting") return F("cap_meeting", { k: s.actors.length, w: (s.title || "").slice(0, 44) });
+  if (s.kind === "agora") return F("cap_agora", { k: s.actors.length, w: (s.title || "").slice(0, 44) });
+  if (s.kind === "ruling") return F("cap_ruling", { w: (s.title || "").slice(0, 44) });
+  if (s.kind === "notice") return F("cap_notice", { w: (s.title || "").slice(0, 44) });
   return "";
 }
+/* A transition's own words, if the creature left any. Never generated: moves
+   before 2026-08-07 have no narration because the ritual's narrate step was
+   not saved, and an empty bubble is the honest render of that. */
+function transitionWords(s) {
+  if (!s || s.kind !== "transition") return "";
+  const said = (s.moves || []).map(m => m.narration).filter(Boolean);
+  return said.length ? said[0] : "";
+}
+
 /* speech bubble — a canvas sprite with a tail, floating over the mayor */
-let bubble = null;
-function showBubble(text) {
-  if (bubble) { mayor.remove(bubble); bubble.material.map.dispose(); bubble = null; }
-  const size = 13;
+let bubble = null, bubbleHolder = null, bubblePages = [];
+/* Long speech was squeezed into one fixed-width line (fillText maxWidth
+   compresses glyphs). Now text wraps to real lines, and past five lines
+   it turns pages — each page held long enough to read (JJ, 08-11). */
+const BUB_FONT = `600 52px -apple-system, "Apple SD Gothic Neo", sans-serif`;
+const BUB_MAXW = 900, BUB_LINES = 5;
+function bubbleWrap(text) {
   const meas = document.createElement("canvas").getContext("2d");
-  meas.font = `600 ${size * 4}px -apple-system, "Apple SD Gothic Neo", sans-serif`;
-  const tw = Math.min(meas.measureText(text).width, 1100);
+  meas.font = BUB_FONT;
+  const lines = [];
+  let cur = "";
+  for (const word of text.split(/\s+/)) {
+    const cand = cur ? cur + " " + word : word;
+    if (meas.measureText(cand).width <= BUB_MAXW || !cur) cur = cand;
+    else { lines.push(cur); cur = word; }
+  }
+  if (cur) lines.push(cur);
+  // a single word longer than the box: hard-split by glyphs
+  const out = [];
+  for (const ln of lines) {
+    if (meas.measureText(ln).width <= BUB_MAXW) { out.push(ln); continue; }
+    let seg = "";
+    for (const ch of ln) {
+      if (meas.measureText(seg + ch).width > BUB_MAXW) { out.push(seg); seg = ch; }
+      else seg += ch;
+    }
+    if (seg) out.push(seg);
+  }
+  return out;
+}
+function bubblePageMs(lines) {
+  const chars = lines.join(" ").length;
+  return Math.min(6500, Math.max(2600, 1400 + chars * 55));
+}
+function renderBubblePage(lines, more) {
+  /* A scene kind the caption table does not know returns "", and an empty
+     bubble used to throw here — the 3D village crashed on the founding
+     agora (2026-08-26) for want of one string. An unknown kind should
+     draw nothing, not break the stage. */
+  if (!Array.isArray(lines) || !lines.length) return null;
+  const holder = bubbleHolder;
+  if (bubble) { holder.remove(bubble); bubble.material.map.dispose(); bubble = null; }
+  const meas = document.createElement("canvas").getContext("2d");
+  meas.font = BUB_FONT;
+  const tw = Math.max(120, ...lines.map(l => meas.measureText(l).width));
+  const lineH = 62;
   const cv = document.createElement("canvas");
-  cv.width = tw + 48; cv.height = size * 4 + 46;
+  cv.width = tw + 48;
+  cv.height = lines.length * lineH + 40 + 22;
   const ctx = cv.getContext("2d");
   const bh = cv.height - 22;
   ctx.fillStyle = "rgba(245,248,252,.96)";
@@ -729,15 +993,44 @@ function showBubble(text) {
   ctx.beginPath();                                   // tail
   ctx.moveTo(cv.width / 2 - 14, bh); ctx.lineTo(cv.width / 2, cv.height - 2);
   ctx.lineTo(cv.width / 2 + 14, bh); ctx.closePath(); ctx.fill();
-  ctx.font = meas.font; ctx.fillStyle = "#1c2128"; ctx.textBaseline = "middle";
-  ctx.fillText(text, 24, bh / 2 + 3, tw);
+  ctx.font = BUB_FONT; ctx.fillStyle = "#1c2128"; ctx.textBaseline = "middle";
+  lines.forEach((l, i) => ctx.fillText(l, 24, 20 + lineH * (i + 0.5)));
+  if (more) {                                        // page-turn hint
+    ctx.fillStyle = "#5a646f";
+    ctx.font = `600 34px -apple-system, sans-serif`;
+    ctx.fillText("\u25BE", cv.width - 46, bh - 26);
+  }
   const tex = new THREE.CanvasTexture(cv);
   bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-  bubble.scale.set(cv.width / 230, cv.height / 230, 1);
-  bubble.position.set(0, 2.05, 0);
-  bubble.userData.until = performance.now() + 3200;
-  mayor.add(bubble);
+  const wU = cv.width / 230, hU = cv.height / 230;
+  bubble.scale.set(wU, hU, 1);
+  const baseY = bubbleHolder === mayor ? 2.05 : 1.9;
+  bubble.position.set(0, baseY + Math.max(0, (hU - 0.5) / 2), 0);
+  bubble.userData.until = performance.now() + bubblePageMs(lines);
+  holder.add(bubble);
 }
+function showBubble(text) {
+  const holder = PRIMARY || mayor;
+  if (bubble && bubbleHolder) { bubbleHolder.remove(bubble); bubble.material.map.dispose(); bubble = null; }
+  bubbleHolder = holder;
+  const lines = bubbleWrap(text);
+  bubblePages = [];
+  for (let i = 0; i < lines.length; i += BUB_LINES) bubblePages.push(lines.slice(i, i + BUB_LINES));
+  const total = bubblePages.reduce((a, pg) => a + bubblePageMs(pg), 0);
+  const multi = bubblePages.length > 1;
+  renderBubblePage(bubblePages.shift(), bubblePages.length > 0);
+  document.getElementById("skipBtn").style.display = multi ? "" : "none";
+  return total;
+}
+/* a long speech should be skippable — fold the remaining pages and move
+   on to the next scene (JJ, 08-11) */
+document.getElementById("skipBtn").onclick = () => {
+  bubblePages = [];
+  if (bubble && bubbleHolder) { bubbleHolder.remove(bubble); bubble.material.map.dispose(); bubble = null; }
+  document.getElementById("skipBtn").style.display = "none";
+  CHAIN++;             // orphan the long hold scheduled by arrive()
+  chainNext(300);
+};
 const SEEN_KEY = "ludex.village.seen_until";
 let SEEN_UNTIL = (() => { try { return parseFloat(localStorage.getItem(SEEN_KEY)) || 0; }
                           catch { return 0; } })();
@@ -750,13 +1043,42 @@ function markAllSeen() { markSeen(LATEST_T); }
 // visit per creature (~12), so 30 scenes can be 50-100 turns. Budget the
 // EXPANDED queue instead (JJ: 97 turns was too many).
 const TURN_BUDGET = 24, TURN_BUDGET_FULL = 60;
+// Scene kinds a turn budget must not eat. The queue keeps the newest N turns,
+// and routine scenes dominate — heartbeat alone expands to one visit per
+// creature — so the tail slice drops exactly the rare events worth replaying.
+// The API had the same failure and was fixed there; this is the client's own
+// copy of it, one layer up. Rarity is why to keep something, not why to lose it.
+const RARE_KINDS = new Set(["transition", "arrival", "ruling"]);
 function unseenQueue(full) {
   const pool = full ? SCENES.filter(sceneTarget)
                     : SCENES.filter(s => s.t > SEEN_UNTIL && sceneTarget(s));
   const turns = expandScenes(pool);
-  return turns.slice(-(full ? TURN_BUDGET_FULL : TURN_BUDGET));
+  const tail = turns.slice(-(full ? TURN_BUDGET_FULL : TURN_BUDGET));
+  const inTail = new Set(tail);
+  const rare = turns.filter(s => RARE_KINDS.has(s.kind) && !inTail.has(s));
+  return rare.length ? [...rare, ...tail].sort((a, b) => a.t - b.t) : tail;
 }
 M.queue = unseenQueue(false);
+
+// Bound at load, not inside nextScene's targetless branch. It used to live
+// there, so the control stayed an unlabelled empty box with no click handler
+// until some unrelated scene happened to have no target — which is why replay
+// looked absent (JJ, 08-07).
+document.getElementById("replayAll").onclick = () => {
+  SEEN_UNTIL = 0; try { localStorage.removeItem(SEEN_KEY); } catch {}
+  if (typeof bubble !== "undefined" && bubble) { (bubbleHolder || mayor).remove(bubble); bubble = null; }
+  bubblePages = [];
+  document.getElementById("skipBtn").style.display = "none";
+  CHAIN++;                       // orphan any pending scheduled advance
+  M.queue = unseenQueue(true); M.qi = 0; M.moving = false; ACTIVE = [];
+  nextScene();
+};
+
+let CHAIN = 0;   // replay restarts orphan the old chain's timers
+function chainNext(delay) {
+  const c = CHAIN;
+  setTimeout(() => { if (c === CHAIN) nextScene(); }, delay);
+}
 function nextScene() {
   if (M.qi >= M.queue.length) {
     if (WALKTEST) {
@@ -765,35 +1087,52 @@ function nextScene() {
     } else {
       markAllSeen();   // caught up = everything up to now is seen; no replay next visit
       document.getElementById("status").textContent = vt("waiting");
-      setTimeout(nextScene, 5000);
+      chainNext(5000);
       return;
     }
   }
   const s = M.queue[M.qi++];
-  let target = sceneTarget(s);
-  if (!target) { document.getElementById("replayAll").textContent = vt("replay_all");
-document.getElementById("replayAll").onclick = () => {
-  SEEN_UNTIL = 0; try { localStorage.removeItem(SEEN_KEY); } catch {}
-  if (typeof bubble !== "undefined" && bubble) { mayor.remove(bubble); bubble = null; }
-  M.queue = unseenQueue(true); M.qi = 0; M.moving = false;
-  nextScene();
-};
-nextScene(); return; }
-  target = doorstep(target, OCCUPIED);
-  const route = findRoute(M.pos, target);
   document.getElementById("status").textContent = `${M.qi}/${M.queue.length}`;
-  M.route = route; M.sceneNow = s;
+  M.sceneNow = s;
+  const movers = moversFor(s);
+  if (movers) {
+    ACTIVE = [];
+    const taken = occupiedNow();
+    for (const mv of movers) {
+      const t0 = doorstep(mv.target, taken);
+      taken.add(t0.row * G + t0.col);
+      const from = mv.mesh.userData.tile || { col: G / 2, row: G / 2 };
+      const route = findRoute(from, t0);
+      mv.mesh.userData.tile = t0;
+      ACTIVE.push({ mesh: mv.mesh, pos: { ...from }, route,
+                    ri: 0, wp: route[0] || null, prog: 0,
+                    moving: route.length > 0 });
+    }
+    PRIMARY = ACTIVE[0].mesh;
+    if (!ACTIVE.some(w => w.moving)) { WALK_DONE = ACTIVE; ACTIVE = []; arrive(); }
+    return;
+  }
+  PRIMARY = mayor;
+  let target = sceneTarget(s);
+  if (!target) { nextScene(); return; }
+  target = doorstep(target, occupiedNow(mayor));
+  const route = findRoute(M.pos, target);
+  M.route = route;
   if (!route.length) { arrive(); return; }
   M.wp = route[0]; M.ri = 0; M.prog = 0; M.moving = true;
 }
 function arrive() {
   M.moving = false;
   if (M.sceneNow) {
-    showBubble(caption(M.sceneNow));
-    // greeting: mayor and the visited resident face each other
+    // A transition shows the creature's own words when it left any; otherwise
+    // the caption. Never both invented — an unnarrated move gets the caption
+    // and nothing more.
+    const words = transitionWords(M.sceneNow);
+    M.holdMs = showBubble(words ? `\u201C${words}\u201D` : caption(M.sceneNow));
     const s = M.sceneNow;
-    const who = (s.kind === "hb_visit" || s.kind === "reflect") ? s.actors[0] : null;
-    const res = who && residents.find(r => r.userData.name === who);
+    // greeting: on the mayor's pulse visit, the two face each other
+    const who = (s.kind === "hb_visit") ? s.actors[0] : null;
+    const res = who && resOf(who);
     if (res) {
       mayor.rotation.y = Math.atan2(res.position.x - mayor.position.x,
                                     res.position.z - mayor.position.z);
@@ -801,8 +1140,18 @@ function arrive() {
                                   mayor.position.z - res.position.z);
       res.userData.greetUntil = performance.now() + 2600;
     }
+    // a meeting's arrivals turn to face each other around their center
+    if (WALK_DONE.length > 1) {
+      const cx = WALK_DONE.reduce((a, w) => a + w.mesh.position.x, 0) / WALK_DONE.length;
+      const cz = WALK_DONE.reduce((a, w) => a + w.mesh.position.z, 0) / WALK_DONE.length;
+      for (const w of WALK_DONE) {
+        w.mesh.rotation.y = Math.atan2(cx - w.mesh.position.x, cz - w.mesh.position.z);
+        w.mesh.userData.greetUntil = performance.now() + 4200;
+      }
+    }
+    WALK_DONE = [];
   }
-  setTimeout(nextScene, 1800);
+  chainNext(Math.max(1800, (M.holdMs || 0) + 400));
 }
 nextScene();
 
@@ -977,13 +1326,10 @@ renderer.domElement.addEventListener("pointerup", e => {
   showBonds(g);
 });
 
-/* ---------- main loop ---------- */
-const clock = new THREE.Clock();
-function tick() {
-  requestAnimationFrame(tick);
-  const dt = Math.min(clock.getDelta(), 0.08);
-  const speed = parseFloat(document.getElementById("speed").value) * 2.4; // tiles/sec
-
+/* one animation step for every walking body — the mayor and the turn's
+   actors alike. Extracted from tick() so tests (and hidden tabs, where
+   rAF is suspended) can drive the same logic without a frame. */
+function advanceWalkers(dt, speed) {
   if (M.moving && M.wp) {
     const a = world(M.pos.col, M.pos.row), b = world(M.wp.col, M.wp.row);
     M.prog += dt * speed;
@@ -1003,12 +1349,54 @@ function tick() {
       mayor.userData.gy = groundY(x, z);
     }
   }
+  if (ACTIVE.length) {
+    let still = 0;
+    for (const w of ACTIVE) {
+      if (!w.moving) continue;
+      const a2 = world(w.pos.col, w.pos.row), b2 = world(w.wp.col, w.wp.row);
+      w.prog += dt * speed;
+      if (w.prog >= 1) {
+        w.pos = { col: w.wp.col, row: w.wp.row };
+        w.ri++;
+        if (w.ri >= w.route.length) {
+          w.mesh.position.set(b2.x, w.mesh.position.y, b2.z);
+          w.mesh.userData.gy = tileH(w.wp.col, w.wp.row);
+          w.moving = false;
+        } else { w.wp = w.route[w.ri]; w.prog = 0; }
+      } else {
+        const x = a2.x + (b2.x - a2.x) * w.prog, z = a2.z + (b2.z - a2.z) * w.prog;
+        w.mesh.rotation.y = Math.atan2(b2.x - x, b2.z - z);
+        w.mesh.position.x = x; w.mesh.position.z = z;
+        w.mesh.userData.gy = groundY(x, z);
+      }
+      if (w.moving) still++;
+    }
+    if (!still) { WALK_DONE = ACTIVE; ACTIVE = []; arrive(); }
+  }
+}
+
+/* ---------- main loop ---------- */
+const clock = new THREE.Clock();
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.08);
+  const speed = parseFloat(document.getElementById("speed").value) * 2.4; // tiles/sec
+
+  advanceWalkers(dt, speed);
+
+  const walking = new Set(ACTIVE.filter(w => w.moving).map(w => w.mesh));
   animatePerson(mayor, dt, M.moving);
-  for (const r of residents) animatePerson(r, dt, false);
+  for (const r of residents) animatePerson(r, dt, walking.has(r));
 
   if (bubble) {
     const left = bubble.userData.until - performance.now();
-    if (left < 0) { mayor.remove(bubble); bubble.material.map.dispose(); bubble = null; }
+    if (left < 0) {
+      if (bubblePages.length) renderBubblePage(bubblePages.shift(), bubblePages.length > 0);
+      else {
+        (bubbleHolder || mayor).remove(bubble); bubble.material.map.dispose(); bubble = null;
+        document.getElementById("skipBtn").style.display = "none";
+      }
+    }
     else bubble.material.opacity = Math.min(1, left / 500);
   }
   for (const r of residents) {
@@ -1016,15 +1404,67 @@ function tick() {
       r.rotation.y = Math.PI; r.userData.greetUntil = null;   // back to facing the road
     }
   }
-  sun.position.set(mayor.position.x + 18, 26, mayor.position.z + 10);
-  sun.target.position.copy(mayor.position);
-  if (document.getElementById("follow").checked) cam.target.lerp(mayor.position, Math.min(1, dt * 3.2));
+  const heroPos = (PRIMARY || mayor).position;
+  sun.position.set(heroPos.x + 18, 26, heroPos.z + 10);
+  sun.target.position.copy(heroPos);
+  if (document.getElementById("follow").checked) cam.target.lerp(heroPos, Math.min(1, dt * 3.2));
   applyCam();
   drawMinimap();
   renderer.render(scene, camera);
 }
 tick();
 document.getElementById("status").textContent = vt("live");
+window.__find = (pred) => SCENES.findIndex(pred);
+window.__scenesOn = (dayStr) => SCENES
+  .map((s, i) => ({ i, kind: s.kind, t: s.t, actors: s.actors,
+                    when: new Date(s.t * 1000).toLocaleString("ko-KR") }))
+  .filter(r => r.when.includes(dayStr));
+window.__poseScene = async (idx, opts = {}) => {
+  CHAIN++;                       // stop the running chain from stealing the stage
+  M.queue = [SCENES[idx]]; M.qi = 0; M.moving = false; ACTIVE = [];
+  nextScene();
+  for (let k = 0; k < 900 && (M.moving || ACTIVE.some(w => w.moving)); k++)
+    advanceWalkers(0.5, 6);
+  if (opts.dist) cam.dist = opts.dist;
+  if (opts.az !== undefined) cam.az = opts.az;
+  if (opts.el !== undefined) cam.el = opts.el;
+  cam.target.copy((PRIMARY || mayor).position);
+  applyCam();
+  renderer.render(scene, camera);
+  return caption(SCENES[idx]);
+};
+window.__shoot = async (name) => {
+  renderer.render(scene, camera);
+  const data = renderer.domElement.toDataURL("image/jpeg", 0.92);
+  const r = await fetch("/api/village/snapshot", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ data, name }) }).then(x => x.json());
+  return r;
+};
+
+window.__step = (dt = 0.2) => advanceWalkers(dt, 6);
+window.__tiles = () => {
+  const rows = residents.map(r => ({ n: r.userData.name, ...(r.userData.tile || {}) }));
+  rows.push({ n: "촌장", col: M.pos.col, row: M.pos.row });
+  const seen = new Map(), dups = [];
+  for (const r of rows) {
+    const k = r.row * G + r.col;
+    if (seen.has(k)) dups.push([seen.get(k), r.n]);
+    seen.set(k, r.n);
+  }
+  return { bodies: rows.length, dups };
+};
+window.__wraptest = t => bubbleWrap(t).length;
+window.__next = () => nextScene();
+/* annals photography — pose the village on a chosen scene and shoot it.
+   The camera only ever frames something the ledger records: pick the
+   scene by index, run its walk to completion, then capture. */
+window.__dbg = () => ({ qi: M.qi, len: M.queue.length, mMoving: M.moving,
+  ri: M.ri, routeLen: (M.route || []).length, prog: M.prog, wp: M.wp,
+  pos: M.pos, mayorXZ: [mayor.position.x.toFixed(1), mayor.position.z.toFixed(1)],
+  speedVal: document.getElementById("speed").value,
+  scene: M.sceneNow && { kind: M.sceneNow.kind, actors: M.sceneNow.actors, where: M.sceneNow.where },
+  active: ACTIVE.map(w => ({ n: w.mesh.userData.name, moving: w.moving, ri: w.ri, len: w.route.length })) });
 </script>
 </body>
 </html>

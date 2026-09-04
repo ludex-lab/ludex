@@ -9,6 +9,7 @@ Run:
     python web/server.py --port 8080
 """
 
+import re
 import sys
 import os
 import json
@@ -228,6 +229,56 @@ async def village_view():
     return RedirectResponse("/village3d")
 
 
+@app.get("/checkup")
+@app.get("/checkup/")
+async def checkup_view():
+    # Checkup view V0 (design note 2026-08-01, layer 1: the ledger grid).
+    # The audit markdown is the source of truth; this page only renders it.
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "checkup.html"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/checkup/charts")
+async def checkup_charts_view():
+    # Checkup view V1 — the caretaker's longitudinal panel. LOCAL ONLY:
+    # this renders private creature data (the public cut ships the ledger
+    # grid, not the charts).
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "checkup_charts.html"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/checkup/chain")
+async def checkup_chain_view():
+    # Checkup view V2 — verdict chains. Public-safe by design: overturned
+    # and re-scoped steps render as first-class nodes (JJ 2026-08-01,
+    # "mistakes are an asset").
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "checkup_chain.html"),
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/api/checkup/chains")
+async def checkup_chains():
+    import glob as _glob
+    root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "research", "chains")
+    out = []
+    for f in sorted(_glob.glob(os.path.join(root, "*.json"))):
+        with open(f, encoding="utf-8") as fh:
+            out.append(json.load(fh))
+    return {"chains": out}
+
+
+@app.get("/api/checkup/indicators")
+async def checkup_indicators(mirrors: int = 1):
+    from ludex.checkup.charts import all_creatures
+    return await asyncio.to_thread(all_creatures, bool(mirrors))
+
+
+@app.get("/api/checkup/ledger")
+async def checkup_ledger():
+    from ludex.checkup.ledger import parse
+    return await asyncio.to_thread(parse)
+
+
 @app.get("/village3d")
 @app.get("/village3d/")
 async def village3d_view():
@@ -264,7 +315,8 @@ async def village_voice(name: str):
     if len(text) > 220:
         cut = text[:220]
         text = cut[:max(cut.rfind(". "), cut.rfind(", "), 180) + 1] + " …"
-    return {"text": text, "source": f"SELF · {stamp[:16]}" if stamp else "SELF"}
+    return {"text": _scrub_local_paths(text),
+            "source": f"SELF · {stamp[:16]}" if stamp else "SELF"}
 
 
 @app.get("/api/village/transcript")
@@ -291,8 +343,12 @@ async def village_snapshot(req: dict):
     if not m:
         return {"error": "expected a data:image/* base64 URL"}
     ext = "jpg" if m.group(1) == "jpeg" else "png"
+    # A named shot keeps its own file — the annals pin one scene per day,
+    # and a single overwritten snapshot.jpg cannot hold six of them.
+    import re as _re2
+    name = _re2.sub(r"[^a-zA-Z0-9_-]", "", str((req or {}).get("name", "")))[:64]
     out = os.path.join(os.path.dirname(__file__), "static", "village3d",
-                       f"snapshot.{ext}")
+                       f"{name or 'snapshot'}.{ext}")
     with open(out, "wb") as f:
         f.write(base64.b64decode(m.group(2)))
     return {"saved": out, "bytes": os.path.getsize(out)}
@@ -325,12 +381,29 @@ async def village_map(habitat: str = ""):
     return m
 
 
+# Scene kinds that must survive the tail cut. The limit exists for payload size,
+# and routine scenes dominate — 1086 reflect and 296 heartbeat against 5
+# transitions — so a volume cap silently drops exactly the rare events the
+# timeline exists to show. The first substrate transition (06-11) fell outside
+# limit=400 before this. Rarity is not a reason to lose something; it is the
+# reason to keep it.
+_KEEP_ALWAYS = ("transition", "arrival", "ruling")
+
+
 @app.get("/api/village/scenes")
 async def village_scenes(habitat: str = "", limit: int = 400):
     from ludex.village.bus import build_scenes
     hab = habitat or _local_habitat()
     scenes = await asyncio.to_thread(build_scenes, None, hab)
-    return {"habitat": hab, "scenes": scenes[-max(1, min(limit, 5000)):]}
+    n = max(1, min(limit, 5000))
+    tail = scenes[-n:]
+    dropped = scenes[:-n] if len(scenes) > n else []
+    pinned = [s for s in dropped if s.get("kind") in _KEEP_ALWAYS]
+    out = sorted(pinned + tail, key=lambda s: s["t"])
+    return {"habitat": hab, "scenes": out,
+            # what the cap removed, said out loud rather than assumed away
+            "truncated": max(0, len(scenes) - len(out)),
+            "pinned_from_truncated": len(pinned)}
 
 
 @app.get("/")
@@ -927,6 +1000,24 @@ async def creature_timeline(name: str, dir: str = "creatures"):
     return {"name": name, "events": events}
 
 
+# ── 로컬 경로 세정 (2026-08-27) ──────────────────────────────────────────
+# 크리처의 브레인이 자기 샌드박스 경로를 서사 파일에 써 넣는 일이 실제로 있다:
+# Comet의 spark 유대에 `file:///Users/<사용자>/.gemini/.../scratch/…` 링크가
+# 들어갔고, 그것이 공유 프로필로 나가고 있었다. 유대는 크리처의 서사 기판이라
+# 사후에 고치지 않는다 — 그리고 브레인은 언제든 또 쓸 수 있다. 그러므로 막을
+# 자리는 **데이터가 아니라 나가는 문**이다.
+_LOCAL_PATH_RE = re.compile(
+    r'(?:file://)?(?:/Users/|/home/|[A-Za-z]:\\Users\\)[^\s)\]"\'`<>]*')
+_LOCAL_PATH_HINTS = ("/Users/", "/home/", ":\\Users")
+
+
+def _scrub_local_paths(text):
+    """절대 로컬 경로를 지운다. 사용자 홈 이름과 도구 내부 배치가 함께 새기 때문."""
+    if not isinstance(text, str) or not any(h in text for h in _LOCAL_PATH_HINTS):
+        return text
+    return _LOCAL_PATH_RE.sub("‹local path›", text)
+
+
 def _read_bond(path):
     """Parse a bonds/<peer>.md — a '# Bond: x / First met: .. / Brain: ..' header, then
     the narrative body after the first blank line."""
@@ -941,7 +1032,8 @@ def _read_bond(path):
         if i > 0 and not ln.strip():
             body_at = i + 1
             break
-    return {"first_met": first_met, "text": "\n".join(lines[body_at:]).strip()}
+    body = "\n".join(lines[body_at:]).strip()
+    return {"first_met": first_met, "text": _scrub_local_paths(body)}
 
 
 def _moniker(name, born_at):
@@ -1659,22 +1751,22 @@ def _run_field_bg(sid: str, field_kind: str, text: str, creature_paths: list, me
                                stop_check=lambda: bool(sess.get("stop")))
         elif field_kind == "forum":
             from ludex.fields.forum import Forum, ForumClaim
-            field = Forum(name=f"web-forum-{sid}", claim=ForumClaim(text=text), verdict=None, auto_trace=False)
+            field = Forum(name=f"web-forum-{sid}", claim=ForumClaim(text=text), verdict=None, auto_trace=True)
         elif field_kind == "open_council":
             from ludex.fields.open_council import OpenCouncil
             from ludex.fields.council import Dilemma
-            field = OpenCouncil(name=f"web-open-council-{sid}", dilemma=Dilemma(text=text), auto_trace=False)
+            field = OpenCouncil(name=f"web-open-council-{sid}", dilemma=Dilemma(text=text), auto_trace=True)
         elif field_kind == "academy":
             from ludex.fields.academy import Academy
             from ludex.core.syllabus import Syllabus
             field = Academy(name=f"web-academy-{sid}",
-                            syllabus=Syllabus(theme=text, mode=academy_mode), auto_trace=False)
+                            syllabus=Syllabus(theme=text, mode=academy_mode), auto_trace=True)
         elif field_kind == "agora":
             from ludex.fields.agora import Agora
             field = Agora(name=f"web-agora-{sid}")
         else:
             from ludex.fields.council import Council, Dilemma
-            field = Council(name=f"web-council-{sid}", dilemma=Dilemma(text=text), auto_trace=False)
+            field = Council(name=f"web-council-{sid}", dilemma=Dilemma(text=text), auto_trace=True)
         sess["field"] = field
         for path in creature_paths:
             name0 = os.path.basename(str(path).rstrip("/\\"))

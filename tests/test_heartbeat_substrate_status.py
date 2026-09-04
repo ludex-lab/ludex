@@ -2,8 +2,12 @@
 
 Verifies the caretaker-declared brain.substrate_status lifecycle label
 (substrate_change_policy: live / cost-watch / wind-down / retiring /
-dormant) is surfaced in the pulse result, and absent when undeclared.
-Display-only — the heartbeat must not act on it.
+dormant / retired) is surfaced in the pulse result, and absent when
+undeclared. Most labels are display-only, but dormant/retired must
+short-circuit the pulse BEFORE OrganismConfig.load/build — building is
+not side-effect-free (an ollama brain's FC-wiring probe loads the whole
+model into RAM; retired Moss's gemma4 load collapsed the habitat's GUI
+session on 2026-08-24 02:03).
 """
 from __future__ import annotations
 
@@ -56,3 +60,38 @@ def test_substrate_status_absent_when_undeclared(tmp_path):
     creature_dir = _write_creature(tmp_path)
     result = pulse_creature(creature_dir, dry_run=True)
     assert "substrate_status" not in result
+
+
+def _forbid_load(monkeypatch):
+    import ludex.core.organism_config as oc
+
+    def _boom(*args, **kwargs):
+        raise AssertionError(
+            "dormant/retired creature must not be loaded/built")
+
+    monkeypatch.setattr(oc.OrganismConfig, "load", _boom)
+
+
+def test_dormant_skips_before_build(tmp_path, monkeypatch):
+    creature_dir = _write_creature(tmp_path, substrate_status="dormant")
+    _forbid_load(monkeypatch)
+    result = pulse_creature(creature_dir, dry_run=True)
+    assert result.get("skip") is True
+    assert result.get("substrate_status") == "dormant"
+    assert result.get("reason") == "substrate:dormant"
+
+
+def test_retired_skips_before_build(tmp_path, monkeypatch):
+    creature_dir = _write_creature(tmp_path, substrate_status="retired")
+    _forbid_load(monkeypatch)
+    result = pulse_creature(creature_dir, dry_run=True)
+    assert result.get("skip") is True
+    assert result.get("substrate_status") == "retired"
+
+
+def test_retired_label_is_case_insensitive(tmp_path, monkeypatch):
+    creature_dir = _write_creature(tmp_path, substrate_status="Retired")
+    _forbid_load(monkeypatch)
+    result = pulse_creature(creature_dir, dry_run=True)
+    assert result.get("skip") is True
+    assert result.get("substrate_status") == "retired"

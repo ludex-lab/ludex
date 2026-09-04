@@ -40,6 +40,8 @@ def probe_brain_capabilities(
     model: str,
     cwd: str = "",
     timeout_ms: int = 30000,
+    effort: str = "",
+    num_ctx=None,
 ) -> dict:
     """Return a capability snapshot for (provider × model).
 
@@ -74,7 +76,24 @@ def probe_brain_capabilities(
     prompt = _PROBE_PROMPT % model
     start = time.time()
     try:
-        result = adapter.call(model=model, prompt=prompt)
+        # effort is a registered substrate axis; a probe that drops it
+        # describes a different brain than the creature runs (and agy's
+        # --model refuses outright without one). Same omission the canary had.
+        import inspect as _i
+        _params = _i.signature(type(adapter).call).parameters
+        _kw = {"model": model, "prompt": prompt}
+        if effort and "effort" in _params:
+            _kw["effort"] = effort
+        # Same argument as effort, one axis over: a probe that drops the
+        # creature's context window loads a DIFFERENT body than the creature
+        # runs — and this probe is the last step of build(), so whatever it
+        # loads is what sits in the habitat afterwards. 이음 measured a 27B
+        # birth landing at 18 GB / context 262144 with the creature's own
+        # ludex.yaml asking for 32768 (2026-08-26, third path found in the
+        # same sweep: call(), supports_tools(), and now here).
+        if num_ctx and "num_ctx" in _params:
+            _kw["num_ctx"] = num_ctx
+        result = adapter.call(**_kw)
         content = (getattr(result, "content", "") or "").strip()
     except Exception as e:
         snapshot["error"] = f"probe call: {type(e).__name__}: {e}"
@@ -106,27 +125,23 @@ def _build_adapter(provider_name: str, cwd: str, timeout_ms: int):
     default base_url; OpenAI/Anthropic API probes are deferred —
     they require a key path which the probe shouldn't fish for).
     """
-    from ludex.blocks.adapters.ollama import OllamaAdapter
-    from ludex.blocks.adapters.claude_cli import ClaudeCliAdapter
-    from ludex.blocks.adapters.claude_sdk import ClaudeSdkAdapter
-    from ludex.blocks.adapters.gemini_cli import GeminiCliAdapter
-    from ludex.blocks.adapters.agy_cli import AgyCliAdapter
-    from ludex.blocks.adapters.codex_cli import CodexCliAdapter
+    # Single source of truth. This function used to keep its own hand-written
+    # registry, which silently fell one provider behind: grok_cli was added
+    # 2026-07-13 and never listed here, so every grok creature was born with an
+    # empty capability set and the snapshot said "unknown provider" where nobody
+    # was reading. A duplicated registry does not stay in sync; it just fails
+    # quietly on whatever was added last.
+    from ludex.blocks.provider import ADAPTER_REGISTRY
 
-    REGISTRY = {
-        "ollama": OllamaAdapter,
-        "claude_cli": ClaudeCliAdapter,
-        "claude_sdk": ClaudeSdkAdapter,
-        "gemini_cli": GeminiCliAdapter,
-        "agy_cli": AgyCliAdapter,
-        "codex_cli": CodexCliAdapter,
-    }
-    cls = REGISTRY.get(provider_name)
+    cls = ADAPTER_REGISTRY.get(provider_name)
     if cls is None:
         return None
 
     kwargs: dict = {"timeout_ms": timeout_ms}
-    if provider_name in ("claude_cli", "claude_sdk", "gemini_cli", "agy_cli", "codex_cli") and cwd:
+    # CLI adapters take a cwd; HTTP ones do not. Asked of the class rather than
+    # matched against another hand-kept list, for the same reason as above.
+    import inspect
+    if cwd and "cwd" in inspect.signature(cls.__init__).parameters:
         kwargs["cwd"] = cwd
     return cls(**kwargs)
 

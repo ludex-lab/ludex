@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -89,10 +90,10 @@ def interpret(
     # mediated per-invocation grant) — the caretaker supplied the
     # path, so the interpreter trusts it for this one call. No
     # persistent filesystem permissions are created.
-    # Windows packs claude as `claude.cmd` and subprocess without
-    # shell won't resolve the .cmd extension; pick the correct
-    # invocation per platform.
-    claude_bin = "claude.cmd" if os.name == "nt" else "claude"
+    # shutil.which resolves the real executable (Windows PATHEXT: claude.cmd
+    # from npm or claude.exe from the native installer — the hardcoded .cmd
+    # missed .exe installs). Same shape as adapters/claude_cli.py.
+    claude_bin = shutil.which("claude") or ("claude.cmd" if os.name == "nt" else "claude")
     # --allowedTools "Read" is required for Claude print-mode to use
     # its Read tool on the image. Without it (or without the
     # imperative "Read the image at ..." in the prompt), Claude

@@ -308,14 +308,27 @@ class FieldRunner:
                 if brain_provider == "ollama":
                     from ludex.blocks.adapters.ollama import OllamaAdapter
                     probe_adapter = OllamaAdapter()
-                    tools_supported = probe_adapter.supports_tools(brain_model)
+                    # Same context window the creature's calls use — a field
+                    # session must not reload its brain at the server default.
+                    # Read from the live provider block, which already holds
+                    # the creature's config; there is no brain dict in scope
+                    # here and inventing one would be a second source of truth.
+                    _pb = organism.get_block("provider")
+                    _nc = getattr(_pb, "_init_config", {}).get("num_ctx") if _pb else None
+                    tools_supported = probe_adapter.supports_tools(
+                        brain_model, num_ctx=_nc)
                 else:
                     tools_supported = True  # assume yes for OpenAI/Anthropic
 
                 if tools_supported:
-                    from ludex.mcp import create_ludex_mcp, mcp_to_openai_tools, dispatch_tool_call_sync
-                    create_ludex_mcp(organism)
-                    tools = mcp_to_openai_tools()
+                    from ludex.mcp.ludex_mcp_server import (
+                        bind_ludex_organism,
+                        select_ludex_tools,
+                    )
+                    from ludex.mcp import mcp_to_openai_tools, dispatch_tool_call_sync
+                    bind_ludex_organism(organism)
+                    selected = select_ludex_tools(organism, include_engine=False)
+                    tools = mcp_to_openai_tools([t.name for t in selected])
                     tool_dispatcher = dispatch_tool_call_sync
                 else:
                     # Mitigation: tool-incapable brain gets organ state via prompt

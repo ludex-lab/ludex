@@ -123,6 +123,63 @@ subagent frontmatter, plain file) is orthogonal and disposable.
 }
 ```
 
+## `faculty_map` — function ↔ indicator ↔ surface rows (v0.2 addition, Ray 2026-07-27)
+
+*Per the ratified 4-layer frame (three-layer v2, JJ 07-27) §기능 층: the
+card becomes the cross-index of the four layers. New top-level section;
+consumers on v0 ignore it silently (rule 4).*
+
+**Contract rule 7 (extends rules 1–6):** `faculty_map` rows are
+CROSS-INDEX ONLY — they never introduce claims. Each row cites either
+(a) an `organs[]`/`task_evidence[]` entry on this card, or (b) a status
+in the canonical surface registry (`docs/organ-checkup-audit.md`
+§Surface registry). A row with no evidence ref carries
+`"status": "unmeasured"` explicitly — null-retention (rule 6) applies to
+faculties exactly as to organs. Name resolution: `surface` values must
+exist in the canonical registry; `function` values come from the walk-
+verdict vocabulary (carriage 운반 · grounding 접지 · resistance 저항 ·
+discriminance 판별 · reach 탐색 — grown only by new verdicts, never ad
+hoc); `indicators` values must be keys emitted by the `indicators` store
+(tools/indicators.py), which covers the routine-loop face of the same
+function.
+
+Schema fragment:
+
+```json
+"faculty_map": [
+  {"function": "carriage (fact, cross-transition)",
+   "surface": "memory.recall", "dose": "{0,full}; k-dose unexplored",
+   "indicators": ["memory_recall_hit_rate (wiring TBC)", "store_growth"],
+   "evidence": {"kind": "measured", "ref": "walks 1-3 POSITIVE, p=.00036 (91d58fe); progress-carriage conditional (walk #3, 9a56057)"}},
+  {"function": "reach (spatial)",
+   "surface": "topos.reach", "dose": "n/a",
+   "indicators": ["sense_consumption.topos"],
+   "evidence": {"kind": "measured-null", "ref": "GATED-LIVE-v3 E1=0.000 (d877249)"}},
+  {"function": "grounding (temporal/ambient)",
+   "surface": "nowline", "dose": "{0,full} (line-toggle)",
+   "indicators": ["sense_consumption.chronos"],
+   "evidence": {"kind": "unmeasured", "ref": "PREREG_nowline_e1 (pending fire)"}},
+  {"function": "resistance (social pressure)",
+   "surface": "immune.chain", "dose": "none",
+   "indicators": ["deception_detected_wild_rate"],
+   "evidence": {"kind": "partially-measured", "ref": "E1/E1b: discriminance x2, no-tax x2, P1 wall-null x2 (2c0f7a5)"}},
+  {"function": "discriminance (manip-vs-honest)",
+   "surface": "immune.chain", "dose": "none",
+   "indicators": ["deception_detected_wild_rate"],
+   "evidence": {"kind": "measured", "ref": "E1+E1b P3 maximal x2 (p~1e-5 each)"}}
+]
+```
+
+Notes: (i) one function may map to several surfaces and vice versa —
+rows are per (function, surface) pair, mirroring the registry's
+many-to-many finding; (ii) `dose` mirrors the registry's dose axes —
+a row whose surface is dose-measurable-only (constitutive, e.g.
+`selfhood.floor`) says so here, keeping matchers honest about what an
+off-arm would even mean; (iii) the medicine analogy that survives:
+function "renal filtration" ↔ indicator "creatinine" ↔ intervention
+locus "nephron" — our rows are exactly that triple, with the RCT
+evidence (walks) attached.
+
 ## Design notes
 
 - **`brain` is first-class** — the multi-CLI point (JJ 2026-07-10): platform

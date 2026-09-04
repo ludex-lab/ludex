@@ -35,6 +35,10 @@ class TurnResult:
     model: str = ""
     error: Optional[str] = None
     stop_reason: str = "completed"  # completed, max_turns, max_budget, error
+    # Streaming failures keep partial work here, never in `response`, so an
+    # artifact writer cannot mistake an interrupted generation for completion.
+    partial_response: str = ""
+    raw: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -78,6 +82,7 @@ class EngineBlock(Block):
         token_budget: int = 4000,
         compact_after: int = 20,
         system_prompt: str = "",
+        recall_delivery: str = "system",
     ):
         super().__init__()
         self._init_config = {
@@ -85,6 +90,10 @@ class EngineBlock(Block):
             "token_budget": token_budget,
             "compact_after": compact_after,
             "system_prompt": system_prompt,
+            # Where the [Recalled Memory] block arrives: "system" (default,
+            # what every measured creature has lived under) or "user". Physics
+            # E2 measured the surface as the effect, so it is per-creature.
+            "recall_delivery": recall_delivery,
         }
         self._messages: list[Message] = []
         self._turn_count: int = 0
@@ -177,9 +186,14 @@ class EngineBlock(Block):
         # ambiguous by design — the consumer picks the organ. Skipped
         # silently for bare organisms; the readings also emit their Phase-A
         # trace spans, which is what feeds chronos's own recall_window.
+        # Line-level toggle (surface revision 2026-07-27, §6): gates ONLY
+        # the [Now] emission — the organs stay attached, their other
+        # surfaces (sense spans, auto reads) untouched. This is the
+        # `nowline` surface's measurement readiness: a battery arm sets
+        # nowline_enabled=False at the session layer, no drag-along.
         try:
             now_parts = []
-            org = self._organism
+            org = self._organism if self._cfg("nowline_enabled", True) else None
             for organ_name, empty in (("topos", "unlocated"), ("chronos", "untimed")):
                 organ = org.get_block(organ_name) if org else None
                 if organ is None:
@@ -235,6 +249,7 @@ class EngineBlock(Block):
         # 2026-04-26). Callers that want a clean policy-emission
         # call (no biographical memory leaking into prompt) can
         # pass `bypass_memory=True` on handle_submit.
+        self._turn_recall_block = ""
         if not bypass_memory:
             memory_context_raw = self.call_port("recall", prompt) or ""
             if isinstance(memory_context_raw, list):
@@ -243,8 +258,27 @@ class EngineBlock(Block):
                 memory_context_raw,
                 max_chars=_budget["recall_chars"],
                 include_meta=_budget["recall_meta"])
-            if memory_context and sys_prompt:
-                sys_prompt = f"{sys_prompt}\n\n[Recalled Memory]\n{memory_context}"
+            if memory_context:
+                block = f"[Recalled Memory]\n{memory_context}"
+                # Delivery surface is lineage-conditional (physics E2, verdict
+                # 2026-08-04). The same bytes are used or ignored depending on
+                # WHERE they arrive: one lineage recovered 0/8 from the system
+                # prompt and 8/8 from the user message with the payload byte-
+                # identical, and another stalls outright when the block sits in
+                # its system prompt. So the surface is a setting, not a constant.
+                #
+                # Default stays "system" — that is what every measured creature
+                # has lived under, and flipping it globally would move every
+                # creature's substrate as a side effect of a fix.
+                #
+                # The routed block is attached at ASSEMBLY time, never stored in
+                # history: recall is per-turn, and a block written into the
+                # message log would repeat and accumulate across turns, quietly
+                # turning one turn's recall into permanent conversational fact.
+                if self._cfg("recall_delivery", "system") == "user":
+                    self._turn_recall_block = block
+                elif sys_prompt:
+                    sys_prompt = f"{sys_prompt}\n\n{block}"
 
         # Observability (memory-checkup FREEZE ②): expose the exact system
         # prompt this turn shipped so battery drivers can persist per-turn
@@ -280,6 +314,8 @@ class EngineBlock(Block):
                 response="",
                 error=f"{result.error_type}: {result.message}",
                 stop_reason="error",
+                partial_response=getattr(result, "partial_content", "") or "",
+                raw=getattr(result, "raw", {}) or {},
             )
             self._emit("turn.ended", turn_number=self._turn_count, success=False,
                        response="")
@@ -379,6 +415,7 @@ class EngineBlock(Block):
             latency_ms=total_latency,
             model=response.model,
             stop_reason="completed",
+            raw=response.raw if isinstance(response.raw, dict) else {},
         )
 
         # Bus에 턴 결과 발행
@@ -476,6 +513,16 @@ class EngineBlock(Block):
             if msg.role == "system":
                 continue
             assembled.append({"role": msg.role, "content": msg.content})
+
+        # User-channel recall delivery: prepend this turn's block to the LAST
+        # user message, on the assembled copy only. History stays clean, so the
+        # block never becomes a permanent part of the conversation.
+        block = getattr(self, "_turn_recall_block", "")
+        if block:
+            for m in reversed(assembled):
+                if m["role"] == "user":
+                    m["content"] = f"{block}\n\n{m['content']}"
+                    break
 
         return assembled
 

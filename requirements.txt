@@ -11,3 +11,12 @@ httpx>=0.27
 
 # Config + reach-session schema I/O (YAML frontmatter + ludex.yaml)
 pyyaml>=6.0
+
+# Local MCP adapter (ludex/mcp — stdio subprocess server + client).
+# Pinned below 2: ludex_mcp_server uses the 1.x low-level Server API
+# (`@server.list_tools()`), removed in mcp 2.x. Found 2026-09-01 when a
+# fresh Windows host had this installed by hand and undocumented.
+mcp<2
+
+# Test runner (tests/). Not needed to run a creature.
+pytest

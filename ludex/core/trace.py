@@ -139,6 +139,12 @@ KIND_CHRONOS_SENSED = "chronos_sensed"
 KIND_SPHYGMOS_GUARD = "sphygmos_guard"
 KIND_SPHYGMOS_INCIDENT = "sphygmos_incident"
 
+# D-088 — incoming-deception scan hit (P1 indicator gap #1, 2026-07-27):
+# the immune signal alone was session-only, so the wild fire-rate had no
+# longitudinal source. Span write is off-substrate (P-B) — nothing routes
+# spans of this kind back into creature context.
+KIND_DECEPTION_DETECTED = "deception_detected"
+
 # D-060 — Topos (contextual / spatial) sense invocation
 KIND_TOPOS_SENSED = "topos_sensed"
 
@@ -255,6 +261,15 @@ def emit_bond_update(organism, other_name: str, first_met: str, field_name: str 
         "other": other_name,
         "first_met": first_met,
         "field_name": _fn(field_name),
+    })
+
+
+def emit_deception_detected(organism, source: str, strategies: list[str],
+                            top_confidence: float) -> None:
+    _emit(organism, KIND_DECEPTION_DETECTED, {
+        "source": source,
+        "strategies": strategies,
+        "top_confidence": top_confidence,
     })
 
 

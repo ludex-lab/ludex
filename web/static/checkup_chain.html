@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Ludex · verdict chains</title>
+<style>
+  :root { --bg:#14161a; --panel:#1c1f26; --line:#2a2f38; --ink:#e7e9ee;
+          --dim:#8a93a3; --battery:#4b8fd6; --verdict:#c9a227;
+          --rule:#4ea87a; --discovery:#a06b9c; --overturn:#b5542f; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.55 ui-sans-serif,-apple-system,"Helvetica Neue",sans-serif; }
+  header { padding:22px 26px 6px; }
+  h1 { margin:0 0 4px; font-size:20px; font-weight:600; }
+  .sub { color:var(--dim); font-size:13px; }
+  .sub a { color:var(--battery); text-decoration:none; }
+  .wrap { padding:14px 26px 44px; max-width:900px; }
+  .chain { margin-bottom:30px; }
+  .chain > h2 { font-size:16px; margin:0 0 2px; }
+  .chain > .st { color:var(--rule); font-size:12.5px; margin-bottom:14px; }
+  .n { position:relative; padding:0 0 16px 26px; border-left:2px solid var(--line);
+       margin-left:6px; }
+  .n:last-child { border-left-color:transparent; }
+  .n::before { content:""; position:absolute; left:-7px; top:3px; width:12px; height:12px;
+               border-radius:50%; background:var(--bg); border:2px solid var(--dim); }
+  .n.k-battery::before { border-color:var(--battery); }
+  .n.k-verdict::before { border-color:var(--verdict); }
+  .n.k-rule::before { border-color:var(--rule); }
+  .n.k-discovery::before { border-color:var(--discovery); }
+  .n.overturned::before { border-color:var(--overturn); background:var(--overturn); }
+  .lab { font-weight:600; font-size:14px; }
+  .lab .kind { font-size:10px; letter-spacing:.6px; padding:1px 6px; border-radius:8px;
+               border:1px solid var(--line); color:var(--dim); margin-left:7px;
+               vertical-align:1px; font-weight:500; }
+  .meta { color:var(--dim); font-size:11.5px; margin:2px 0 5px; }
+  .out { font-size:12.5px; font-weight:600; }
+  .k-battery .out { color:var(--battery); } .k-verdict .out { color:var(--verdict); }
+  .k-rule .out { color:var(--rule); } .k-discovery .out { color:var(--discovery); }
+  .overturned .out { color:var(--overturn); }
+  .det { color:#c3c9d4; font-size:12.5px; margin-top:4px; }
+  .rel { font-size:11.5px; margin-top:5px; }
+  .rel .ov { color:var(--overturn); }
+  .rel .sp { color:var(--dim); }
+  .ref { color:var(--dim); font-size:11px; margin-top:4px;
+         font-family:ui-monospace,Menlo,monospace; }
+  .strike { text-decoration:line-through; text-decoration-color:var(--overturn);
+            text-decoration-thickness:1px; }
+  footer { color:var(--dim); font-size:11.5px; padding:0 26px 34px; max-width:900px; }
+</style>
+<header>
+  <h1>Verdict chains — how a claim was built, broken and repaired</h1>
+  <div class="sub">Layer 4 of the checkup view ·
+    <a href="/checkup">ledger grid</a> · <a href="/checkup/charts">creature.chart</a></div>
+</header>
+<div class="wrap" id="list"></div>
+<footer>
+  Overturned steps are kept as first-class nodes, struck through but never
+  deleted — the path that turned out wrong is what produced the rules
+  (acquirability audit, carriage audit) that now guard every later walk.
+  A results table would hide exactly this.
+</footer>
+<script>
+const esc = s => (s||"").replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+fetch("/api/checkup/chains").then(r => r.json()).then(d => {
+  const wrap = document.getElementById("list");
+  d.chains.forEach(ch => {
+    const overturned = new Set(ch.nodes.flatMap(n => n.overturns || []));
+    const byId = Object.fromEntries(ch.nodes.map(n => [n.id, n.label]));
+    const nodes = ch.nodes.map(n => {
+      const isOut = overturned.has(n.id);
+      const rel = [
+        ...(n.overturns || []).map(x => `<span class="ov">⟲ overturns ${esc(byId[x] || x)}</span>`),
+        ...(n.supports || []).map(x => `<span class="sp">↳ builds on ${esc(byId[x] || x)}</span>`),
+      ].join(" · ");
+      return `<div class="n k-${esc(n.kind)} ${isOut ? "overturned" : ""}">
+        <div class="lab ${isOut ? "strike" : ""}">${esc(n.label)}<span class="kind">${esc(n.kind)}</span></div>
+        <div class="meta">${esc(n.date)}</div>
+        <div class="out">${esc(n.outcome)}${isOut ? " — later overturned" : ""}</div>
+        <div class="det">${esc(n.detail)}</div>
+        ${rel ? `<div class="rel">${rel}</div>` : ""}
+        ${n.ref ? `<div class="ref">${esc(n.ref)}</div>` : ""}
+      </div>`;
+    }).join("");
+    wrap.insertAdjacentHTML("beforeend",
+      `<div class="chain"><h2>${esc(ch.title)}</h2>
+        <div class="st">${esc(ch.status)} · curated ${esc(ch.curated)}</div>${nodes}</div>`);
+  });
+});
+</script>

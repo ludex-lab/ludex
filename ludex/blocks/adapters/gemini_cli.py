@@ -22,6 +22,8 @@ import json
 import shutil
 import tempfile
 import subprocess
+
+from ludex.blocks.adapters._liveness import run_capture
 import logging
 
 from ludex.blocks.adapters.base import BaseAdapter, AdapterResponse
@@ -190,10 +192,8 @@ class GeminiCliAdapter(BaseAdapter):
                 child_env = cli_subprocess_env("gemini_cli", self._auth)
                 if not agentic:
                     child_env["GEMINI_CLI_TRUST_WORKSPACE"] = "true"
-                result = subprocess.run(
+                result = run_capture(
                     cmd,
-                    capture_output=True,
-                    text=True,
                     timeout=self.timeout_ms / 1000,
                     encoding="utf-8",
                     # gemini-cli on Windows occasionally emits OEM-codepage

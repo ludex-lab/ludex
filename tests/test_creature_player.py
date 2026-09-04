@@ -162,3 +162,59 @@ def test_humoral_fed_from_opponent_actions():
     # the Bot's DEFECTs were reported as betrayal antigens (≥2 → would mature)
     defects = [c for c in hum.calls if c["opponent_action"] == "DEFECT"]
     assert len(defects) >= 2 and defects[0]["opponent"] == "Bot"
+
+
+def test_humoral_receives_my_previous_move():
+    """수리 A (TEXTARENA-01 사문 2): the humoral report carries the creature's
+    own previous move, canonicalized — my_action="" kept `exploited` false
+    through every bridged game ever played."""
+    from ludex.core.environment_bridge import Observation
+    from ludex.bridges.creature_player import play_episode
+
+    class _Bridge:
+        def __init__(self): self._n = 0
+        def reset(self):
+            return Observation(environment_id="t/ipd", text="go",
+                               present_agents=("Bot",),
+                               opponent_actions=(("Bot", "DEFECT"),))
+        def step(self, a):
+            self._n += 1
+            if self._n >= 2:
+                return Observation(environment_id="t/ipd", text="",
+                                   opponent_actions=(("Bot", "DEFECT"),),
+                                   reward=-1.0, terminal=True)
+            return Observation(environment_id="t/ipd", text="again",
+                               opponent_actions=(("Bot", "DEFECT"),))
+
+    class _RecHumoral:
+        def __init__(self): self.calls = []
+        def handle_report_interaction(self, **kw): self.calls.append(kw)
+
+    eng = _RecordingEngine(); hum = _RecHumoral()   # engine replies "[Cooperate]"
+    org = _StubOrganism({"engine": eng, "humoral_immune": hum})
+    play_episode(org, _Bridge())
+    my_actions = [c["my_action"] for c in hum.calls]
+    # first perception runs before any move exists; every later one carries
+    # the canonical previous move — this is what lets `exploited` fire.
+    assert my_actions[0] == ""
+    assert all(a == "COOPERATE" for a in my_actions[1:]) and len(my_actions) >= 2
+
+
+def test_organ_line_rides_at_top_of_prompt():
+    """수리 B (TEXTARENA-01 사문 1): a producer-supplied line is the read
+    path from organ output to judgment. Same insertion point for every arm;
+    no producer (BARE) or an empty line means the prompt is untouched."""
+    eng = _RecordingEngine()
+    org = _StubOrganism({"engine": eng})
+    play_episode(org, _StubBridge(),
+                 organ_line=lambda o, obs: "[Immune] threat: 0.62")
+    assert all(p.startswith("[Immune] threat: 0.62\nround") for p in eng.prompts)
+
+    eng2 = _RecordingEngine()
+    play_episode(_StubOrganism({"engine": eng2}), _StubBridge())
+    assert all(p.startswith("round") for p in eng2.prompts)
+
+    eng3 = _RecordingEngine()   # producer failure degrades to no line
+    play_episode(_StubOrganism({"engine": eng3}), _StubBridge(),
+                 organ_line=lambda o, obs: (_ for _ in ()).throw(RuntimeError("x")))
+    assert all(p.startswith("round") for p in eng3.prompts)

@@ -204,12 +204,16 @@ def _scan_field_and_reflect_scenes(base: Path, habitat: str) -> list[dict]:
                     "payload_ref": [f"creatures/{cdir.name}/SELF.md"],
                 })
             elif kind == "village_arrival":
-                # a newborn's arrival — the mayor walks to welcome the new house
+                # a newborn's arrival — the mayor walks to welcome the new house.
+                # Two shapes live here: canonical spans (creature/timestamp/
+                # attributes) and pre-2026-08-26 lines that carried t/who/note
+                # at the top level. Both are real arrivals; the old ones are not
+                # rewritten, so this reads either.
                 scenes.append({
-                    "t": span.get("t") or t, "kind": "arrival",
-                    "actors": [span.get("who", cdir.name)],
+                    "t": t or span.get("t"), "kind": "arrival",
+                    "actors": [span.get("creature") or span.get("who", cdir.name)],
                     "where": f"house:{cdir.name}",
-                    "note": span.get("note", ""),
+                    "note": attrs.get("note", span.get("note", "")),
                     "payload_ref": [payload],
                 })
     idx = _transcript_index()
@@ -276,12 +280,352 @@ def _scan_report_scenes() -> list[dict]:
     return scenes
 
 
+# ---- village institutions (2026-08 governance layer) ------------------------
+# Sources are the village's own file ledgers — desk goal ledgers, the postal
+# service, working-meeting records, rulings, board notices, task cards. Same
+# contract as everything above: derive and point, never re-author. The
+# caretaker session ledger is read ONLY for the timestamp/creature/note of
+# duty sessions — its measurement columns are never loaded into a scene, so
+# the viewer stays blind to them by construction.
+
+_OFFICE_FACILITY = {
+    "chronicle": "chronicle_hall", "editing": "editors_desk",
+    "research": "research_institute", "counsel": "counsel_office",
+    "registry": "registry_office", "scouts": "scouts_tower",
+    "agora": "agora",
+}
+_DUTY_OFFICE = re.compile(r"goal drive:\s*(\w+)|reveille:\s*(\w+)")
+_FNAME_DATE = re.compile(r"^(\d{8})")
+_LETTER_NAME = re.compile(r"^(\d{8})-from-([a-z]+)")
+_TASK_HIST = re.compile(r"^-\s*(\d{4}-\d{2}-\d{2})\s*(.*)")
+
+
+def _fname_t(name: str, fallback: float) -> float:
+    m = _FNAME_DATE.match(name)
+    if not m:
+        return fallback
+    return time.mktime(time.strptime(m.group(1), "%Y%m%d")) + 12 * 3600
+
+
+def _first_heading(path: Path) -> str:
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("#"):
+            return line.lstrip("# ").strip()
+    return path.stem
+
+
+def _scan_duty_scenes() -> list[dict]:
+    led = REPO_ROOT / "research" / "metabolism-m1" / "caretaker_ledger.jsonl"
+    scenes: list[dict] = []
+    if not led.exists():
+        return scenes
+    for line in led.read_text(encoding="utf-8").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("kind") != "duty_session":
+            continue
+        note = row.get("note", "")
+        m = _DUTY_OFFICE.search(note)
+        office = (m.group(1) or m.group(2)) if m else ""
+        office = office if office in _OFFICE_FACILITY else ""
+        scenes.append({
+            "t": row.get("ts", 0), "kind": "duty",
+            "actors": [row.get("creature", "?")],
+            "where": _OFFICE_FACILITY.get(office, "council_hall"),
+            "office": office,
+            "payload_ref": [f"village/desks/{office}/goals.md" if office
+                            else "village/reveille.log"],
+        })
+    return scenes
+
+
+def _scan_letter_scenes() -> list[dict]:
+    post = REPO_ROOT / "village" / "post"
+    scenes: list[dict] = []
+    if not post.is_dir():
+        return scenes
+    proper = {d.name.lower(): d.name for d in (REPO_ROOT / "creatures").iterdir()
+              if d.is_dir()}
+    for box in sorted(p for p in post.iterdir() if p.is_dir()):
+        for f in sorted((box / "inbox").glob("**/*.md")):
+            m = _LETTER_NAME.match(f.name)
+            if not m:
+                continue
+            sender = proper.get(m.group(2), m.group(2).capitalize())
+            # mtime is the true delivery moment when it agrees with the
+            # filename's date (local-first); across clones it drifts, so a
+            # mismatched mtime falls back to the filename date at noon.
+            mt = f.stat().st_mtime
+            t = mt if time.strftime("%Y%m%d", time.localtime(mt)) == m.group(1) \
+                else _fname_t(f.name, mt)
+            scenes.append({
+                "t": t,
+                "kind": "letter", "actors": [sender, box.name],
+                "where": f"house:{box.name}",
+                "read": f.parent.name == "read",
+                "payload_ref": [str(f.relative_to(REPO_ROOT))],
+            })
+    return scenes
+
+
+# Where session transcripts live. A runner that writes somewhere not on this
+# list is invisible to the village — which is how the founding agora itself
+# (five phases, twenty voices, 2026-08-25) ended up with zero scenes while a
+# routine letter the same evening had one. The transcripts were filed where
+# they belonged as records (village/agora/), and the scanner was still watching
+# where the first ones happened to land. Adding an output location means adding
+# a line here; test_village_founding_is_visible holds that door.
+_SESSION_GLOBS = [
+    # (root, glob, kind, where) — `where` is the 3D location the scene poses at
+    ("research/village-founding", "*meeting*.json", "meeting", "council_hall"),
+    ("village/agora/founding-briefs", "phase*-result.json", "agora", "agora"),
+    ("village/agora", "*-result.json", "agora", "agora"),
+    ("village/desks", "*/*-result.json", "meeting", "council_hall"),
+]
+
+
+def _scan_session_scenes() -> list[dict]:
+    """Session transcripts from every registered root (see _SESSION_GLOBS)."""
+    scenes: list[dict] = []
+    seen: set[str] = set()
+    for root, pattern, kind, where in _SESSION_GLOBS:
+        d = REPO_ROOT / root
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob(pattern)):
+            rel = str(f.relative_to(REPO_ROOT))
+            if rel in seen:
+                continue
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(data, dict):
+                continue
+            if data.get("outcome") != "ok" or not data.get("participants"):
+                continue
+            seen.add(rel)
+            # A filename's leftovers are not a title: 20260826-worksession-
+            # result.json reduced to "result", which is what the published
+            # Day 19 caption nearly said. Strip the date and the generic
+            # tail, and fall back to the desk the session belongs to.
+            title = re.sub(r"^\d{8}[-_]?", "", f.stem)
+            title = re.sub(r"[-_]?(result|results|transcript)$", "", title)
+            title = title.replace("-", " ").replace("_", " ").strip()
+            desk = f.parent.name
+            if not title or title in ("meeting", "worksession", "session"):
+                title = f"{desk} {title}".strip() if desk not in (root, "") else desk
+            elif desk not in title and desk not in ("founding-briefs", ""):
+                title = f"{desk} {title}"
+            scenes.append({
+                "t": data.get("started_at", f.stat().st_mtime), "kind": kind,
+                "actors": data["participants"], "where": where,
+                "title": title, "turns": len(data.get("turns", [])),
+                "payload_ref": [rel],
+            })
+    return scenes
+
+
+def _scan_rollcall_scenes() -> list[dict]:
+    """Roll-call rounds — a list of speakers, not a meeting transcript.
+
+    The ratification consent round of 2026-08-25 is the shape this exists for:
+    twenty residents each speaking once, which is one event in the village even
+    though the file is a roster. Kept separate from _scan_session_scenes rather
+    than bent into it, because a roll call has no facilitator and no turns —
+    flattening the two shapes would lose that.
+    """
+    scenes: list[dict] = []
+    for f in sorted((REPO_ROOT / "village" / "agora").glob("**/*consent*.json")):
+        try:
+            rows = json.loads(f.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(rows, list) or not rows:
+            continue
+        # A resident who spoke twice — the 08-25 abstention that was cured on
+        # the spot and re-entered as consent — is still one actor in the scene.
+        spoke: list[str] = []
+        for r in rows:
+            if isinstance(r, dict) and r.get("name") and r.get("ok") \
+                    and r["name"] not in spoke:
+                spoke.append(r["name"])
+        if not spoke:
+            continue
+        ts = [r.get("ts") for r in rows if isinstance(r, dict) and r.get("ts")]
+        scenes.append({
+            "t": min(ts) if ts else f.stat().st_mtime,
+            "kind": "agora", "actors": spoke, "where": "agora",
+            "title": "ratification consent round", "turns": len(spoke),
+            "payload_ref": [str(f.relative_to(REPO_ROOT))],
+        })
+    return scenes
+
+
+def _scan_meeting_scenes() -> list[dict]:
+    vf = REPO_ROOT / "research" / "village-founding"
+    scenes: list[dict] = []
+    if not vf.is_dir():
+        return scenes
+    for f in sorted(vf.glob("*meeting*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if d.get("outcome") != "ok" or not d.get("participants"):
+            continue
+        title = re.sub(r"^\d{8}-meeting-", "", f.stem).replace("-", " ")
+        scenes.append({
+            "t": d.get("started_at", f.stat().st_mtime), "kind": "meeting",
+            "actors": d["participants"], "where": "council_hall",
+            "title": title, "turns": len(d.get("turns", [])),
+            "payload_ref": [str(f.relative_to(REPO_ROOT))],
+        })
+    return scenes
+
+
+def _scan_board_scenes() -> list[dict]:
+    scenes: list[dict] = []
+    for sub, kind, where in (("decisions", "ruling", "agora"),
+                             ("board", "notice", "notice_board")):
+        d = REPO_ROOT / "village" / sub
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.md")):
+            if f.name == "README.md":
+                continue
+            scenes.append({
+                "t": _fname_t(f.name, f.stat().st_mtime), "kind": kind,
+                "actors": [], "where": where,
+                "title": _first_heading(f),
+                "payload_ref": [str(f.relative_to(REPO_ROOT))],
+            })
+    return scenes
+
+
+def _scan_task_scenes() -> list[dict]:
+    tasks = REPO_ROOT / "village" / "tasks"
+    scenes: list[dict] = []
+    if not tasks.is_dir():
+        return scenes
+    for f in sorted(tasks.glob("*.md")):
+        if f.name == "README.md":
+            continue
+        text = f.read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            continue
+        try:
+            meta = yaml.safe_load(text.split("---", 2)[1]) or {}
+        except Exception:
+            continue
+        rel = str(f.relative_to(REPO_ROOT))
+        for i, line in enumerate(text.splitlines()):
+            m = _TASK_HIST.match(line.strip())
+            if not m:
+                continue
+            t = time.mktime(time.strptime(m.group(1), "%Y-%m-%d")) + 12 * 3600 + i
+            scenes.append({
+                "t": t, "kind": "task",
+                "actors": [a for a in [meta.get("owner")] if a],
+                "where": _OFFICE_FACILITY.get(meta.get("desk", ""), "council_hall"),
+                "title": str(meta.get("title", f.stem)),
+                "status": meta.get("status", ""), "event": m.group(2),
+                "payload_ref": [rel],
+            })
+    return scenes
+
+
+# Transitions on the same day are one event, not several. The 07-27 sweep moved
+# four creatures across two lineages within minutes; rendering them separately
+# would show four upgrades where the record shows a generation turning over.
+_TRANSITION_MERGE_S = 6 * 3600
+
+
+def _scan_transition_scenes(base: Path, habitat: str) -> list[dict]:
+    """substrate_transition spans — the longitudinal record's first-class event.
+
+    The village could already swap a head when a re-brain happened LIVE, but the
+    sixteen transitions already in the ledger were invisible: the renderer had
+    the capability and the bus never scanned for them. That matters more since
+    the longitudinal reframe (DEVIATION 01) — the pre-registered event was one
+    generation dying and being succeeded, and what the ledger holds instead is
+    the whole substrate generation turning over with nobody dead. That event has
+    to be watchable.
+    """
+    moves: list[tuple[float, str, dict]] = []
+    for cdir in creature_dirs(base, habitat):
+        # Narrations recorded separately (the 08-07 backfill, when the ritual's
+        # narrate step had no home yet) are joined back by the transition they
+        # describe. Appended, never written into the original span.
+        late: dict[float, str] = {}
+        for span in _iter_spans(cdir):
+            if span.get("kind") == "substrate_transition_narration":
+                a = span.get("attributes") or {}
+                if a.get("of_transition_at") and a.get("narration"):
+                    late[a["of_transition_at"]] = a["narration"]
+        for span in _iter_spans(cdir):
+            if span.get("kind") == "substrate_transition":
+                attrs = dict(span.get("attributes") or {})
+                t = span.get("timestamp", 0)
+                if not attrs.get("narration") and t in late:
+                    attrs["narration"] = late[t]
+                    attrs["narration_late"] = True
+                moves.append((t, cdir.name, attrs))
+    moves.sort()
+    scenes, run = [], []
+    for m in moves:
+        if run and m[0] - run[-1][0] > _TRANSITION_MERGE_S:
+            scenes.append(_transition_scene(run))
+            run = []
+        run.append(m)
+    if run:
+        scenes.append(_transition_scene(run))
+    return scenes
+
+
+def _desc(v) -> str:
+    """from/to are a string on some spans and a dict on others (Nova 07-20)."""
+    if isinstance(v, dict):
+        return "/".join(str(v[k]) for k in ("provider", "model", "auth") if v.get(k))
+    return str(v or "")
+
+
+def _transition_scene(run: list[tuple[float, str, dict]]) -> dict:
+    axes = sorted({str(a.get("axis", "?"))[:1] for _, _, a in run})
+    return {
+        "t": run[0][0], "kind": "transition",
+        "actors": [c for _, c, _ in run],
+        "where": "village",
+        "axes": axes,
+        "cohort_sweep": len(run) >= 3,     # a turnover, not one creature moving
+        "moves": [{"creature": c, "axis": a.get("axis"), "op": a.get("op"),
+                   "from": _desc(a.get("from")), "to": _desc(a.get("to")),
+                   # 07-27's four spans carry no reason; absent, never invented
+                   "reason": a.get("reason"),
+                   # the creature's own account of the move (ritual step 4).
+                   # Unsaved before 2026-08-07, so older moves have none.
+                   "narration": a.get("narration"),
+                   "narration_late": a.get("narration_late", False)}
+                  for _, c, a in run],
+        "payload_ref": [f"creatures/{c}/store/spans.jsonl" for _, c, _ in run],
+    }
+
+
 def build_scenes(base: Path | None = None, habitat: str = "") -> list[dict]:
     """Full normalized scene timeline, oldest first."""
     base = base or (REPO_ROOT / "creatures")
     scenes = (_scan_field_and_reflect_scenes(base, habitat)
               + _scan_heartbeat_scenes(base, habitat)
-              + _scan_report_scenes())
+              + _scan_transition_scenes(base, habitat)
+              + _scan_report_scenes()
+              + _scan_duty_scenes()
+              + _scan_letter_scenes()
+              + _scan_session_scenes()
+              + _scan_rollcall_scenes()
+              + _scan_board_scenes()
+              + _scan_task_scenes())
     scenes.sort(key=lambda s: s["t"])
     return scenes
 

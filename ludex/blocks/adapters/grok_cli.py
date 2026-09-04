@@ -24,14 +24,17 @@ import re
 import time
 import shutil
 import tempfile
-import select
+import queue
 import subprocess
+import threading
 import logging
 
 from ludex.blocks.adapters.base import BaseAdapter, AdapterResponse
 from ludex.blocks.adapters._cli_env import cli_subprocess_env
 from ludex.blocks.adapters._creature_context import load_creature_context
 from ludex.blocks.adapters._fatigue import parse_reset_at as _parse_reset_at
+from ludex.blocks.adapters._liveness import run_traced
+from ludex.blocks.adapters._headless_state import run_streamed, STREAM_FLAGS
 
 
 # D-068 fatigue patterns for the Grok / xAI subscription substrate.
@@ -39,6 +42,11 @@ from ludex.blocks.adapters._fatigue import parse_reset_at as _parse_reset_at
 # are UNVERIFIED (not yet hit as of 2026-07-13). Mirrors the codex set —
 # refine against a real captured limit before trusting the detail text.
 _GROK_FATIGUE_PATTERNS = [
+    # Auth loss masquerades as empty output (measured 2026-08-18: expired login
+    # session prints "run `grok login` on a machine with a browser" and the
+    # retry-on-empty loop burns 3 attempts per call). Classify it as auth so
+    # the span says the one thing the operator acts on: log in again.
+    (re.compile(r"grok login", re.IGNORECASE), "auth_required"),
     (re.compile(r"\busage limit\b", re.IGNORECASE), "subscription_limit"),
     (re.compile(r"\brate[_\s-]?limit\b", re.IGNORECASE), "rate_limited"),
     (re.compile(r"\bquota\b", re.IGNORECASE), "quota_exhausted"),
@@ -62,6 +70,25 @@ def _run_reap_on_answer(cmd, env, cwd, timeout_s):
     import subprocess as sp
     proc = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.PIPE, env=env, cwd=cwd,
                     stdin=sp.DEVNULL)
+    # select() takes only sockets on Windows, so selecting on the child's pipes
+    # raises WinError 10038 before a single byte is read (2026-08-21, Ray lab,
+    # grok's first run off POSIX). Reader threads are portable and keep the
+    # reap-on-answer logic below byte-identical.
+    chunks: "queue.Queue[tuple[int, bytes]]" = queue.Queue()
+
+    def _pump(stream, which):
+        try:
+            while True:
+                chunk = stream.read(1)          # unbuffered: never block on a full block
+                if not chunk:
+                    return
+                chunks.put((which, chunk + (stream.read1(65536) if hasattr(stream, "read1") else b"")))
+        except Exception:
+            return
+
+    for stream, which in ((proc.stdout, 0), (proc.stderr, 1)):
+        threading.Thread(target=_pump, args=(stream, which), daemon=True).start()
+
     buf, ebuf = b"", b""
     t0 = time.time()
     grace_until = None
@@ -69,16 +96,25 @@ def _run_reap_on_answer(cmd, env, cwd, timeout_s):
         remaining = timeout_s - (time.time() - t0)
         if remaining <= 0:
             break
-        rl, _, _ = select.select([proc.stdout, proc.stderr], [], [], min(0.25, remaining))
-        for fd in rl:
-            chunk = os.read(fd.fileno(), 65536)
-            if fd is proc.stdout:
+        try:
+            which, chunk = chunks.get(timeout=min(0.25, remaining))
+            if which == 0:
                 buf += chunk
             else:
                 ebuf += chunk
+        except queue.Empty:
+            pass
         if proc.poll() is not None:
-            buf += proc.stdout.read() or b""
-            ebuf += proc.stderr.read() or b""
+            time.sleep(0.05)                     # let the pumps flush the tail
+            while True:
+                try:
+                    which, chunk = chunks.get_nowait()
+                except queue.Empty:
+                    break
+                if which == 0:
+                    buf += chunk
+                else:
+                    ebuf += chunk
             return buf.decode("utf-8", "replace"), ebuf.decode("utf-8", "replace"), True
         text = buf.decode("utf-8", "replace")
         if grace_until is None:
@@ -237,23 +273,46 @@ class GrokCliAdapter(BaseAdapter):
             # viable creature brain. grok-4.5 rarely trips this. A returncode!=0
             # or a fatigue hit breaks out immediately (not the empty case).
             attempts = 3
+            liveness = {}
             for attempt in range(attempts):
                 if agentic:
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=self.timeout_ms / 1000,
-                        encoding="utf-8",
-                        errors="replace",
+                    # Grok 1.0.x may emit useful text/tool events and then leave
+                    # a helper alive after a tool-output failure.  A plain
+                    # subprocess.run() records only "timeout" and can leave the
+                    # helper holding our pipes.  The shared traced runner keeps
+                    # the same hard deadline, kills the process group, and tells
+                    # us whether the CLI was silent, stalled, or still producing.
+                    # 2026-09-03: agentic (bench) calls run in the CLI's NDJSON
+                    # streaming mode through the headless state machine —
+                    # thinking/producing/tool_running are visible, auth loss and
+                    # permission denial fail fast, and a kill (hard cap) leaves a
+                    # state trace instead of a bare "timed out". The 01:00 ring
+                    # killed two grok bench sessions at 600s without knowing
+                    # whether they were working. Observation mode: idle stalls
+                    # are labelled, not killed (RESEARCH.md §5).
+                    scmd = [a for a in cmd if a not in ("--output-format", "plain")] + STREAM_FLAGS["grok"]
+                    result, state = run_streamed(
+                        scmd, "grok",
                         env=cli_subprocess_env("grok_cli", self._auth),
                         cwd=self._cwd,
-                        # grok 0.2.103+ peeks at stdin even headless; an invalid
-                        # inherited stdin (detached parent) hangs to timeout.
-                        stdin=subprocess.DEVNULL,
+                        idle_s=120.0,
+                        hard_cap_s=self.timeout_ms / 1000,
                     )
+                    liveness = state.summary()
                     content = (result.stdout or "").strip()
                     stderr_text = (result.stderr or "")
+                    if state.ended_by == "hard_cap":
+                        _e = subprocess.TimeoutExpired(scmd, self.timeout_ms / 1000,
+                                                       output="\n".join(result.lines[-20:]).encode(),
+                                                       stderr=stderr_text.encode())
+                        _e.telemetry = liveness
+                        raise _e
+                    if state.ended_by == "fail_fast":
+                        msg = f"grok {state.signature}: {state.signature_detail[:160]}"
+                        logger.error(msg)
+                        return AdapterResponse(content=f"[Error: {msg}]",
+                                               raw={"error": state.signature, "liveness": liveness,
+                                                    "stderr": stderr_text[:1000]})
                 else:
                     # speech acts: PER-CALL isolated HOME — grok's session store
                     # is a persistent memory layer (--no-memory doesn't cover
@@ -296,7 +355,22 @@ class GrokCliAdapter(BaseAdapter):
                     time.sleep(2)
             elapsed_ms = (time.time() - start) * 1000
 
-            fatigue_match = _detect_grok_fatigue(stderr_text + "\n" + content)
+            # 2026-09-04 (Cody, founder's correction): the resident's ANSWER counts
+            # as fatigue evidence only when the call failed or the answer is short
+            # enough to be an error line. Vane's sources table ("… HTTP 429 …")
+            # matched \b429\b, the answer was thrown away, Vane was marked
+            # fatigued for 60 minutes, and the next call returned empty in 0s —
+            # two empty responses that were then *assumed* to be token fatigue.
+            # None of it was. Count the exit code; never infer a quota wall
+            # from prose.
+            # A successful call with a non-empty answer is never fatigue — the
+            # answer may quote the words (a smoke prompt saying 「quota 벽」 was
+            # echoed back and re-tripped this, 09-04 16:5x). Only a failed exit
+            # or an empty answer lets the answer text be scanned.
+            scan = stderr_text
+            if result.returncode != 0 or not content.strip():
+                scan = stderr_text + "\n" + content
+            fatigue_match = _detect_grok_fatigue(scan)
             if fatigue_match is not None:
                 cause, detail, reset_s = fatigue_match
                 msg = f"Grok / xAI subscription limit reached (cause: {cause}). {detail}"
@@ -324,7 +398,10 @@ class GrokCliAdapter(BaseAdapter):
                 # ran at what effort — no fallback ambiguity.
                 raw={"returncode": result.returncode, "elapsed_ms": round(elapsed_ms, 1),
                      "cmd": self._cmd, "model": model, "effort": effort,
-                     "argv": [a for a in cmd if a != prompt_file]},
+                     "argv": [a for a in cmd if a != prompt_file],
+                     "liveness": liveness,
+                     # agentic streams carry grok's own usage (real tokens)
+                     "usage": getattr(result, "usage", None)},
             )
 
         except subprocess.TimeoutExpired as e:
@@ -332,11 +409,17 @@ class GrokCliAdapter(BaseAdapter):
             # capture the child's dying words — what was it doing at kill time?
             po = e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
             pe = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
+            liveness = getattr(e, "telemetry", {}) or (locals().get("liveness") or {})
+            tool_output_error = "tool_output_error" in f"{po}\n{pe}".lower()
             logger.error(f"Grok CLI timeout after {elapsed_ms:.0f}ms | "
+                         f"liveness={liveness.get('label', 'unknown')} | "
+                         f"tool_output_error={tool_output_error} | "
                          f"partial stdout[:300]={po[:300]!r} | partial stderr[:300]={pe[:300]!r}")
             return AdapterResponse(content="[Error: Grok CLI timed out]",
                                    raw={"timeout": True, "elapsed_ms": round(elapsed_ms, 1),
-                                        "partial_stdout": po[:1000], "partial_stderr": pe[:1000]})
+                                        "partial_stdout": po[:1000], "partial_stderr": pe[:1000],
+                                        "liveness": liveness,
+                                        "tool_output_error": tool_output_error})
         except FileNotFoundError:
             return AdapterResponse(
                 content=f"[Error: '{self._cmd}' not found. Is Grok CLI installed and on PATH?]",

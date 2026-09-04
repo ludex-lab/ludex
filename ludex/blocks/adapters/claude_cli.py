@@ -16,6 +16,8 @@ import os
 import re
 import time
 import subprocess
+
+from ludex.blocks.adapters._liveness import run_traced
 import shutil
 import logging
 
@@ -29,6 +31,22 @@ _CLAUDE_FATIGUE_PATTERNS = [
     (re.compile(r"\bdaily message limit reached\b", re.IGNORECASE), "subscription_limit"),
     (re.compile(r"\b5[\s-]*hour limit reached\b", re.IGNORECASE), "subscription_limit"),
     (re.compile(r"\bweekly message limit reached\b", re.IGNORECASE), "subscription_limit"),
+    # Per-MODEL limits (observed 2026-08-26: "You've reached your Fable 5
+    # limit. Switch to another model, or manage usage credits at
+    # claude.ai/settings/usage?from=cc_cli_limit_message, to continue."). The
+    # three patterns above all read "<period> limit reached"; this shape
+    # inverts the word order and interpolates a model name, so it walked past
+    # the table in plain prose — and because nothing classified it, three
+    # watchers stayed blind at once: no fatigue rest, no failed turn, and the
+    # sentence was published into a desk ledger as the resident's own work.
+    # The URL marker is the CLI's own machine signal; the prose pattern
+    # requires the second-person "you've reached YOUR", which is how a tool
+    # addresses a user and not how a resident writes about limits (a creature
+    # reporting on quota walls says "the limit was reached" — that distinction
+    # is what keeps this from re-firing the codex false-positive class).
+    (re.compile(r"cc_cli_limit_message"), "subscription_limit"),
+    (re.compile(r"\byou['’]?ve reached your\b.{0,40}?\blimit\b", re.IGNORECASE),
+     "subscription_limit"),
     (re.compile(r"\brate[_\s-]?limit\b", re.IGNORECASE), "rate_limited"),
     (re.compile(r"\bquota\s+exhausted\b", re.IGNORECASE), "quota_exhausted"),
     (re.compile(r"\b429\b"), "rate_limited"),
@@ -76,6 +94,8 @@ class ClaudeCliAdapter(BaseAdapter):
     provider_name = "claude_cli"
 
     def __init__(self, base_url: str = "", timeout_ms: int = 120000, cwd: str = "", auth: str = "", **kwargs):
+        # pop before super — BaseAdapter takes no **kwargs and would reject it
+        write_dirs = kwargs.pop("write_dirs", None)
         super().__init__(base_url=base_url or _CLAUDE_CMD, timeout_ms=timeout_ms, **kwargs)
         self._cmd = base_url or _CLAUDE_CMD
         self._cwd = cwd or None  # None = inherit from parent process
@@ -83,6 +103,17 @@ class ClaudeCliAdapter(BaseAdapter):
         # subprocess env so ANTHROPIC_API_KEY is stripped for subscription
         # brains and the CLI is never silently billed to the API.
         self._auth = auth
+        # Ruling No. 3 (자기 관할 쓰기 원칙): a resident may write inside its own
+        # jurisdiction — habitat + own desk + owned cards. OPT-IN and empty by
+        # default: council/chat/probe/smoke calls keep the mcp-only lock, so the
+        # paper's cross-substrate behaviour is untouched. The village layer
+        # (reveille goal sessions) passes the desk + tasks dirs here to grant
+        # the write. Enforcement stays report-only (판결문 3호) — this grants
+        # reach; overreach is reported by reveille's jurisdiction detector, not
+        # hard-blocked. This is how the claude lineage reaches parity with
+        # agy/codex: the block was never in config, it was the mcp-only
+        # allowed-tools line (2026-08-15).
+        self._write_dirs = list(write_dirs or [])
         # Opt-in conversational multi-turn: when set (e.g. by the web chat), flatten
         # the full message history into the prompt so claude -p has continuity.
         # Default off — single-shot callers (research corpus, CLI) are unchanged.
@@ -155,7 +186,19 @@ class ClaudeCliAdapter(BaseAdapter):
             mcp_config = self._build_mcp_config()
             if mcp_config:
                 cmd.extend(["--mcp-config", mcp_config])
-                cmd.extend(["--allowed-tools", "mcp__ludex__*"])
+                # Default: organ tools only (the mcp-only lock). With a granted
+                # write jurisdiction (Ruling No. 3), also allow the built-in
+                # file tools and widen --add-dir to each jurisdiction dir so the
+                # resident can write its own desk / owned cards, not just its
+                # habitat. Verified 2026-08-15: --allowed-tools "Write Edit" runs
+                # headless without a permission prompt.
+                if self._write_dirs:
+                    cmd.extend(["--allowed-tools",
+                                "mcp__ludex__* Read Write Edit"])
+                    for d in self._write_dirs:
+                        cmd.extend(["--add-dir", d])
+                else:
+                    cmd.extend(["--allowed-tools", "mcp__ludex__*"])
         # Allow model override via the model parameter (sonnet/opus/haiku)
         if model and model not in ("claude-code", "", None):
             cmd.extend(["--model", model])
@@ -166,11 +209,9 @@ class ClaudeCliAdapter(BaseAdapter):
 
         start = time.time()
         try:
-            result = subprocess.run(
+            result, _tele = run_traced(
                 cmd,
                 input=full_prompt,
-                capture_output=True,
-                text=True,
                 timeout=self.timeout_ms / 1000,
                 encoding="utf-8",
                 # Parity with gemini_cli/codex_cli: defensive guard against
@@ -179,6 +220,7 @@ class ClaudeCliAdapter(BaseAdapter):
                 errors="replace",
                 env=cli_subprocess_env("claude_cli", self._auth),   # brain.auth: subscription strips the key, not billed API
                 cwd=self._cwd,
+                tag="claude_cli",
             )
 
             elapsed_ms = (time.time() - start) * 1000
@@ -204,7 +246,15 @@ class ClaudeCliAdapter(BaseAdapter):
             # self-care history) does not apply. Re-audit if Claude
             # CLI's stderr shape changes (e.g. a future
             # --debug-on-error default that echoes prompts).
-            fatigue_match = _detect_claude_fatigue(stderr_text + "\n" + content)
+            # 09-04: prose is not a quota wall — scan the answer only if the call
+            # failed or the answer is short (see grok_cli / codex_cli, same day)
+            # A successful call with a non-empty answer is never fatigue — the
+            # answer may quote the words. Only a failed exit or an empty answer
+            # lets the answer text be scanned (09-04, same rule on all three CLIs).
+            scan = stderr_text
+            if result.returncode != 0 or not content.strip():
+                scan = stderr_text + "\n" + content
+            fatigue_match = _detect_claude_fatigue(scan)
             if fatigue_match is not None:
                 cause, detail, reset_s = fatigue_match
                 msg = f"Claude subscription limit reached (cause: {cause}). {detail}"

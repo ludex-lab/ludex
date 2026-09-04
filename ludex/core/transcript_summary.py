@@ -154,12 +154,21 @@ def _extract_actions(data: dict) -> dict[str, dict]:
     # cached per process to avoid repeated disk hits when summarizing
     # a directory with many sessions.
     participants_brain = {}
+    participants_brain_source = {}
     for p in data.get("participants", []):
         nm = p.get("name", "")
         b = p.get("brain", "")
+        src = "archived" if b else ""
         if not b and nm:
+            # 소견 01 (2026-08-14): 이 폴백은 **오늘의** ludex.yaml을 읽는다.
+            # 재-브레인된 주민에게는 세션 당시와 다른 값이다 — 실제로 아카이브
+            # 51개 중 44개가 표지 없이 이 폴백을 탔고, 논문 표 1의 검증 사슬이
+            # 조용히 끊어져 있었다. 폴백을 없애면 기존 도구가 다 멎으므로
+            # 유지하되, 출처를 함께 실어 판독기가 기록과 추정을 구분하게 한다.
             b = _lookup_creature_brain(nm)
+            src = "live_config" if b else ""
         participants_brain[nm] = b or ""
+        participants_brain_source[nm] = src
 
     # Collect per-participant, per-phase content snippets
     by_participant: dict[str, dict[str, str]] = {}
@@ -217,6 +226,7 @@ def _extract_actions(data: dict) -> dict[str, dict]:
         actions[name] = {
             "role": role,
             "brain": brain,
+            "brain_source": participants_brain_source.get(name, ""),
             "arc": arc,
             "first_position": first_pos,
             "argument": argument,

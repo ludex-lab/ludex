@@ -34,7 +34,13 @@ CREATURES = ROOT / "creatures"
 
 from ludex.core.heartbeat import SKIP_DIRS  # test fixtures, not real creatures
 
-SUBSTRATE_STATUSES = {"live", "cost-watch", "wind-down", "retiring", "dormant"}
+# "retired" arrived with Decision 13 (Moss, 2026-08-23) and was taught to
+# the heartbeat the next day; this validator kept the old vocabulary and
+# called the village's own first retirement an unknown label. Fourth
+# watcher found this week that was still looking at the world before a
+# change — the label is not new, the reader was old.
+SUBSTRATE_STATUSES = {"live", "cost-watch", "wind-down", "retiring",
+                      "dormant", "retired"}
 SPAN_REQUIRED = ("kind", "creature", "timestamp", "attributes")
 
 
@@ -44,6 +50,18 @@ def _rel(path: Path) -> Path:
         return path.relative_to(ROOT)
     except ValueError:
         return path
+
+
+def _is_legacy_arrival(obj: dict) -> bool:
+    """A village_arrival line in the pre-canonical shape (t/who at top level).
+
+    Narrow on purpose: it must be an arrival, must lack the canonical fields,
+    and must carry the old ones. Anything else is a real error, including a
+    NEW arrival written wrongly — this exemption covers history, not habits.
+    """
+    return (obj.get("kind") == "village_arrival"
+            and "attributes" not in obj
+            and "t" in obj and "who" in obj)
 
 
 def _check_jsonl(path: Path, errors: list[str], required: tuple = ()) -> int:
@@ -57,6 +75,14 @@ def _check_jsonl(path: Path, errors: list[str], required: tuple = ()) -> int:
             errors.append(f"{_rel(path)}:{i}: not JSON ({e})")
             continue
         n += 1
+        if _is_legacy_arrival(obj):
+            # Pre-2026-08-26 arrivals were written by hand as
+            # {kind, t, who, habitat, col, row, note} instead of a canonical
+            # Span. The writer is fixed; these lines are not — an append-only
+            # ledger does not get rewritten to make a validator happy, and the
+            # record is still true. Tolerated explicitly and counted, so the
+            # exemption is visible rather than a silent hole.
+            continue
         for key in required:
             if key not in obj:
                 errors.append(f"{_rel(path)}:{i}: missing '{key}'")

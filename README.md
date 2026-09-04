@@ -78,7 +78,7 @@ for the CLI-auth or local paths:**
 |------|-----------|------|-------|
 | **CLI-auth (keyless)** | `claude_cli`, `codex_cli`, `gemini_cli`, `agy_cli`, `grok_cli`, `cursor_cli` | $0 — uses your existing CLI login/subscription | the matching CLI installed & logged in |
 | **Local** | `ollama` | $0 — runs on your machine | Ollama running at `localhost:11434` |
-| **BYO API key** | `anthropic`, `openai`, `gemini_api` | metered by provider | API key via env var (below) |
+| **BYO API key** | `anthropic`, `openai`, `gemini_api`, `openrouter` | metered by provider | API key via env var (below) |
 
 For the **BYO-key** paths, set the key as an environment variable. The safest
 way is a local `.env` file (already git-ignored — never committed):
@@ -105,7 +105,7 @@ python -m ludex cohort                 # stage table across all creatures (bread
 python -m ludex audit Nimbus           # memory audit: accumulation, recall surface, top tags
 ```
 
-- **Providers:** `ollama`, `openai`, `gemini_api`, `anthropic`, `claude_cli`, `claude_sdk`, `gemini_cli`, `agy_cli`, `codex_cli`, `grok_cli`, `cursor_cli`
+- **Providers:** `ollama`, `openai`, `gemini_api`, `anthropic`, `claude_cli`, `claude_sdk`, `gemini_cli`, `agy_cli`, `codex_cli`, `grok_cli`, `cursor_cli`, `openrouter`
 - **Organ presets:** `full`, `minimal`, `secure`, `social` (or `custom`)
 
 ## Forge — create a creature from the web

@@ -54,8 +54,23 @@ def record_transition_span(
     pre_snapshot: str | None = None,
     post_snapshot: str | None = None,
     note: str | None = None,
+    narration: str | None = None,
 ) -> bool:
     """Write a substrate_transition span. Returns True when written.
+
+    `note` is the caretaker's account of the change; `narration` is the
+    CREATURE's. The ritual is config -> smoke -> span -> narrate, and until
+    2026-08-07 the last step went nowhere: the creature was asked what the
+    change meant to it, answered, and the answer was printed to a console and
+    lost. Comet, Flare and Spark each said a version of "the wiring around me
+    changed, but I am still here" on 08-06 and none of it survives.
+
+    That matters beyond tidiness. The longitudinal record was reframed
+    (DEVIATION 01) around identity persisting through substrate transitions,
+    which makes a creature's own account of its transition the primary
+    narrative evidence for the claim. Recording it here rather than as a memory
+    keeps D-024 intact — no new writer kind, the same span carrying one more
+    field about the same event.
 
     Idempotent on the standing fact: if the latest substrate_transition
     span already records the same (axis, from, to, model, op), nothing is
@@ -96,6 +111,9 @@ def record_transition_span(
             "pre_snapshot": pre_snapshot,
             "post_snapshot": post_snapshot,
             "note": note,
+            # the creature's own words about its own transition; absent when the
+            # ritual's narrate step was skipped, and absent is left visible
+            "narration": narration,
         },
     ))
     return True
@@ -120,6 +138,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pre-snapshot", default=None, help="path of the pre-transition snapshot")
     ap.add_argument("--post-snapshot", default=None, help="path of the post-transition snapshot")
     ap.add_argument("--note", default=None, help="free-form caretaker note")
+    ap.add_argument("--narration", default=None,
+                    help="the CREATURE's own words about the change (ritual step 4)")
+    ap.add_argument("--narration-file", default=None,
+                    help="read the narration from a file instead (avoids shell mangling)")
     args = ap.parse_args(argv)
 
     habitat = Path(args.root) / args.creature
@@ -128,17 +150,25 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     store = LudexStore.for_creature(str(habitat))
 
+    narration = args.narration
+    if args.narration_file:
+        narration = Path(args.narration_file).read_text(encoding="utf-8").strip()
+
     written = record_transition_span(
         store, args.creature,
         axis=args.axis, from_desc=args.from_desc, to_desc=args.to_desc,
         provider=args.provider, model=args.model,
         magnitude=args.magnitude, op=args.op,
         pre_snapshot=args.pre_snapshot, post_snapshot=args.post_snapshot,
-        note=args.note,
+        note=args.note, narration=narration,
     )
     if written:
         print(f"substrate_transition span written: {args.creature} "
               f"[{args.axis}] {args.from_desc} → {args.to_desc} ({args.op})")
+        if not narration:
+            # said out loud rather than left as a silent gap in the record
+            print("  no narration recorded — the ritual's narrate step is "
+                  "unsaved unless --narration/--narration-file is given")
     else:
         print(f"already recorded for {args.creature} — nothing written")
     return 0

@@ -37,6 +37,23 @@ class Participant:
     organism: Any = None      # Organism or None (e.g., for caretaker slot)
     engine: Any = None        # EngineBlock or None
 
+    @property
+    def brain(self) -> str:
+        """`provider:model` of this participant AT SESSION TIME.
+
+        Archived by every serializer that writes participants (finding 01,
+        2026-08-14): 44 of 51 archived sessions carried no brain label, so
+        the reader fell back to today's `ludex.yaml` — and every re-brain
+        silently broke the paper's substrate chain. A session record that
+        does not carry its own substrate label is not verifiable later.
+        """
+        cfg = getattr(self.organism, "config", None)
+        if not cfg:
+            return ""
+        provider = cfg.get("provider", "") or ""
+        model = cfg.get("model", "") or ""
+        return f"{provider}:{model}" if provider or model else ""
+
 
 @dataclass
 class TurnRecord:
@@ -153,7 +170,8 @@ class ConversationField:
         return {
             "field_name": self.name,
             "participants": [
-                {"name": p.name, "role": p.role} for p in self.participants
+                {"name": p.name, "role": p.role, "brain": p.brain}
+                for p in self.participants
             ],
             "round_count": len(self.rounds),
             "turn_count": sum(len(r.records) for r in self.rounds),

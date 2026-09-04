@@ -10,22 +10,36 @@ logged-in subscription — surfaced 2026-06-18 by a real Anthropic billing email
   subscription → strip the provider's API key  → CLI uses its logged-in session
   api          → keep the key                  → CLI bills the API
   "" (unset)   → per-provider default (see _PROVIDER_AUTH below)
+
+The defaults are not permanent facts about providers. They encode which auth
+path is known to work, and a re-brain can move that — see agy_cli below.
 """
 from __future__ import annotations
 
 import os
 
 # provider → (API-key env var that bills, default auth when brain.auth is unset).
-# Defaults are SAFE per provider: claude/codex default to subscription (the
-# billing-leak fix — a creature with no explicit auth must never silently bill);
-# gemini/agy default to api because their consumer/free tiers are deprecated
-# (2026-06-18) and a paid key is the only working path.
+# Defaults are SAFE per provider: a creature with no explicit auth must never
+# silently bill, so a provider defaults to api only where subscription has no
+# working path.
+#
+# agy_cli defaulted to api until 2026-08-05 on the 06-18 reading that the gemini
+# consumer tier was gone. Nova falsifies it: her 07-20 re-brain moved her ONTO
+# agy_cli specifically to reach subscription (gemini_cli/gemini-3-pro-preview/api
+# was winding down), and she has run there since. agy is the subscription path
+# for this lineage, so the unsafe default was the api one.
+#
+# gemini_cli stays api: nothing has shown its consumer tier coming back, and
+# Nova's rescue moved OFF it to reach subscription rather than re-authenticating.
 _PROVIDER_AUTH = {
     "claude_cli": ("ANTHROPIC_API_KEY", "subscription"),
     "codex_cli":  ("OPENAI_API_KEY",    "subscription"),
     "grok_cli":   ("XAI_API_KEY",       "subscription"),
     "gemini_cli": ("GEMINI_API_KEY",    "api"),
-    "agy_cli":    ("GEMINI_API_KEY",    "api"),
+    "agy_cli":    ("GEMINI_API_KEY",    "subscription"),
+    # cursor: Cursor Ultra rides the Grok Super Heavy bundle (2026-08-17) —
+    # subscription is the working (and free-credit) path; CURSOR_API_KEY bills.
+    "cursor_cli": ("CURSOR_API_KEY",    "subscription"),
 }
 
 

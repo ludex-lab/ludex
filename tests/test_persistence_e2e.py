@@ -25,6 +25,7 @@ import os
 import sys
 import gc
 import shutil
+import tempfile
 import argparse
 from pathlib import Path
 
@@ -47,7 +48,14 @@ def test_persistence(provider: str = "ollama", model: str = "llama3.1:8b"):
     print("=" * 70)
 
     name = "PersistTest"
-    habitat_path = f"./creatures/{name}"
+    # A tmp root, never ./creatures. Forging into the live habitat left a
+    # PersistTest body behind after every suite run: it was deleted twice on
+    # 2026-08-05 (once by Ray, once by me) and the next pytest re-forged it
+    # both times, so the deletion could not stick and the roster carried a
+    # creature nobody had decided to keep. D-090 — tooling does not write into
+    # live creature state.
+    tmp_root = tempfile.mkdtemp(prefix="ludex-persist-e2e-")
+    habitat_path = os.path.join(tmp_root, name)
     cleanup_test_creature(habitat_path)
 
     # ============================================================
@@ -192,6 +200,7 @@ def test_persistence(provider: str = "ollama", model: str = "llama3.1:8b"):
     del org2
     del config2
     gc.collect()
+    shutil.rmtree(tmp_root, ignore_errors=True)   # the body too, not just the refs
     print(f"  Done")
 
     print("\n" + "=" * 70)

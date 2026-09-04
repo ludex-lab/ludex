@@ -69,21 +69,42 @@ def _assign_outfit(name: str) -> str:
     return garment
 
 
-def _arrival_event(name: str, habitat: str, plot: dict) -> None:
-    """Append an arrival scene to the creature's spans so the bus surfaces it
-    and the mayor walks to welcome the new house. View principle: this is a
-    real event (a birth into the habitat), not a simulation."""
-    span = {
-        "kind": "village_arrival", "t": time.time(),
-        "who": name, "habitat": habitat,
-        "col": plot.get("col"), "row": plot.get("row"),
-        "note": f"{name} arrived in the village — house cleared at "
-                f"({plot.get('col')},{plot.get('row')}).",
-    }
-    sp = _creature_dir(name) / "store" / "spans.jsonl"
-    sp.parent.mkdir(parents=True, exist_ok=True)
-    with open(sp, "a", encoding="utf-8") as f:
-        f.write(json.dumps(span, ensure_ascii=False) + "\n")
+def _arrival_event(name: str, habitat: str, plot: dict) -> bool:
+    """Append an arrival scene so the bus surfaces it and the mayor walks to
+    welcome the new house. Returns True when a span was written.
+
+    View principle: this is a real event (a birth into the habitat), not a
+    simulation — and a real event happens once. This wrote a hand-rolled dict
+    with `t`/`who` instead of the canonical Span, so every arrival line failed
+    the structural validator on creature/timestamp/attributes, and re-running
+    onboarding appended the same arrival again: the house and the outfit were
+    idempotent, the ledger was not (이음, 2026-08-26, five Studio residents).
+
+    Legacy lines are NOT rewritten — the ledger is append-only, and a past
+    record in an old shape is still evidence of what happened.
+    """
+    from ludex.core.store import LudexStore, Span
+
+    store = LudexStore.for_creature(str(_creature_dir(name)))
+    col, row = plot.get("col"), plot.get("row")
+    for prior in store.spans(kind="village_arrival"):
+        a = prior.get("attributes") or {}
+        # legacy lines carry the fields at top level; read both shapes
+        p_hab = a.get("habitat", prior.get("habitat"))
+        p_col = a.get("col", prior.get("col"))
+        p_row = a.get("row", prior.get("row"))
+        if (p_hab, p_col, p_row) == (habitat, col, row):
+            return False
+    store.append(Span(
+        kind="village_arrival",
+        creature=name,
+        attributes={
+            "habitat": habitat, "col": col, "row": row,
+            "note": f"{name} arrived in the village — house cleared at "
+                    f"({col},{row}).",
+        },
+    ))
+    return True
 
 
 def onboard_creature(name: str, habitat: str = "Mac-habitat") -> dict:

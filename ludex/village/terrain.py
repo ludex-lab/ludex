@@ -45,6 +45,18 @@ FIXED_SPOTS = {
     "wilderness_grove": (8 + V, 9 + V),
     # arena_harbor placed on the SE coast at generation time
 }
+# 개청 (2026-08-11): the seven desks get buildings. Spots chosen off the
+# facility loop with chebyshev>=2 from every plot in the live registry —
+# adding a plot is an event (개청), never a reshuffle. The scouts watch
+# from the forest edge; the registrar sits by the agora.
+DESK_SPOTS = {
+    "chronicle_hall": (10 + V, 7 + V),
+    "editors_desk": (17 + V, 8 + V),
+    "research_institute": (24 + V, 12 + V),
+    "counsel_office": (25 + V, 19 + V),
+    "registry_office": (17 + V, 23 + V),
+    "scouts_tower": (9 + V, 14 + V),
+}
 FOREST_BOX = (3 + V, 3 + V, 11 + V, 12 + V)     # col0, row0, col1, row1
 HARBOR_SECTOR = (20 + V, 18 + V)   # search start for the SE coast
 
@@ -155,6 +167,8 @@ class Island:
         ranked = sorted(FACILITY_RING, key=lambda f: -self.usage.get(f, 0))
         for i, fid in enumerate(ranked):
             c, r = RING_ANCHORS[i]
+            self.plots[f"facility:{fid}"] = {"col": c, "row": r}
+        for fid, (c, r) in DESK_SPOTS.items():
             self.plots[f"facility:{fid}"] = {"col": c, "row": r}
 
     def _house_candidates(self) -> list[tuple[int, int]]:
@@ -273,6 +287,14 @@ def build_map(habitat: str = "") -> dict:
             isl.place_harbor()          # coastal facility follows the coast
     else:
         isl.place_facilities()
+    # 개청: fixed facilities added AFTER a registry already exists join it
+    # as new plots (an event), leaving every existing plot untouched.
+    for fid, (c, r) in {**FIXED_SPOTS, **DESK_SPOTS}.items():
+        key = f"facility:{fid}"
+        if key not in isl.plots:
+            isl.plots[key] = {"col": c, "row": r}
+            isl.events.append({"t": time.time(), "type": "개청",
+                               "who": fid, "col": c, "row": r})
     isl.place_houses(registry)
     isl.carve_spurs()
     isl.place_props()

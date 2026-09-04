@@ -1,5 +1,6 @@
 """
-Antigravity CLI Adapter — subprocess-based, speech-act only.
+Antigravity CLI Adapter — subprocess-based; speech-act by default, bounded
+agentic (edits-only inside the bench cwd) when tools are passed — see call().
 
 Connects to Google's Antigravity CLI (`agy`, Go-rewrite) as the LLM
 backend. Pinned to Gemini 3.5 Flash, which is the only model `agy -p`
@@ -29,6 +30,8 @@ import time
 import shutil
 import tempfile
 import subprocess
+
+from ludex.blocks.adapters._liveness import run_traced
 import logging
 
 from ludex.blocks.adapters.base import BaseAdapter, AdapterResponse
@@ -57,25 +60,44 @@ class AgyCliAdapter(BaseAdapter):
 
     def call(self, model="", prompt="", system="", messages=None,
              temperature=0.7, max_tokens=4096, tools=None, effort=""):
-        # Tools forbidden — see module docstring.
-        if tools:
-            err = "agy adapter is speech-act only; tool calls forbidden by policy"
+        # Bounded agentic mode (2026-09-02, founder: the agy tribe sat idle
+        # because this adapter was speech-act only). `--mode accept-edits
+        # --add-dir <cwd>` auto-approves FILE EDITS inside the caller's cwd
+        # (the bench) and nothing else: headless agy auto-DENIES any tool
+        # that needs the "command" permission, so shell stays closed — the
+        # D-074 class this module's policy guards against. Measured 09-02:
+        # write via edit tool OK, shell attempt denied. Still never
+        # --dangerously-skip-permissions.
+        agentic = bool(tools)
+        if agentic and not self._cwd:
+            err = "agy agentic call needs a cwd (the bench) — refusing to edit an unbounded tree"
             logger.error(err)
-            return AdapterResponse(
-                content=f"[Error: {err}]",
-                raw={"error": "tools_forbidden"},
-            )
+            return AdapterResponse(content=f"[Error: {err}]", raw={"error": "agentic_no_cwd"})
 
-        # Model pin: agy -p only routes the default model (Gemini 3.5 Flash as
-        # of v1.0.2). Reject mismatched model rather than silently misrouting —
-        # surfacing the mismatch is safer for paper provenance.
-        if model and model not in ("", _PINNED_MODEL):
-            err = f"agy CLI -p mode only routes {_PINNED_MODEL}; got {model}"
-            logger.error(err)
-            return AdapterResponse(
-                content=f"[Error: {err}]",
-                raw={"error": "model_mismatch", "requested": model, "pinned": _PINNED_MODEL},
-            )
+        # Model routing. Until agy v1.0.2 `-p` exposed no `--model`, so the
+        # adapter pinned the default and rejected anything else. v1.1.9 does
+        # expose it (measured 2026-08-01: `--model gemini-3.6-flash --effort
+        # medium` routes; a bogus name errors with the menu, so the flag is
+        # really consulted). agy REQUIRES --effort alongside --model — effort
+        # is part of model selection there ("Gemini 3.6 Flash (Medium)"), not a
+        # separate dial.
+        #
+        # Deliberately narrow: when the requested model is the default, the
+        # command is built exactly as before, with no flags. Passing an
+        # explicit effort to creatures born without one would move them along
+        # substrate axis E as a side effect of a bug fix, and effort changes
+        # go through a deliberate re-brain, never through ops.
+        model_flags = []
+        if model and model != _PINNED_MODEL:
+            if not effort:
+                err = (f"agy --model {model} requires an effort "
+                       f"(low|medium|high); creature has none pinned")
+                logger.error(err)
+                return AdapterResponse(
+                    content=f"[Error: {err}]",
+                    raw={"error": "effort_required", "requested": model},
+                )
+            model_flags = ["--model", model, "--effort", effort]
 
         # Extract system + last user message (parity with claude_cli / gemini_cli).
         system_prompt = system or ""
@@ -128,7 +150,21 @@ class AgyCliAdapter(BaseAdapter):
         # untested, but the cost is negligible and rules out the class of
         # implicit-pwd leaks observed in gemini-cli. Opaque prefix avoids
         # seeding domain hints.
-        sandbox_cwd = tempfile.mkdtemp(prefix="ludex_sb_")
+        if agentic:
+            # Tell the brain what this mode can and cannot do — measured 09-03:
+            # left to itself agy reaches for the shell "command" tool, headless
+            # auto-denies it twice and the turn ends empty; told up front, it
+            # uses the file tools and the same task completes.
+            full_prompt = (
+                "Headless bounded mode: shell/command tools are auto-DENIED here and "
+                "cannot be approved. Use only the file read/write/edit tools, with "
+                "paths relative to the current working directory.\n\n" + full_prompt
+            )
+        # Agentic calls run in the real bench cwd instead (writes are bounded
+        # by --add-dir + cwd, the same shape the grok/codex lanes use).
+        sandbox_cwd = None if agentic else tempfile.mkdtemp(prefix="ludex_sb_")
+        run_cwd = self._cwd if agentic else sandbox_cwd
+        agentic_flags = ["--mode", "accept-edits", "--add-dir", self._cwd] if agentic else []
 
         # Windows argv cap: WinError 206 at >=34KB (measured 2026-07-15, Wick
         # 80-day catch-up consolidation). Large prompts go via STDIN — `agy`
@@ -136,7 +172,7 @@ class AgyCliAdapter(BaseAdapter):
         # Small prompts keep the long-tested argv path.
         _ARGV_SAFE_CHARS = 30000
         use_stdin = len(full_prompt) > _ARGV_SAFE_CHARS
-        cmd = [self._cmd] if use_stdin else [self._cmd, "-p", full_prompt]
+        cmd = ([self._cmd] if use_stdin else [self._cmd, "-p", full_prompt]) + model_flags + agentic_flags
         # HARD POLICY: never pass --dangerously-skip-permissions. Folder trust
         # alone does NOT auto-approve tool calls in v1.0.2.
 
@@ -145,13 +181,12 @@ class AgyCliAdapter(BaseAdapter):
             try:
                 child_env = cli_subprocess_env("agy_cli", self._auth)
                 run_kwargs = dict(
-                    capture_output=True,
-                    text=True,
                     timeout=self.timeout_ms / 1000,
                     encoding="utf-8",
                     errors="replace",
                     env=child_env,
-                    cwd=sandbox_cwd,
+                    cwd=run_cwd,
+                    tag="agy_cli",
                 )
                 if use_stdin:
                     # Large prompt: feed via stdin (argv would hit WinError 206).
@@ -162,18 +197,89 @@ class AgyCliAdapter(BaseAdapter):
                     # the call waiting on interactive input — observed on Windows agy.cmd
                     # (2026-06-22). DEVNULL gives the child immediate EOF instead.
                     run_kwargs["stdin"] = subprocess.DEVNULL
-                result = subprocess.run(cmd, **run_kwargs)
+                if agentic:
+                    # 2026-09-03: bench calls go through the headless state
+                    # machine (NDJSON stream) — state trace, fail-fast on auth
+                    # (agy otherwise waits 60s for a browser) and permission
+                    # denial. Observation mode for idle stalls. See
+                    # research/headless-liveness/RESEARCH.md.
+                    from ludex.blocks.adapters._headless_state import run_streamed, STREAM_FLAGS
+                    result, _state = run_streamed(
+                        cmd + STREAM_FLAGS["agy"], "agy", env=child_env, cwd=run_cwd,
+                        input=full_prompt if use_stdin else None,
+                        idle_s=120.0, hard_cap_s=self.timeout_ms / 1000)
+                    _tele = _state.summary()
+                    if _state.ended_by == "hard_cap":
+                        raise subprocess.TimeoutExpired(cmd, self.timeout_ms / 1000)
+                    if _state.ended_by == "fail_fast":
+                        msg = f"agy {_state.signature}: {_state.signature_detail[:160]}"
+                        logger.error(msg)
+                        return AdapterResponse(content=f"[Error: {msg}]",
+                                               raw={"error": _state.signature, "liveness": _tele,
+                                                    "stderr": (result.stderr or "")[:1000]})
+                    if not result.stdout.strip() and (_state.signature == "permission" or _state.tool_errors):
+                        # agy's auto-deny (or a run of failed tool steps) ends the
+                        # turn with an empty SUCCESS — name it instead of
+                        # reporting an empty brain
+                        why = "permission" if _state.signature == "permission" else "tool_errors"
+                        msg = f"agy {why}: {_state.signature_detail[:160] or f'{_state.tool_errors} failed tool steps, empty response'}"
+                        logger.error(msg)
+                        return AdapterResponse(content=f"[Error: {msg}]",
+                                               raw={"error": why, "liveness": _tele})
+                else:
+                    result, _tele = run_traced(cmd, **run_kwargs)
             finally:
-                shutil.rmtree(sandbox_cwd, ignore_errors=True)
+                if sandbox_cwd:
+                    shutil.rmtree(sandbox_cwd, ignore_errors=True)
 
             elapsed_ms = (time.time() - start) * 1000
             content = result.stdout.strip()
             stderr_text = (result.stderr or "")
 
+            # An invalid flag is a CONTRACT error, not a quiet brain. agy answers
+            # `--effort dynamic` on a routed model with "invalid model selection"
+            # on stderr and nothing on stdout, which every caller upstream reads
+            # as "the brain had nothing to say" — Ray hit it as an empty reflect
+            # during a rebrain. The walk lane would have caught it via VOID-brain;
+            # the creature lane had no such machine, so it is caught here.
+            if not content and "invalid model selection" in stderr_text.lower():
+                err = f"agy rejected the call contract: {stderr_text.strip()[:200]}"
+                logger.error(err)
+                return AdapterResponse(
+                    content=f"[Error: {err}]",
+                    raw={"error": "invalid_flag", "stderr": stderr_text,
+                         "elapsed_ms": round(elapsed_ms, 1)},
+                )
+
             # Quota detection: exact pattern not yet characterized for agy.
             # Generic heuristic until a real quota event lets us pin the
             # format. Refine the token list when observed.
             lower_err = stderr_text.lower()
+            # Headless tool-permission denial (2026-08-01, PhysGym smoke):
+            # agy tries a tool, headless cannot prompt for permission, the
+            # call is auto-denied and STDOUT comes back EMPTY while stderr
+            # carries the reason. Returning "" made this look like a silent
+            # brain failure for a whole smoke run. Surface it instead —
+            # investigation-flavoured prompts (reports, experiment design)
+            # trigger it, which is exactly the physics-wall context.
+            if not content and ("permission" in lower_err
+                                and ("auto-denied" in lower_err
+                                     or "headless" in lower_err)):
+                err = ("agy tool-permission denied in headless mode (empty "
+                       "output); prompt likely triggered a tool call")
+                logger.error(f"{err}: {stderr_text.strip()[:200]}")
+                return AdapterResponse(
+                    content=f"[Error: {err}]",
+                    # elapsed_ms belongs in raw — AdapterResponse has no such
+                    # field, so passing it as a kwarg made this error path
+                    # raise its own TypeError. It went unexercised until the
+                    # canary walked into a tool-denial, i.e. the diagnosis
+                    # branch failed exactly when a diagnosis was needed.
+                    raw={"returncode": result.returncode,
+                         "error": "headless_tool_denied",
+                         "stderr": stderr_text,
+                         "elapsed_ms": round(elapsed_ms, 1)},
+                )
             quota_tokens = ("quota_exhausted", "quota exhausted", "rate limit",
                             "limits exhausted", "credit exhausted", "429")
             if any(tok in lower_err for tok in quota_tokens):
@@ -211,19 +317,27 @@ class AgyCliAdapter(BaseAdapter):
                     "returncode": result.returncode,
                     "elapsed_ms": round(elapsed_ms, 1),
                     "cmd": self._cmd,
-                    "model": _PINNED_MODEL,
+                    "model": model or _PINNED_MODEL,
+                    "effort": effort,
+                    # agentic: the headless state trace; speech: byte liveness
+                    "liveness": _tele,
+                    # agentic streams carry the CLI's own usage — the meter Ember
+                    # measured (09-03): real tokens, not len/4
+                    "usage": getattr(result, "usage", None),
                 },
             )
 
         except subprocess.TimeoutExpired:
             elapsed_ms = (time.time() - start) * 1000
-            shutil.rmtree(sandbox_cwd, ignore_errors=True)
+            if sandbox_cwd:
+                shutil.rmtree(sandbox_cwd, ignore_errors=True)
             return AdapterResponse(
                 content="[Error: agy CLI timed out]",
                 raw={"timeout": True, "elapsed_ms": round(elapsed_ms, 1)},
             )
         except FileNotFoundError:
-            shutil.rmtree(sandbox_cwd, ignore_errors=True)
+            if sandbox_cwd:
+                shutil.rmtree(sandbox_cwd, ignore_errors=True)
             return AdapterResponse(
                 content=f"[Error: '{self._cmd}' not found. Is Antigravity CLI installed?]",
                 raw={"error": "command_not_found", "cmd": self._cmd},

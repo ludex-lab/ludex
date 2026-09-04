@@ -12,7 +12,13 @@ Reference: OC extensions/anthropic/, CC rust/crates/api/client.rs
 from __future__ import annotations
 
 import json
+import re
 from ludex.blocks.adapters.base import BaseAdapter, AdapterResponse
+
+
+# Model families that reject `temperature` (API returns 400). Prefix match so a
+# new point release inherits the rule; widen only against a measured 400.
+_TEMPERATURE_DEPRECATED = re.compile(r"^claude-(fable|opus-5|sonnet-5|haiku-5)")
 
 
 class AnthropicAdapter(BaseAdapter):
@@ -49,7 +55,16 @@ class AnthropicAdapter(BaseAdapter):
         if extracted_system:
             body["system"] = extracted_system
 
-        if temperature is not None:
+        if temperature is not None and not _TEMPERATURE_DEPRECATED.match(model or ""):
+            # Newer Anthropic models reject `temperature` outright:
+            #   400 invalid_request_error "`temperature` is deprecated for this model."
+            # This path had never been walked — the public README declares the
+            # `anthropic` provider works, but every creature in the cohort runs
+            # a CLI adapter, so nobody had exercised it since the model line
+            # moved (found 2026-08-21 by auditing rarely-walked paths, a rule
+            # borrowed from the neighbouring lab). Sending no temperature is
+            # correct for these models; the caller's value is simply not
+            # expressible, so we drop it rather than fail the call.
             body["temperature"] = temperature
 
         if tools:

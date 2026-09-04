@@ -25,6 +25,40 @@ from typing import Any, Iterable
 from . import PairSummary
 
 
+# A move the hosted driver played for an absent seat. LxM marks it at the point
+# of synthesis (2026-08-21, dda1ae6) in the engine_message, on both branches: the
+# accepted one (`result: "timeout"`) and the rejected one (games with no
+# `get_timeout_move`, where the default `{"type": "pass"}` fails validation and
+# would otherwise read as the PARTICIPANT sending a malformed move).
+#
+# Two ways to recognise one, and the order matters. `authored_by` is the
+# machine-readable contract LxM added at c96d218 *because* our first
+# implementation read the prose — which meant they could not reword the message
+# without silently breaking us, and the caveat would vanish from creature bonds
+# with nobody noticing. The prose is for humans; the field is the contract.
+#
+# The substring is kept as a LEGACY path, not as a second contract. Records
+# written between dda1ae6 (attribution correct, prose only) and c96d218 exist
+# and will never gain the field — logs are append-only history. Dropping the
+# substring would make those matches silently un-flaggable, which is the exact
+# failure we are here to prevent.
+_FALLBACK_FIELD = "deadline_fallback"
+_FALLBACK_MARK = "hosted deadline fallback"          # legacy: pre-c96d218 records
+
+
+def _is_driver_move(entry: dict[str, Any]) -> bool:
+    if entry.get("authored_by") == _FALLBACK_FIELD:
+        return True
+    msg = ((entry.get("validation") or {}).get("engine_message") or "")
+    return _FALLBACK_MARK in msg
+
+
+def _fallback_turns(log: Iterable[dict[str, Any]], agent_id: str) -> int:
+    """How many of this agent's turns were played by the driver, not by them."""
+    return sum(1 for e in log
+               if e.get("agent_id") == agent_id and _is_driver_move(e))
+
+
 def _collect_proposals(log: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Walk accepted log entries and aggregate per-proposal state.
 
@@ -77,6 +111,12 @@ def extract_pair_summary(
         "votes_agreed": 0,
         "votes_disagreed": 0,
         "sabotages_on_shared_team": 0,
+        # Not a metric about them — a statement about how complete this record is.
+        # Accepted-only counting never misattributes a driver move, but it drops
+        # it silently, and the phrase below is written into the bond once and
+        # never re-rendered. A frozen confident wrong count is worse than a
+        # frozen caveat.
+        "their_driver_turns": _fallback_turns(log, other_id),
     }
     for p in proposals:
         leader = p["leader"]
@@ -119,6 +159,13 @@ def phrase_for(summary: PairSummary) -> str:
     """
     m = summary.metrics
     parts: list[str] = []
+    log_note = ""
+    if m.get("their_driver_turns"):
+        n = m["their_driver_turns"]
+        log_note = (f" (this record is incomplete: {n} of your turns "
+                    f"{'were' if n > 1 else 'was'} played by the match driver after a "
+                    f"deadline, not by you, and {'those turns are' if n > 1 else 'that turn is'} "
+                    f"not counted above)")
     # Role pairing is the anchor.
     role_clause = (
         f"I was {summary.my_role.capitalize() or 'unknown-role'}, "
@@ -159,4 +206,4 @@ def phrase_for(summary: PairSummary) -> str:
         parts.append(f"votes agreed {agreed}×, disagreed {disagreed}×")
 
     body = "; ".join(parts)
-    return f"[{summary.match_id}] {body}."
+    return f"[{summary.match_id}] {body}.{log_note}"

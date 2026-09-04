@@ -25,6 +25,8 @@ import json
 import shutil
 import tempfile
 import subprocess
+
+from ludex.blocks.adapters._liveness import run_capture
 import logging
 
 from ludex.blocks.adapters.base import BaseAdapter, AdapterResponse
@@ -52,6 +54,24 @@ _CODEX_FATIGUE_PATTERNS = [
 # (verified 2026-05-09: "try again at May 12th, 2026 3:16 PM."). The
 # parser lives in `_fatigue.py` so claude_cli can share it.
 from ludex.blocks.adapters._fatigue import parse_reset_at as _parse_reset_at
+
+
+def _codex_auto_flag() -> list[str]:
+    """codex 0.153 dropped `--full-auto`; `--approve-for-me` (automatic review in
+    the workspace-write sandbox) is the equivalent. Detected from --help once —
+    the 09-04 CLI upgrade broke every codex bench session until this existed."""
+    global _CODEX_AUTO
+    try:
+        return _CODEX_AUTO
+    except NameError:
+        pass
+    try:
+        h = subprocess.run(["codex", "exec", "--help"], capture_output=True, text=True, timeout=20).stdout
+    except Exception:
+        h = ""
+    _CODEX_AUTO = ["--full-auto"] if "--full-auto" in h else ["--approve-for-me"]
+    return _CODEX_AUTO
+
 
 
 def _detect_codex_fatigue(text: str):
@@ -187,7 +207,7 @@ class CodexCliAdapter(BaseAdapter):
             "--skip-git-repo-check",
         ]
         if agentic:
-            cmd.append("--full-auto")
+            cmd.extend(_codex_auto_flag())
         if model and model not in ("codex", "", None):
             cmd.extend(["-m", model])
         if effort:
@@ -201,11 +221,9 @@ class CodexCliAdapter(BaseAdapter):
         start = time.time()
         try:
             try:
-                result = subprocess.run(
+                result = run_capture(
                     cmd,
                     input=full_prompt,
-                    capture_output=True,
-                    text=True,
                     timeout=self.timeout_ms / 1000,
                     encoding="utf-8",
                     # Parity with gemini_cli: Windows OEM-codepage bytes on
@@ -270,7 +288,17 @@ class CodexCliAdapter(BaseAdapter):
             stderr_scan = stderr_text
             if "\ncodex\n" in stderr_text:
                 stderr_scan = stderr_text.rsplit("\ncodex\n", 1)[1]
-            fatigue_match = _detect_codex_fatigue(stderr_scan + "\n" + content)
+            # 2026-09-04 (Cody): the model's own ANSWER is evidence of fatigue only
+            # when the call also failed or the answer is short enough to be an
+            # error line. A long, successful report that merely mentions "HTTP 429"
+            # or "rate limit" as its subject (Wisp's ARC-AGI-3 harness report,
+            # 15:11 — 4/4 checks passed) was read as a subscription limit and the
+            # bench session recorded as an error. Count the exit code; do not
+            # infer a quota wall from the resident's prose.
+            scan = stderr_scan
+            if result.returncode != 0 or not content.strip():   # success + non-empty answer is never fatigue
+                scan = stderr_scan + "\n" + content
+            fatigue_match = _detect_codex_fatigue(scan)
             if fatigue_match is not None:
                 cause, detail, reset_s = fatigue_match
                 msg = f"Codex / ChatGPT subscription limit reached (cause: {cause}). {detail}"

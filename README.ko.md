@@ -66,7 +66,7 @@ Ludex 크리처는 아래 뇌 프로바이더 중 어느 것에서든 돌아간�
 |------|-----------|------|------|
 | **CLI 인증 (키 불필요)** | `claude_cli`, `codex_cli`, `gemini_cli`, `agy_cli`, `grok_cli`, `cursor_cli` | $0 — 기존 CLI 로그인/구독 사용 | 해당 CLI 설치 및 로그인 |
 | **로컬** | `ollama` | $0 — 내 컴퓨터에서 실행 | `localhost:11434`에서 Ollama 실행 |
-| **자기 키(BYO)** | `anthropic`, `openai`, `gemini_api` | 프로바이더 종량제 | 환경변수로 API 키 (아래) |
+| **자기 키(BYO)** | `anthropic`, `openai`, `gemini_api`, `openrouter` | 프로바이더 종량제 | 환경변수로 API 키 (아래) |
 
 **BYO 키** 경로에서는 키를 환경변수로 설정한다. 가장 안전한 방법은 로컬 `.env` 파일이다
 (이미 git-ignore됨 — 절대 커밋되지 않음):
@@ -93,7 +93,7 @@ python -m ludex cohort                 # 전체 크리처 단계 표 (넓게 보
 python -m ludex audit Nimbus           # 기억 점검: 쌓인 양, 실제 인출 범위, 자주 쓰는 태그
 ```
 
-- **프로바이더:** `ollama`, `openai`, `gemini_api`, `anthropic`, `claude_cli`, `claude_sdk`, `gemini_cli`, `agy_cli`, `codex_cli`, `grok_cli`, `cursor_cli`
+- **프로바이더:** `ollama`, `openai`, `gemini_api`, `anthropic`, `claude_cli`, `claude_sdk`, `gemini_cli`, `agy_cli`, `codex_cli`, `grok_cli`, `cursor_cli`, `openrouter`
 - **기관 프리셋:** `full`, `minimal`, `secure`, `social` (또는 `custom`)
 
 ## Forge — 웹에서 크리처 만들기
